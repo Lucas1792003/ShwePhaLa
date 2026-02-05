@@ -1,0 +1,23 @@
+@media print {
+  body {
+    background: #ffffff;
+  }
+
+  .print-hidden {
+    display: none !important;
+  }
+
+  .receipt {
+    width: 80mm;
+    padding: 8px;
+    margin: 0 auto;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: none !important;
+  }
+
+  .receipt * {
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace !important;
+    font-size: 12px;
+  }
+}

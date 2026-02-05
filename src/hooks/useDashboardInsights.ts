@@ -1,0 +1,425 @@
+import { useMemo } from "react";
+import type { Product, Sale, SaleItem, Inventory } from "../types/domain";
+
+export interface BusinessInsight {
+  id: string;
+  type: "profit_risk" | "inventory_risk" | "growth_opportunity" | "dependency_risk";
+  priority: 1 | 2 | 3; // 1 = highest
+  title: string;
+  titleMy: string;
+  message: string;
+  messageMy: string;
+  action: string;
+  actionMy: string;
+  icon: string;
+  color: "red" | "amber" | "blue" | "emerald";
+}
+
+export interface ProductProfitability {
+  productId: string;
+  name: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+  profitMargin: number;
+  qtySold: number;
+}
+
+export interface CategoryAnalysis {
+  category: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+  revenuePercent: number;
+  profitPercent: number;
+}
+
+export interface StockHealthItem {
+  product: Product;
+  currentQty: number;
+  status: "healthy" | "low" | "out";
+  daysUntilStockout: number | null;
+  avgDailySales: number;
+}
+
+export interface FastSlowMover {
+  product: Product;
+  salesVelocity: number; // sales per day
+  currentStock: number;
+  daysOfStock: number;
+  type: "fast" | "slow" | "normal";
+}
+
+interface UseDashboardInsightsParams {
+  sales: Sale[];
+  saleItems: SaleItem[];
+  products: Product[];
+  inventory: Inventory[];
+  shopId: string | null;
+  isAdmin: boolean;
+}
+
+interface UseDashboardInsightsReturn {
+  insights: BusinessInsight[];
+  productProfitability: ProductProfitability[];
+  categoryAnalysis: CategoryAnalysis[];
+  stockHealth: StockHealthItem[];
+  fastSlowMovers: FastSlowMover[];
+  lossCauses: { cause: string; causeMy: string; amount: number; percent: number }[];
+  totalProfit: number;
+  totalRevenue: number;
+  totalCost: number;
+}
+
+export const useDashboardInsights = ({
+  sales,
+  saleItems,
+  products,
+  inventory,
+  shopId,
+  isAdmin,
+}: UseDashboardInsightsParams): UseDashboardInsightsReturn => {
+  // Filter sales by shop
+  const filteredSales = useMemo(() => {
+    return sales.filter((s) => s.status === "NORMAL" && (isAdmin || s.shopId === shopId));
+  }, [sales, shopId, isAdmin]);
+
+  // Calculate product profitability
+  const productProfitability = useMemo(() => {
+    const map: Record<string, ProductProfitability> = {};
+
+    filteredSales.forEach((sale) => {
+      const items = saleItems.filter((i) => i.saleId === sale.id);
+      items.forEach((item) => {
+        const product = products.find((p) => p.id === item.productId);
+        if (product) {
+          if (!map[product.id]) {
+            map[product.id] = {
+              productId: product.id,
+              name: product.name,
+              revenue: 0,
+              cost: 0,
+              profit: 0,
+              profitMargin: 0,
+              qtySold: 0,
+            };
+          }
+          const itemCost = (product.costMmk || 0) * item.qtyUnits;
+          map[product.id].revenue += item.lineTotalMmk;
+          map[product.id].cost += itemCost;
+          map[product.id].profit += item.lineTotalMmk - itemCost;
+          map[product.id].qtySold += item.qtyUnits;
+        }
+      });
+    });
+
+    return Object.values(map)
+      .map((p) => ({
+        ...p,
+        profitMargin: p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0,
+      }))
+      .sort((a, b) => a.profit - b.profit); // Sort by profit ascending (losses first)
+  }, [filteredSales, saleItems, products]);
+
+  // Calculate category analysis
+  const categoryAnalysis = useMemo(() => {
+    const map: Record<string, { revenue: number; cost: number; profit: number }> = {};
+
+    filteredSales.forEach((sale) => {
+      const items = saleItems.filter((i) => i.saleId === sale.id);
+      items.forEach((item) => {
+        const product = products.find((p) => p.id === item.productId);
+        if (product) {
+          const category = product.category;
+          if (!map[category]) {
+            map[category] = { revenue: 0, cost: 0, profit: 0 };
+          }
+          const itemCost = (product.costMmk || 0) * item.qtyUnits;
+          map[category].revenue += item.lineTotalMmk;
+          map[category].cost += itemCost;
+          map[category].profit += item.lineTotalMmk - itemCost;
+        }
+      });
+    });
+
+    const totalRevenue = Object.values(map).reduce((sum, c) => sum + c.revenue, 0);
+    const totalProfit = Object.values(map).reduce((sum, c) => sum + c.profit, 0);
+
+    return Object.entries(map)
+      .map(([category, data]) => ({
+        category,
+        ...data,
+        revenuePercent: totalRevenue > 0 ? (data.revenue / totalRevenue) * 100 : 0,
+        profitPercent: totalProfit > 0 ? (data.profit / totalProfit) * 100 : 0,
+      }))
+      .sort((a, b) => b.revenuePercent - a.revenuePercent);
+  }, [filteredSales, saleItems, products]);
+
+  // Calculate totals
+  const { totalRevenue, totalCost, totalProfit } = useMemo(() => {
+    const revenue = productProfitability.reduce((sum, p) => sum + p.revenue, 0);
+    const cost = productProfitability.reduce((sum, p) => sum + p.cost, 0);
+    return {
+      totalRevenue: revenue,
+      totalCost: cost,
+      totalProfit: revenue - cost,
+    };
+  }, [productProfitability]);
+
+  // Calculate average daily sales for each product (last 7 days)
+  const productDailySales = useMemo(() => {
+    const salesByProduct: Record<string, number> = {};
+    const today = new Date();
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 7);
+
+    filteredSales.forEach((sale) => {
+      const saleDate = new Date(sale.createdAt);
+      if (saleDate >= sevenDaysAgo) {
+        const items = saleItems.filter((i) => i.saleId === sale.id);
+        items.forEach((item) => {
+          salesByProduct[item.productId] = (salesByProduct[item.productId] || 0) + item.qtyUnits;
+        });
+      }
+    });
+
+    // Convert to daily average
+    return Object.fromEntries(
+      Object.entries(salesByProduct).map(([id, qty]) => [id, qty / 7])
+    );
+  }, [filteredSales, saleItems]);
+
+  // Calculate stock health
+  const stockHealth = useMemo(() => {
+    return products
+      .filter((p) => p.isActive)
+      .map((product) => {
+        const inv = inventory.find((i) => i.shopId === shopId && i.productId === product.id);
+        const currentQty = inv?.qtyBaseUnits || 0;
+        const avgDailySales = productDailySales[product.id] || 0;
+        const daysUntilStockout = avgDailySales > 0 ? Math.floor(currentQty / avgDailySales) : null;
+
+        let status: "healthy" | "low" | "out" = "healthy";
+        if (currentQty === 0) {
+          status = "out";
+        } else if (currentQty <= product.lowStockThreshold) {
+          status = "low";
+        }
+
+        return {
+          product,
+          currentQty,
+          status,
+          daysUntilStockout,
+          avgDailySales,
+        };
+      })
+      .sort((a, b) => {
+        // Sort by status priority (out > low > healthy)
+        const statusOrder = { out: 0, low: 1, healthy: 2 };
+        return statusOrder[a.status] - statusOrder[b.status];
+      });
+  }, [products, inventory, shopId, productDailySales]);
+
+  // Calculate fast/slow movers
+  const fastSlowMovers = useMemo(() => {
+    return stockHealth
+      .map((item) => {
+        const salesVelocity = item.avgDailySales;
+        const daysOfStock = salesVelocity > 0 ? item.currentQty / salesVelocity : Infinity;
+
+        let type: "fast" | "slow" | "normal" = "normal";
+        // Fast mover: high sales, low stock (< 7 days of stock)
+        if (salesVelocity > 0 && daysOfStock < 7) {
+          type = "fast";
+        }
+        // Slow mover: low sales (< 0.5 per day), high stock (> 30 days of stock)
+        else if (salesVelocity < 0.5 && item.currentQty > 10 && daysOfStock > 30) {
+          type = "slow";
+        }
+
+        return {
+          product: item.product,
+          salesVelocity,
+          currentStock: item.currentQty,
+          daysOfStock: daysOfStock === Infinity ? 999 : Math.round(daysOfStock),
+          type,
+        };
+      })
+      .filter((m) => m.type !== "normal")
+      .sort((a, b) => {
+        if (a.type === "fast" && b.type !== "fast") return -1;
+        if (a.type !== "fast" && b.type === "fast") return 1;
+        return a.daysOfStock - b.daysOfStock;
+      });
+  }, [stockHealth]);
+
+  // Calculate loss causes (when profit < 0)
+  const lossCauses = useMemo(() => {
+    if (totalProfit >= 0) return [];
+
+    const causes: { cause: string; causeMy: string; amount: number; percent: number }[] = [];
+    const totalLoss = Math.abs(totalProfit);
+
+    // Find products with negative profit
+    const losingProducts = productProfitability.filter((p) => p.profit < 0);
+    const productLosses = losingProducts.reduce((sum, p) => sum + Math.abs(p.profit), 0);
+
+    if (productLosses > 0) {
+      // Group by main causes
+      losingProducts.forEach((p) => {
+        const lossAmount = Math.abs(p.profit);
+        causes.push({
+          cause: `${p.name} (cost > revenue)`,
+          causeMy: `${p.name} (ကုန်ကျစရိတ် > ဝင်ငွေ)`,
+          amount: lossAmount,
+          percent: (lossAmount / totalLoss) * 100,
+        });
+      });
+    }
+
+    // Sort by amount descending and take top 3
+    return causes.sort((a, b) => b.amount - a.amount).slice(0, 3);
+  }, [totalProfit, productProfitability]);
+
+  // Generate business insights
+  const insights = useMemo(() => {
+    const generatedInsights: BusinessInsight[] = [];
+
+    // 1. PROFIT RISK - Check for negative profit
+    if (totalProfit < 0) {
+      const topLosers = productProfitability.filter((p) => p.profit < 0).slice(0, 2);
+      const lossReasons = topLosers.map((p) => p.name).join(", ");
+
+      generatedInsights.push({
+        id: "profit-negative",
+        type: "profit_risk",
+        priority: 1,
+        title: "Profit Loss Alert",
+        titleMy: "အရှုံးသတိပေးချက်",
+        message: `Profit is negative because ${lossReasons} costs exceed revenue. Total loss: ${Math.abs(totalProfit).toLocaleString()} MMK.`,
+        messageMy: `${lossReasons} တို့၏ ကုန်ကျစရိတ်သည် ဝင်ငွေထက်ပိုများသောကြောင့် အရှုံးဖြစ်နေသည်။ စုစုပေါင်းအရှုံး: ${Math.abs(totalProfit).toLocaleString()} ကျပ်။`,
+        action: "Review pricing or find alternative suppliers for these products.",
+        actionMy: "ဤကုန်ပစ္စည်းများအတွက် စျေးနှုန်းပြန်သုံးသပ်ပါ သို့မဟုတ် အခြားပေးသွင်းသူများရှာပါ။",
+        icon: "trending_down",
+        color: "red",
+      });
+    }
+
+    // 2. PROFIT RISK - Check for products where cost > revenue
+    const unprofitableProducts = productProfitability.filter(
+      (p) => p.revenue > 0 && p.cost > p.revenue
+    );
+    if (unprofitableProducts.length > 0 && !generatedInsights.find((i) => i.id === "profit-negative")) {
+      const worst = unprofitableProducts[0];
+      const lossPercent = ((worst.cost - worst.revenue) / worst.revenue * 100).toFixed(0);
+
+      generatedInsights.push({
+        id: "cost-exceeds-revenue",
+        type: "profit_risk",
+        priority: 1,
+        title: "Pricing Issue Detected",
+        titleMy: "စျေးနှုန်းပြဿနာတွေ့ရှိ",
+        message: `${worst.name} is selling at a loss. Cost exceeds revenue by ${lossPercent}%.`,
+        messageMy: `${worst.name} အရှုံးခံရောင်းနေရသည်။ ကုန်ကျစရိတ်သည် ဝင်ငွေထက် ${lossPercent}% ပိုများသည်။`,
+        action: "Increase price or renegotiate supplier cost.",
+        actionMy: "စျေးနှုန်းတိုးပါ သို့မဟုတ် ပေးသွင်းသူနှင့် စျေးပြန်ညှိပါ။",
+        icon: "price_change",
+        color: "red",
+      });
+    }
+
+    // 3. INVENTORY RISK - Low stock warning
+    const lowStockItems = stockHealth.filter((s) => s.status === "low" || s.status === "out");
+    if (lowStockItems.length > 0) {
+      const criticalItems = lowStockItems.filter((s) => s.daysUntilStockout !== null && s.daysUntilStockout <= 3);
+
+      generatedInsights.push({
+        id: "low-stock",
+        type: "inventory_risk",
+        priority: 2,
+        title: "Stock Running Low",
+        titleMy: "ကုန်ပစ္စည်းနည်းနေသည်",
+        message: `${lowStockItems.length} product(s) are low on stock.${criticalItems.length > 0 ? ` ${criticalItems.length} may cause lost sales this week.` : ""}`,
+        messageMy: `ကုန်ပစ္စည်း ${lowStockItems.length} မျိုး နည်းနေသည်။${criticalItems.length > 0 ? ` ${criticalItems.length} မျိုးသည် ဤအပတ်အတွင်း ရောင်းအားဆုံးရှုံးစေနိုင်သည်။` : ""}`,
+        action: "Reorder soon to avoid stockouts.",
+        actionMy: "ကုန်မကုန်မီ အမြန်မှာယူပါ။",
+        icon: "inventory_2",
+        color: "amber",
+      });
+    }
+
+    // 4. DEPENDENCY RISK - Single category dominance
+    const dominantCategory = categoryAnalysis.find((c) => c.revenuePercent > 50);
+    if (dominantCategory) {
+      const profitContribution = dominantCategory.profitPercent.toFixed(0);
+
+      generatedInsights.push({
+        id: "category-dependency",
+        type: "dependency_risk",
+        priority: 3,
+        title: "Revenue Concentration Risk",
+        titleMy: "ဝင်ငွေစုစည်းမှုအန္တရာယ်",
+        message: `${dominantCategory.category} generates ${dominantCategory.revenuePercent.toFixed(0)}% of revenue but contributes only ${profitContribution}% of profit.`,
+        messageMy: `${dominantCategory.category} သည် ဝင်ငွေ၏ ${dominantCategory.revenuePercent.toFixed(0)}% ထုတ်လုပ်သော်လည်း အမြတ်၏ ${profitContribution}% သာပါဝင်သည်။`,
+        action: "Diversify product mix or improve margins in this category.",
+        actionMy: "ကုန်ပစ္စည်းမျိုးစုံလင်အောင်လုပ်ပါ သို့မဟုတ် ဤအမျိုးအစား၏ အမြတ်နှုန်းတိုးပါ။",
+        icon: "pie_chart",
+        color: "blue",
+      });
+    }
+
+    // 5. GROWTH OPPORTUNITY - Fast movers
+    const fastMovers = fastSlowMovers.filter((m) => m.type === "fast");
+    if (fastMovers.length > 0 && generatedInsights.length < 3) {
+      const topFast = fastMovers[0];
+
+      generatedInsights.push({
+        id: "fast-movers",
+        type: "growth_opportunity",
+        priority: 3,
+        title: "High Demand Products",
+        titleMy: "ဝယ်လိုအားမြင့်ကုန်ပစ္စည်းများ",
+        message: `${topFast.product.name} is selling fast with only ${topFast.daysOfStock} days of stock left.`,
+        messageMy: `${topFast.product.name} မြန်မြန်ရောင်းနေပြီး ${topFast.daysOfStock} ရက်စာသာကျန်သည်။`,
+        action: "Stock up on this product to maximize sales.",
+        actionMy: "ရောင်းအားအများဆုံးရရန် ဤကုန်ပစ္စည်းပိုဝယ်ထားပါ။",
+        icon: "trending_up",
+        color: "emerald",
+      });
+    }
+
+    // 6. OPPORTUNITY - Slow movers (if we have room)
+    const slowMovers = fastSlowMovers.filter((m) => m.type === "slow");
+    if (slowMovers.length > 0 && generatedInsights.length < 3) {
+      generatedInsights.push({
+        id: "slow-movers",
+        type: "growth_opportunity",
+        priority: 3,
+        title: "Slow-Moving Stock",
+        titleMy: "ရောင်းအားနှေးသောကုန်ပစ္စည်း",
+        message: `${slowMovers.length} product(s) have high stock but low sales. Consider promotions.`,
+        messageMy: `ကုန်ပစ္စည်း ${slowMovers.length} မျိုးသည် စတော့များသော်လည်း ရောင်းအားနည်းသည်။ ပရိုမိုးရှင်းစဉ်းစားပါ။`,
+        action: "Run promotions or bundle with fast sellers.",
+        actionMy: "ပရိုမိုးရှင်းလုပ်ပါ သို့မဟုတ် ရောင်းရသော ကုန်ပစ္စည်းများနှင့်တွဲရောင်းပါ။",
+        icon: "hourglass_empty",
+        color: "amber",
+      });
+    }
+
+    // Sort by priority and limit to 3
+    return generatedInsights.sort((a, b) => a.priority - b.priority).slice(0, 3);
+  }, [totalProfit, productProfitability, stockHealth, categoryAnalysis, fastSlowMovers]);
+
+  return {
+    insights,
+    productProfitability,
+    categoryAnalysis,
+    stockHealth,
+    fastSlowMovers,
+    lossCauses,
+    totalProfit,
+    totalRevenue,
+    totalCost,
+  };
+};
