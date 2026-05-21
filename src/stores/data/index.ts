@@ -215,16 +215,8 @@ export const useDataStore = create<DataState>()((...args) => {
           supabase.from("refund_void_requests").select("*"),
           supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(500),
         ]);
-        // Auto-create a default shop if the shops table is empty
+        // Ensure currentShopId always points to a valid shop in the list
         let shopsList = (shops.data ?? []).map(mapShop);
-        if (shopsList.length === 0) {
-          const defaultShop = {
-            id: "shop-main", code: "MAIN", name: "Main Store",
-            is_active: true, created_at: new Date().toISOString(), created_by: "system",
-          };
-          await supabase.from("shops").upsert(defaultShop, { onConflict: "id", ignoreDuplicates: true });
-          shopsList = [{ id: "shop-main", code: "MAIN", name: "Main Store", isActive: true, createdAt: defaultShop.created_at }];
-        }
 
         // Ensure currentShopId always points to a real shop
         const { currentShopId, setShopId } = useAppStore.getState();

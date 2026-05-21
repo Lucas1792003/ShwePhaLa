@@ -31,9 +31,11 @@ export const ReceiptPage = () => {
   const [refundReason, setRefundReason] = useState("");
   const [refundSelection, setRefundSelection] = useState<Record<string, number>>({});
 
-  if (!sale) return <div className="p-8 text-slate-500">Receipt not found.</div>;
-  const shop = shops.find((item) => item.id === sale.shopId);
-  if (!shop) return <div className="p-8 text-slate-500">Shop data not found.</div>;
+  if (!sale) return <div className="p-8 text-center text-slate-500">Receipt not found.</div>;
+  const shop = shops.find((item) => item.id === sale.shopId) ?? {
+    id: sale.shopId, code: "SHOP", name: "Store", address: "",
+    isActive: true, createdAt: sale.createdAt,
+  };
   const cashier = users.find((item) => item.id === sale.cashierId);
 
   const lines = saleItems.map((item) => {
