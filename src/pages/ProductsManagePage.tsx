@@ -90,16 +90,16 @@ export const ProductsManagePage = () => {
       barcodes: z
         .array(
           z.object({
-            value: z.string().min(3, "Barcode must be at least 3 characters"),
+            value: z.string(),
             type: z.enum(["EAN13", "CODE128", "QR"]),
           })
         )
-        .min(1, "At least one barcode is required")
         .superRefine((items, ctx) => {
-          const values = items.map((item) => item.value);
+          const filled = items.filter((i) => i.value.trim().length > 0);
+          const values = filled.map((i) => i.value.trim());
           const uniqueValues = new Set(values);
           if (uniqueValues.size !== values.length) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Duplicate barcode values in form." });
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Duplicate barcode values." });
           }
         }),
     });
@@ -119,7 +119,7 @@ export const ProductsManagePage = () => {
       expiryDate: undefined,
       imageUrl: undefined,
       isActive: true,
-      barcodes: [{ value: "", type: "EAN13" }],
+      barcodes: [],
     },
   });
 
@@ -176,7 +176,7 @@ export const ProductsManagePage = () => {
       expiryDate: undefined,
       imageUrl: undefined,
       isActive: true,
-      barcodes: [{ value: "", type: "EAN13" }],
+      barcodes: [],
     });
     setEditingId(null);
     setShowProductModal(true);
@@ -198,10 +198,7 @@ export const ProductsManagePage = () => {
       expiryDate: product.expiryDate,
       imageUrl: product.imageUrl,
       isActive: product.isActive,
-      barcodes:
-        productBarcodes.length > 0
-          ? productBarcodes.map((barcode) => ({ value: barcode.value, type: barcode.type }))
-          : [{ value: "", type: "EAN13" }],
+      barcodes: productBarcodes.map((barcode) => ({ value: barcode.value, type: barcode.type })),
     });
     setEditingId(product.id);
     setShowProductModal(true);
@@ -232,10 +229,11 @@ export const ProductsManagePage = () => {
   };
 
   const handleSubmit = form.handleSubmit((values) => {
+    const filledBarcodes = values.barcodes.filter((b) => b.value.trim().length > 0);
     const existingValues = barcodes
       .filter((barcode) => barcode.productId !== editingId)
       .map((barcode) => barcode.value);
-    if (values.barcodes.some((barcode) => existingValues.includes(barcode.value))) {
+    if (filledBarcodes.some((barcode) => existingValues.includes(barcode.value.trim()))) {
       form.setError("barcodes", { message: "Barcode already exists in another product." });
       return;
     }
@@ -268,10 +266,10 @@ export const ProductsManagePage = () => {
       createdAt: existingProduct?.createdAt ?? new Date().toISOString(),
     };
 
-    const barcodeEntries: ProductBarcode[] = values.barcodes.map((barcode) => ({
+    const barcodeEntries: ProductBarcode[] = filledBarcodes.map((barcode) => ({
       id: `bc-${Math.random().toString(36).slice(2, 8)}`,
       productId,
-      value: barcode.value,
+      value: barcode.value.trim(),
       type: barcode.type,
     }));
 
@@ -793,7 +791,7 @@ export const ProductsManagePage = () => {
           {/* Barcodes */}
           <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
             <div className="flex items-center justify-between">
-              <div className="font-semibold text-slate-700">Barcodes *</div>
+              <div className="font-semibold text-slate-700">Barcodes <span className="text-xs font-normal text-slate-400">(optional)</span></div>
               <Button
                 type="button"
                 variant="secondary"
