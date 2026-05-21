@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { DataState } from "./types";
 import { supabase } from "../../lib/supabase";
+import { useAppStore } from "../appStore";
 import type {
   AuditLog, Category, Inventory, InventoryMovement, PriceTier,
   Product, ProductBarcode, PurchaseOrder, PurchaseOrderItem,
@@ -214,9 +215,26 @@ export const useDataStore = create<DataState>()((...args) => {
           supabase.from("refund_void_requests").select("*"),
           supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(500),
         ]);
+        // Auto-create a default shop if the shops table is empty
+        let shopsList = (shops.data ?? []).map(mapShop);
+        if (shopsList.length === 0) {
+          const defaultShop = {
+            id: "shop-main", code: "MAIN", name: "Main Store",
+            is_active: true, created_at: new Date().toISOString(), created_by: "system",
+          };
+          await supabase.from("shops").upsert(defaultShop, { onConflict: "id", ignoreDuplicates: true });
+          shopsList = [{ id: "shop-main", code: "MAIN", name: "Main Store", isActive: true, createdAt: defaultShop.created_at }];
+        }
+
+        // Ensure currentShopId always points to a real shop
+        const { currentShopId, setShopId } = useAppStore.getState();
+        if (!currentShopId || !shopsList.find((s) => s.id === currentShopId)) {
+          setShopId(shopsList[0]?.id ?? null);
+        }
+
         const mappedRefunds = (refunds.data ?? []).map(mapRefund);
         set({
-          shops: (shops.data ?? []).map(mapShop),
+          shops: shopsList,
           users: (users.data ?? []).map(mapUser),
           categories: (categories.data ?? []).map(mapCategory),
           products: (products.data ?? []).map(mapProduct),
