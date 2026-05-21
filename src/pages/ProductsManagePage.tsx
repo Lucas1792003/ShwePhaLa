@@ -608,16 +608,13 @@ export const ProductsManagePage = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* SKU */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">SKU *</label>
-            <div className="flex gap-2">
-              <Input placeholder="e.g. BEE-001" {...form.register("sku")} className="flex-1" />
-              <Button type="button" variant="secondary" onClick={() => generateSku()}>
-                Generate
-              </Button>
-            </div>
-            {form.formState.errors.sku && (
-              <p className="mt-1 text-xs text-red-500">{form.formState.errors.sku.message}</p>
-            )}
+            <label className="mb-1 block text-sm font-medium text-slate-700">SKU</label>
+            <Input
+              placeholder="Auto-generated from category"
+              {...form.register("sku")}
+              readOnly
+              className="bg-slate-50 text-slate-500 cursor-not-allowed"
+            />
           </div>
 
           {/* Name */}
