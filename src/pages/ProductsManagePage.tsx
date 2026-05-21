@@ -18,7 +18,7 @@ import { Pagination } from "../components/ui/Pagination";
 import { formatMmk } from "../lib/utils";
 
 type UnitType = "piece" | "box" | "kg" | "liter" | "pack";
-type CategoryColor = "amber" | "red" | "green" | "blue" | "purple" | "slate";
+type CategoryColor = "amber" | "red" | "green" | "blue" | "purple" | "slate" | "pink" | "teal" | "indigo" | "yellow" | "orange" | "cyan";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -583,6 +583,12 @@ export const ProductsManagePage = () => {
               blue: "bg-blue-50 border-blue-200 text-blue-700",
               purple: "bg-purple-50 border-purple-200 text-purple-700",
               slate: "bg-slate-50 border-slate-200 text-slate-700",
+              pink: "bg-pink-50 border-pink-200 text-pink-700",
+              teal: "bg-teal-50 border-teal-200 text-teal-700",
+              indigo: "bg-indigo-50 border-indigo-200 text-indigo-700",
+              yellow: "bg-yellow-50 border-yellow-200 text-yellow-700",
+              orange: "bg-orange-50 border-orange-200 text-orange-700",
+              cyan: "bg-cyan-50 border-cyan-200 text-cyan-700",
             };
 
             return (
@@ -857,12 +863,18 @@ export const ProductsManagePage = () => {
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700">Color Theme</label>
             <div className="flex flex-wrap gap-2">
-              {(["amber", "red", "green", "blue", "purple", "slate"] as CategoryColor[]).map((color) => {
+              {(["amber", "orange", "yellow", "red", "pink", "green", "teal", "cyan", "blue", "indigo", "purple", "slate"] as CategoryColor[]).map((color) => {
                 const colorStyles: Record<CategoryColor, string> = {
                   amber: "bg-amber-500",
+                  orange: "bg-orange-500",
+                  yellow: "bg-yellow-400",
                   red: "bg-red-500",
+                  pink: "bg-pink-500",
                   green: "bg-green-500",
+                  teal: "bg-teal-500",
+                  cyan: "bg-cyan-500",
                   blue: "bg-blue-500",
+                  indigo: "bg-indigo-500",
                   purple: "bg-purple-500",
                   slate: "bg-slate-500",
                 };
