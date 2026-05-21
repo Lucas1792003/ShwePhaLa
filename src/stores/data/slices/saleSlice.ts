@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { DataState, SaleState, CreateSaleInput } from "../types";
-import type { AuditLog, Refund, Sale, SaleItem, StockMovementType } from "../../../types";
-import { makeId } from "../utils";
+import type { AuditLog, InventoryMovement, Refund, Sale, SaleItem, StockMovementType } from "../../../types";
+import { makeId, requirePermission } from "../utils";
 import { buildReceiptNo, getDateKey } from "../../../lib/utils";
 
 export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set, get) => ({
@@ -12,6 +12,10 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
 
   createSale: ({ shopId, cashierId, shiftId, cartItems, cartDiscountPct, paymentMethod, paidMmk }: CreateSaleInput) => {
     const state = get();
+
+    // Permission check: cashier must have pos:create_sale
+    requirePermission(state.users, cashierId, "pos:create_sale");
+
     const shop = state.shops.find((item) => item.id === shopId);
     const dateKey = getDateKey();
     const seq = state.sales.filter((sale) => sale.shopId === shopId && sale.receiptNo.includes(dateKey)).length + 1;
@@ -72,7 +76,7 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
     saleItems.forEach((item) => {
       const record = inventory.find((inv) => inv.shopId === shopId && inv.productId === item.productId);
       const qtyBefore = record?.qtyBaseUnits ?? 0;
-      const qtyAfter = Math.max(0, qtyBefore - item.qtyUnits);
+      const qtyAfter = qtyBefore - item.qtyUnits; // Allow negative for accurate ledger
 
       if (record) {
         record.qtyBaseUnits = qtyAfter;
@@ -135,14 +139,50 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
 
   voidSale: ({ saleId, reason, actorId }) =>
     set((state) => {
+      // Permission check: actor must have pos:void_sale
+      requirePermission(state.users, actorId, "pos:void_sale");
+
       const sale = state.sales.find((item) => item.id === saleId);
       if (!sale || sale.status !== "NORMAL") return state;
 
       const saleItems = state.saleItems.filter((item) => item.saleId === saleId);
       const inventory = [...state.inventory];
+      const movements = [...state.movements];
+      const createdAt = new Date().toISOString();
+
+      // Restore inventory and create RETURN_IN movements for audit trail
       saleItems.forEach((item) => {
         const record = inventory.find((inv) => inv.shopId === sale.shopId && inv.productId === item.productId);
-        if (record) record.qtyBaseUnits += item.qtyUnits;
+        const qtyBefore = record?.qtyBaseUnits ?? 0;
+        const qtyAfter = qtyBefore + item.qtyUnits;
+
+        if (record) {
+          record.qtyBaseUnits = qtyAfter;
+        } else {
+          // Edge case: inventory record was deleted, recreate it
+          inventory.push({
+            shopId: sale.shopId,
+            productId: item.productId,
+            qtyBaseUnits: qtyAfter,
+          });
+        }
+
+        // Create RETURN_IN movement for audit trail
+        const movement: InventoryMovement = {
+          id: makeId("move"),
+          shopId: sale.shopId,
+          productId: item.productId,
+          type: "RETURN_IN" as StockMovementType,
+          qtyChange: item.qtyUnits,
+          qtyBefore,
+          qtyAfter,
+          reason: `Void sale ${sale.receiptNo}: ${reason}`,
+          referenceType: "sale",
+          referenceId: saleId,
+          createdBy: actorId,
+          createdAt,
+        };
+        movements.unshift(movement);
       });
 
       const updatedSales = state.sales.map((item) =>
@@ -156,7 +196,7 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
         type: "VOID",
         reason,
         createdBy: actorId,
-        createdAt: new Date().toISOString(),
+        createdAt,
         status: "APPROVED",
       };
 
@@ -168,7 +208,7 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
         message: `Void sale ${sale.receiptNo}. Reason: ${reason}`,
         entityType: "Sale",
         entityId: saleId,
-        createdAt: refund.createdAt,
+        createdAt,
       };
 
       return {
@@ -176,6 +216,7 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
         refunds: [refund, ...state.refunds],
         refundVoidRequests: [refund, ...state.refundVoidRequests],
         inventory,
+        movements,
         auditLogs: [audit, ...state.auditLogs],
       };
     }),
@@ -227,6 +268,9 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
 
   approveRefund: ({ refundId, approverId }) =>
     set((state) => {
+      // Permission check: approver must have pos:refund permission
+      requirePermission(state.users, approverId, "pos:refund");
+
       const refund = state.refundVoidRequests.find((item) => item.id === refundId) ?? state.refunds.find((item) => item.id === refundId);
       if (!refund || refund.status === "APPROVED") return state;
 
@@ -234,17 +278,47 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
       if (!sale) return state;
 
       const inventory = [...state.inventory];
+      const movements = [...state.movements];
+      const createdAt = new Date().toISOString();
+
+      // Helper function to create RETURN_IN movement
+      const createReturnMovement = (productId: string, qtyUnits: number) => {
+        const record = inventory.find((inv) => inv.shopId === sale.shopId && inv.productId === productId);
+        const qtyBefore = record?.qtyBaseUnits ?? 0;
+        const qtyAfter = qtyBefore + qtyUnits;
+
+        if (record) {
+          record.qtyBaseUnits = qtyAfter;
+        } else {
+          inventory.push({
+            shopId: sale.shopId,
+            productId,
+            qtyBaseUnits: qtyAfter,
+          });
+        }
+
+        const movement: InventoryMovement = {
+          id: makeId("move"),
+          shopId: sale.shopId,
+          productId,
+          type: "RETURN_IN" as StockMovementType,
+          qtyChange: qtyUnits,
+          qtyBefore,
+          qtyAfter,
+          reason: `${refund.type === "VOID" ? "Void" : "Refund"} approved for ${sale.receiptNo}`,
+          referenceType: "sale",
+          referenceId: refund.saleId,
+          createdBy: approverId,
+          createdAt,
+        };
+        movements.unshift(movement);
+      };
+
       if (refund.type === "VOID") {
         const saleItems = state.saleItems.filter((item) => item.saleId === sale.id);
-        saleItems.forEach((item) => {
-          const record = inventory.find((inv) => inv.shopId === sale.shopId && inv.productId === item.productId);
-          if (record) record.qtyBaseUnits += item.qtyUnits;
-        });
+        saleItems.forEach((item) => createReturnMovement(item.productId, item.qtyUnits));
       } else if (refund.items) {
-        refund.items.forEach((item) => {
-          const record = inventory.find((inv) => inv.shopId === sale.shopId && inv.productId === item.productId);
-          if (record) record.qtyBaseUnits += item.qtyUnits;
-        });
+        refund.items.forEach((item) => createReturnMovement(item.productId, item.qtyUnits));
       }
 
       const newStatus = refund.type === "VOID" ? ("VOID" as const) : ("REFUNDED" as const);
@@ -267,7 +341,7 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
         message: `${refund.type === "VOID" ? "Void" : "Refund"} approved for ${sale.receiptNo}.`,
         entityType: "Refund",
         entityId: refundId,
-        createdAt: new Date().toISOString(),
+        createdAt,
       };
 
       return {
@@ -275,6 +349,7 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
         refundVoidRequests: updatedRequests,
         sales: updatedSales,
         inventory,
+        movements,
         auditLogs: [audit, ...state.auditLogs],
       };
     }),

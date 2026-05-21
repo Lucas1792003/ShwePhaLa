@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { DataState, PurchaseState, CreatePurchaseOrderInput } from "../types";
 import type { AuditLog, PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus, Supplier, StockMovementType } from "../../../types";
-import { makeId, makePurchaseOrderNo } from "../utils";
+import { makeId, makePurchaseOrderNo, requirePermission } from "../utils";
 import { getDateKey } from "../../../lib/utils";
 
 export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState> = (set, get) => ({
@@ -19,6 +19,10 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
 
   createPurchaseOrder: ({ shopId, supplierId, items, notes, createdBy }: CreatePurchaseOrderInput) => {
     const state = get();
+
+    // Permission check: creator must have purchase:create
+    requirePermission(state.users, createdBy, "purchase:create");
+
     const seq = state.purchaseOrders.filter((po) => po.orderNo.includes(getDateKey())).length + 1;
     const purchaseOrderId = makeId("po");
     const orderNo = makePurchaseOrderNo(seq);
@@ -70,6 +74,9 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
 
   approvePurchaseOrder: ({ purchaseOrderId, approverId }) =>
     set((state) => {
+      // Permission check: approver must have purchase:approve
+      requirePermission(state.users, approverId, "purchase:approve");
+
       const po = state.purchaseOrders.find((p) => p.id === purchaseOrderId);
       if (!po || (po.status !== "DRAFT" && po.status !== "SUBMITTED")) return state;
 
@@ -99,6 +106,9 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
 
   receivePurchaseOrder: ({ purchaseOrderId, receiverId, receivedItems }) =>
     set((state) => {
+      // Permission check: receiver must have purchase:receive
+      requirePermission(state.users, receiverId, "purchase:receive");
+
       const po = state.purchaseOrders.find((p) => p.id === purchaseOrderId);
       if (!po || po.status !== "APPROVED") return state;
 
@@ -173,6 +183,9 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
 
   cancelPurchaseOrder: ({ purchaseOrderId, actorId }) =>
     set((state) => {
+      // Permission check: actor must have purchase:create to cancel
+      requirePermission(state.users, actorId, "purchase:create");
+
       const po = state.purchaseOrders.find((p) => p.id === purchaseOrderId);
       if (!po || po.status === "RECEIVED" || po.status === "CANCELED") return state;
 

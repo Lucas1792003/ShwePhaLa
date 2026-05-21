@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { DataState, TransferState, CreateTransferInput } from "../types";
 import type { AuditLog, StockTransfer, StockTransferItem, TransferStatus, StockMovementType } from "../../../types";
-import { makeId, makeTransferNo } from "../utils";
+import { makeId, makeTransferNo, requirePermission } from "../utils";
 import { getDateKey } from "../../../lib/utils";
 
 export const createTransferSlice: StateCreator<DataState, [], [], TransferState> = (set, get) => ({
@@ -10,6 +10,10 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
 
   createTransfer: ({ fromShopId, toShopId, items, notes, createdBy }: CreateTransferInput) => {
     const state = get();
+
+    // Permission check: creator must have transfer:create
+    requirePermission(state.users, createdBy, "transfer:create");
+
     const seq = state.stockTransfers.filter((t) => t.transferNo.includes(getDateKey())).length + 1;
     const transferId = makeId("transfer");
     const transferNo = makeTransferNo(seq);
@@ -65,6 +69,9 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
 
   approveTransfer: ({ transferId, approverId, approvedItems }) =>
     set((state) => {
+      // Permission check: approver must have transfer:approve
+      requirePermission(state.users, approverId, "transfer:approve");
+
       const transfer = state.stockTransfers.find((t) => t.id === transferId);
       if (!transfer || transfer.status !== "PENDING") return state;
 
@@ -108,6 +115,9 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
 
   rejectTransfer: ({ transferId, actorId, reason }) =>
     set((state) => {
+      // Permission check: actor must have transfer:approve to reject
+      requirePermission(state.users, actorId, "transfer:approve");
+
       const transfer = state.stockTransfers.find((t) => t.id === transferId);
       if (!transfer || transfer.status !== "PENDING") return state;
 
@@ -137,6 +147,9 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
 
   completeTransfer: ({ transferId, actorId }) =>
     set((state) => {
+      // Permission check: actor must have transfer:approve to complete
+      requirePermission(state.users, actorId, "transfer:approve");
+
       const transfer = state.stockTransfers.find((t) => t.id === transferId);
       if (!transfer || transfer.status !== "APPROVED") return state;
 
@@ -153,7 +166,7 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
           (inv) => inv.shopId === transfer.fromShopId && inv.productId === item.productId
         );
         const sourceQtyBefore = sourceRecord?.qtyBaseUnits ?? 0;
-        const sourceQtyAfter = Math.max(0, sourceQtyBefore - qty);
+        const sourceQtyAfter = sourceQtyBefore - qty; // Allow negative for accurate ledger
         if (sourceRecord) {
           sourceRecord.qtyBaseUnits = sourceQtyAfter;
         }
@@ -238,6 +251,9 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
 
   cancelTransfer: ({ transferId, actorId, reason }) =>
     set((state) => {
+      // Permission check: actor must have transfer:cancel
+      requirePermission(state.users, actorId, "transfer:cancel");
+
       const transfer = state.stockTransfers.find((t) => t.id === transferId);
       if (!transfer || transfer.status === "COMPLETED" || transfer.status === "CANCELED") return state;
 

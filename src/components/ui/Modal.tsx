@@ -31,19 +31,45 @@ export const Modal = ({ open, title, description, onClose, children, footer, siz
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-      <div className={cn("w-full rounded-3xl border border-slate-200/70 bg-white p-6 shadow-2xl", sizes[size])}>
-        <div className="flex items-start justify-between">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+      onClick={(e) => {
+        // Close when clicking the backdrop
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className={cn(
+          "flex max-h-[90vh] w-full flex-col rounded-3xl border border-slate-200/70 bg-white shadow-2xl",
+          sizes[size]
+        )}
+      >
+        {/* Fixed Header */}
+        <div className="flex flex-shrink-0 items-start justify-between border-b border-slate-100 p-6 pb-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
             {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
-            X
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <span className="material-symbols-rounded text-xl">close</span>
           </button>
         </div>
-        <div className="mt-4 space-y-4">{children}</div>
-        {footer && <div className="mt-5 flex items-center justify-end gap-3">{footer}</div>}
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-6 pt-4">
+          <div className="space-y-4">{children}</div>
+        </div>
+
+        {/* Fixed Footer */}
+        {footer && (
+          <div className="flex flex-shrink-0 items-center justify-end gap-3 border-t border-slate-100 p-6 pt-4">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

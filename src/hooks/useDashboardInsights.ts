@@ -194,8 +194,19 @@ export const useDashboardInsights = ({
     return products
       .filter((p) => p.isActive)
       .map((product) => {
-        const inv = inventory.find((i) => i.shopId === shopId && i.productId === product.id);
-        const currentQty = inv?.qtyBaseUnits || 0;
+        let currentQty: number;
+
+        if (shopId === null) {
+          // All shops mode: aggregate inventory across all shops
+          currentQty = inventory
+            .filter((i) => i.productId === product.id)
+            .reduce((sum, inv) => sum + inv.qtyBaseUnits, 0);
+        } else {
+          // Single shop mode: get inventory for specific shop
+          const inv = inventory.find((i) => i.shopId === shopId && i.productId === product.id);
+          currentQty = inv?.qtyBaseUnits || 0;
+        }
+
         const avgDailySales = productDailySales[product.id] || 0;
         const daysUntilStockout = avgDailySales > 0 ? Math.floor(currentQty / avgDailySales) : null;
 

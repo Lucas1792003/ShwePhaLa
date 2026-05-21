@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuthStore } from "../stores/authStore";
 import { useDataStore } from "../stores/dataStore";
-import type { ProductBarcode, ProductCategory, Category } from "../types";
+import type { ProductBarcode, ProductCategory, Category, Product } from "../types";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
@@ -12,10 +12,15 @@ import { Select } from "../components/ui/Select";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Modal } from "../components/ui/Modal";
+import { Table, THead, TBody, TR, TH, TD } from "../components/ui/Table";
+import { SearchInput } from "../components/forms/SearchInput";
+import { Pagination } from "../components/ui/Pagination";
 import { formatMmk } from "../lib/utils";
 
 type UnitType = "piece" | "box" | "kg" | "liter" | "pack";
 type CategoryColor = "amber" | "red" | "green" | "blue" | "purple" | "slate";
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 interface FormValues {
   id?: string;
@@ -28,6 +33,7 @@ interface FormValues {
   packSize?: number;
   lowStockThreshold: number;
   expiryDate?: string;
+  imageUrl?: string;
   isActive: boolean;
   barcodes: { value: string; type: "EAN13" | "CODE128" | "QR" }[];
 }
@@ -44,10 +50,18 @@ export const ProductsManagePage = () => {
   const updateCategory = useDataStore((state) => state.updateCategory);
   const addAuditLog = useDataStore((state) => state.addAuditLog);
 
+  // Product modal state
+  const [showProductModal, setShowProductModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState<ProductCategory | "all">("all");
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
+
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Category modal state
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -71,6 +85,7 @@ export const ProductsManagePage = () => {
       packSize: z.number().optional(),
       lowStockThreshold: z.number().min(0, "Threshold must be 0 or greater"),
       expiryDate: z.string().optional(),
+      imageUrl: z.string().optional(),
       isActive: z.boolean(),
       barcodes: z
         .array(
@@ -88,7 +103,200 @@ export const ProductsManagePage = () => {
           }
         }),
     });
-  }, [activeCategories]);
+  }, []);
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      sku: "",
+      name: "",
+      category: activeCategories[0]?.name ?? "",
+      unitType: "piece",
+      priceMmk: 0,
+      costMmk: undefined,
+      packSize: undefined,
+      lowStockThreshold: 10,
+      expiryDate: undefined,
+      imageUrl: undefined,
+      isActive: true,
+      barcodes: [{ value: "", type: "EAN13" }],
+    },
+  });
+
+  const { fields, append, remove } = useFieldArray({ control: form.control, name: "barcodes" });
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, filterCategory, filterStatus]);
+
+  // Filter products
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      const matchesSearch =
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.sku?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        barcodes.some((b) => b.productId === product.id && b.value.includes(searchQuery));
+      const matchesCategory = filterCategory === "all" || product.category === filterCategory;
+      const matchesStatus =
+        filterStatus === "all" ||
+        (filterStatus === "active" && product.isActive) ||
+        (filterStatus === "inactive" && !product.isActive);
+      return matchesSearch && matchesCategory && matchesStatus;
+    });
+  }, [products, barcodes, searchQuery, filterCategory, filterStatus]);
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
+  const paginatedProducts = filteredProducts.slice((page - 1) * pageSize, page * pageSize);
+
+  // Get total stock for a product across all shops
+  const getProductStock = (productId: string) => {
+    return inventory
+      .filter((inv) => inv.productId === productId)
+      .reduce((sum, inv) => sum + (inv.qtyBaseUnits || 0), 0);
+  };
+
+  const getCategoryColor = (categoryName: string): CategoryColor => {
+    const cat = categories.find((c) => c.name === categoryName);
+    return cat?.color ?? "slate";
+  };
+
+  // Open modal for adding new product
+  const handleAddProduct = () => {
+    form.reset({
+      sku: "",
+      name: "",
+      category: activeCategories[0]?.name ?? "",
+      unitType: "piece",
+      priceMmk: 0,
+      costMmk: undefined,
+      packSize: undefined,
+      lowStockThreshold: 10,
+      expiryDate: undefined,
+      imageUrl: undefined,
+      isActive: true,
+      barcodes: [{ value: "", type: "EAN13" }],
+    });
+    setEditingId(null);
+    setShowProductModal(true);
+  };
+
+  // Open modal for editing product
+  const handleEditProduct = (product: Product) => {
+    const productBarcodes = barcodes.filter((barcode) => barcode.productId === product.id);
+    form.reset({
+      id: product.id,
+      sku: product.sku || "",
+      name: product.name,
+      category: product.category,
+      unitType: product.unitType,
+      priceMmk: product.priceMmk,
+      costMmk: product.costMmk,
+      packSize: product.packSize,
+      lowStockThreshold: product.lowStockThreshold,
+      expiryDate: product.expiryDate,
+      imageUrl: product.imageUrl,
+      isActive: product.isActive,
+      barcodes:
+        productBarcodes.length > 0
+          ? productBarcodes.map((barcode) => ({ value: barcode.value, type: barcode.type }))
+          : [{ value: "", type: "EAN13" }],
+    });
+    setEditingId(product.id);
+    setShowProductModal(true);
+  };
+
+  const handleCloseProductModal = () => {
+    setShowProductModal(false);
+    setEditingId(null);
+    form.reset();
+  };
+
+  const handleDeactivateProduct = (product: Product) => {
+    if (!confirm(`Are you sure you want to deactivate "${product.name}"?`)) return;
+
+    const updatedProduct = { ...product, isActive: false };
+    const productBarcodes = barcodes.filter((b) => b.productId === product.id);
+    updateProduct(updatedProduct, productBarcodes);
+
+    addAuditLog({
+      id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+      actorId: currentUserId ?? "system",
+      actionType: "PRODUCT_DELETE",
+      message: `Deactivated product ${product.name}.`,
+      entityType: "Product",
+      entityId: product.id,
+      createdAt: new Date().toISOString(),
+    });
+  };
+
+  const handleSubmit = form.handleSubmit((values) => {
+    const existingValues = barcodes
+      .filter((barcode) => barcode.productId !== editingId)
+      .map((barcode) => barcode.value);
+    if (values.barcodes.some((barcode) => existingValues.includes(barcode.value))) {
+      form.setError("barcodes", { message: "Barcode already exists in another product." });
+      return;
+    }
+
+    // Check for duplicate SKU
+    const existingSku = products.find((p) => p.sku === values.sku && p.id !== editingId);
+    if (existingSku) {
+      form.setError("sku", { message: "SKU already exists." });
+      return;
+    }
+
+    const productId = editingId ?? `prod-${Date.now()}`;
+    const existingProduct = editingId ? products.find((p) => p.id === editingId) : null;
+    const costMmk = Number.isFinite(values.costMmk) ? values.costMmk : undefined;
+    const packSize = Number.isFinite(values.packSize) ? values.packSize : undefined;
+
+    const product = {
+      id: productId,
+      sku: values.sku,
+      name: values.name,
+      category: values.category,
+      unitType: values.unitType,
+      priceMmk: values.priceMmk,
+      costMmk,
+      packSize,
+      lowStockThreshold: values.lowStockThreshold,
+      expiryDate: values.expiryDate || undefined,
+      imageUrl: values.imageUrl || undefined,
+      isActive: values.isActive,
+      createdAt: existingProduct?.createdAt ?? new Date().toISOString(),
+    };
+
+    const barcodeEntries: ProductBarcode[] = values.barcodes.map((barcode) => ({
+      id: `bc-${Math.random().toString(36).slice(2, 8)}`,
+      productId,
+      value: barcode.value,
+      type: barcode.type,
+    }));
+
+    if (editingId) updateProduct(product, barcodeEntries);
+    else addProduct(product, barcodeEntries);
+
+    addAuditLog({
+      id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+      actorId: currentUserId ?? "system",
+      actionType: editingId ? "PRODUCT_EDIT" : "PRODUCT_CREATE",
+      message: `${editingId ? "Updated" : "Created"} product ${values.name}.`,
+      entityType: "Product",
+      entityId: productId,
+      createdAt: new Date().toISOString(),
+    });
+
+    handleCloseProductModal();
+  });
+
+  const generateSku = () => {
+    const category = form.watch("category");
+    const prefix = category.substring(0, 3).toUpperCase();
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    form.setValue("sku", `${prefix}-${random}`);
+  };
 
   // Category management functions
   const handleSaveCategory = () => {
@@ -106,7 +314,6 @@ export const ProductsManagePage = () => {
     }
 
     if (editingCategory) {
-      // Update existing
       updateCategory({
         ...editingCategory,
         name: categoryName,
@@ -122,7 +329,6 @@ export const ProductsManagePage = () => {
         createdAt: new Date().toISOString(),
       });
     } else {
-      // Create new
       const newCategory: Category = {
         id: `cat-${Math.random().toString(36).slice(2, 9)}`,
         name: categoryName,
@@ -156,7 +362,6 @@ export const ProductsManagePage = () => {
   };
 
   const handleDeleteCategory = (category: Category) => {
-    // Check if any products use this category
     const productsUsingCategory = products.filter((p) => p.category === category.name);
     if (productsUsingCategory.length > 0) {
       alert(`Cannot delete category. ${productsUsingCategory.length} product(s) are using this category.`);
@@ -177,171 +382,249 @@ export const ProductsManagePage = () => {
     }
   };
 
-  const getCategoryColor = (categoryName: string): CategoryColor => {
-    const cat = categories.find((c) => c.name === categoryName);
-    return cat?.color ?? "slate";
-  };
-
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      sku: "",
-      name: "",
-      category: activeCategories[0]?.name ?? "",
-      unitType: "piece",
-      priceMmk: 0,
-      costMmk: undefined,
-      packSize: undefined,
-      lowStockThreshold: 10,
-      expiryDate: undefined,
-      isActive: true,
-      barcodes: [{ value: "", type: "EAN13" }],
-    },
-  });
-
-  const { fields, append, remove } = useFieldArray({ control: form.control, name: "barcodes" });
-
-  // Filter products
-  const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
-      const matchesSearch =
-        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.sku?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        barcodes.some(b => b.productId === product.id && b.value.includes(searchQuery));
-      const matchesCategory = filterCategory === "all" || product.category === filterCategory;
-      const matchesStatus =
-        filterStatus === "all" ||
-        (filterStatus === "active" && product.isActive) ||
-        (filterStatus === "inactive" && !product.isActive);
-      return matchesSearch && matchesCategory && matchesStatus;
-    });
-  }, [products, barcodes, searchQuery, filterCategory, filterStatus]);
-
-  // Get total stock for a product across all shops
-  const getProductStock = (productId: string) => {
-    return inventory
-      .filter((inv) => inv.productId === productId)
-      .reduce((sum, inv) => sum + (inv.qtyBaseUnits || 0), 0);
-  };
-
-  const handleEdit = (id: string) => {
-    const product = products.find((item) => item.id === id);
-    if (!product) return;
-    const productBarcodes = barcodes.filter((barcode) => barcode.productId === id);
-    form.reset({
-      id: product.id,
-      sku: product.sku || "",
-      name: product.name,
-      category: product.category,
-      unitType: product.unitType,
-      priceMmk: product.priceMmk,
-      costMmk: product.costMmk,
-      packSize: product.packSize,
-      lowStockThreshold: product.lowStockThreshold,
-      expiryDate: product.expiryDate,
-      isActive: product.isActive,
-      barcodes: productBarcodes.length > 0
-        ? productBarcodes.map((barcode) => ({ value: barcode.value, type: barcode.type }))
-        : [{ value: "", type: "EAN13" }],
-    });
-    setEditingId(id);
-  };
-
-  const handleDelete = (id: string) => {
-    const product = products.find((p) => p.id === id);
-    if (!product) return;
-
-    // Soft delete - just mark as inactive
-    const updatedProduct = { ...product, isActive: false };
-    const productBarcodes = barcodes.filter((b) => b.productId === id);
-    updateProduct(updatedProduct, productBarcodes);
-
-    addAuditLog({
-      id: `audit-${Math.random().toString(36).slice(2, 9)}`,
-      actorId: currentUserId ?? "system",
-      actionType: "PRODUCT_DELETE",
-      message: `Deactivated product ${product.name}.`,
-      entityType: "Product",
-      entityId: id,
-      createdAt: new Date().toISOString(),
-    });
-  };
-
-  const handleSubmit = form.handleSubmit((values) => {
-    const existingValues = barcodes
-      .filter((barcode) => barcode.productId !== editingId)
-      .map((barcode) => barcode.value);
-    if (values.barcodes.some((barcode) => existingValues.includes(barcode.value))) {
-      form.setError("barcodes", { message: "Barcode already exists in another product." });
-      return;
-    }
-
-    // Check for duplicate SKU
-    const existingSku = products.find(
-      (p) => p.sku === values.sku && p.id !== editingId
-    );
-    if (existingSku) {
-      form.setError("sku", { message: "SKU already exists." });
-      return;
-    }
-
-    const productId = editingId ?? `prod-${Date.now()}`;
-    const existingProduct = editingId ? products.find((p) => p.id === editingId) : null;
-    const costMmk = Number.isFinite(values.costMmk) ? values.costMmk : undefined;
-    const packSize = Number.isFinite(values.packSize) ? values.packSize : undefined;
-
-    const product = {
-      id: productId,
-      sku: values.sku,
-      name: values.name,
-      category: values.category,
-      unitType: values.unitType,
-      priceMmk: values.priceMmk,
-      costMmk,
-      packSize,
-      lowStockThreshold: values.lowStockThreshold,
-      expiryDate: values.expiryDate || undefined,
-      isActive: values.isActive,
-      createdAt: existingProduct?.createdAt ?? new Date().toISOString(),
-    };
-
-    const barcodeEntries: ProductBarcode[] = values.barcodes.map((barcode) => ({
-      id: `bc-${Math.random().toString(36).slice(2, 8)}`,
-      productId,
-      value: barcode.value,
-      type: barcode.type,
-    }));
-
-    if (editingId) updateProduct(product, barcodeEntries);
-    else addProduct(product, barcodeEntries);
-
-    addAuditLog({
-      id: `audit-${Math.random().toString(36).slice(2, 9)}`,
-      actorId: currentUserId ?? "system",
-      actionType: editingId ? "PRODUCT_EDIT" : "PRODUCT_CREATE",
-      message: `${editingId ? "Updated" : "Created"} product ${values.name}.`,
-      entityType: "Product",
-      entityId: productId,
-      createdAt: new Date().toISOString(),
-    });
-
-    form.reset();
-    setEditingId(null);
-  });
-
-  const generateSku = () => {
-    const category = form.watch("category");
-    const prefix = category.substring(0, 3).toUpperCase();
-    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-    form.setValue("sku", `${prefix}-${random}`);
-  };
-
   return (
     <Card>
-      <PageHeader title="Product Management" subtitle="Create or edit product catalog." />
+      <PageHeader
+        title="Product Management"
+        subtitle="Manage your product catalog."
+        actions={
+          <Button onClick={handleAddProduct}>
+            <span className="material-symbols-rounded mr-1 text-sm">add</span>
+            Add Product
+          </Button>
+        }
+      />
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-        {/* Form */}
+      {/* Filters */}
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search by name, SKU, or barcode..."
+        />
+        <Select
+          value={filterCategory}
+          onChange={(e) => setFilterCategory(e.target.value as ProductCategory | "all")}
+        >
+          <option value="all">All Categories</option>
+          {activeCategories.map((cat) => (
+            <option key={cat.id} value={cat.name}>
+              {cat.name.charAt(0).toUpperCase() + cat.name.slice(1)}
+            </option>
+          ))}
+        </Select>
+        <Select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value as "all" | "active" | "inactive")}
+        >
+          <option value="all">All Status</option>
+          <option value="active">Active Only</option>
+          <option value="inactive">Inactive Only</option>
+        </Select>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-sm text-slate-500">Show:</span>
+          <Select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
+      {/* Products Table */}
+      <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200/70">
+        <Table>
+          <THead>
+            <TR>
+              <TH>Product</TH>
+              <TH>Category</TH>
+              <TH className="text-right">Price</TH>
+              <TH className="text-right">Cost</TH>
+              <TH className="text-right">Stock</TH>
+              <TH>Status</TH>
+              <TH className="text-right">Actions</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {paginatedProducts.length === 0 ? (
+              <TR>
+                <TD colSpan={7} className="py-8 text-center text-slate-500">
+                  No products found
+                </TD>
+              </TR>
+            ) : (
+              paginatedProducts.map((product) => {
+                const stock = getProductStock(product.id);
+                const isLowStock = stock <= product.lowStockThreshold;
+                const productBarcodes = barcodes.filter((b) => b.productId === product.id);
+
+                return (
+                  <TR
+                    key={product.id}
+                    className={!product.isActive ? "bg-slate-50/50 opacity-60" : "hover:bg-slate-50/50"}
+                  >
+                    <TD>
+                      <div className="flex items-center gap-3 min-w-[200px]">
+                        {/* Product Thumbnail */}
+                        <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                          {product.imageUrl ? (
+                            <img
+                              src={product.imageUrl}
+                              alt={product.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-slate-400">
+                              <span className="material-symbols-rounded text-lg">inventory_2</span>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-medium text-slate-800">{product.name}</div>
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                            {product.sku && <span className="font-mono">{product.sku}</span>}
+                            {productBarcodes.length > 0 && (
+                              <>
+                                <span>•</span>
+                                <span className="font-mono">{productBarcodes[0].value}</span>
+                                {productBarcodes.length > 1 && (
+                                  <span className="text-slate-400">+{productBarcodes.length - 1}</span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </TD>
+                    <TD>
+                      <Badge tone={getCategoryColor(product.category)}>{product.category}</Badge>
+                    </TD>
+                    <TD className="text-right font-medium text-emerald-600">{formatMmk(product.priceMmk)}</TD>
+                    <TD className="text-right text-slate-500">
+                      {product.costMmk ? formatMmk(product.costMmk) : "-"}
+                    </TD>
+                    <TD className="text-right">
+                      <span className={isLowStock ? "font-medium text-amber-600" : ""}>
+                        {stock} {product.unitType}
+                      </span>
+                      {isLowStock && stock > 0 && <div className="text-xs text-amber-500">Low</div>}
+                      {stock === 0 && <div className="text-xs text-red-500">Out</div>}
+                    </TD>
+                    <TD>
+                      <Badge tone={product.isActive ? "green" : "slate"}>
+                        {product.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                    </TD>
+                    <TD className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => handleEditProduct(product)}>
+                          <span className="material-symbols-rounded text-sm">edit</span>
+                        </Button>
+                        {product.isActive && (
+                          <Button variant="ghost" size="sm" onClick={() => handleDeactivateProduct(product)}>
+                            <span className="material-symbols-rounded text-sm text-red-500">delete</span>
+                          </Button>
+                        )}
+                      </div>
+                    </TD>
+                  </TR>
+                );
+              })
+            )}
+          </TBody>
+        </Table>
+      </div>
+
+      {/* Pagination */}
+      <div className="mt-4 flex items-center justify-between">
+        <span className="text-sm text-slate-500">
+          Showing {filteredProducts.length === 0 ? 0 : (page - 1) * pageSize + 1}-
+          {Math.min(page * pageSize, filteredProducts.length)} of {filteredProducts.length} products
+        </span>
+        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+      </div>
+
+      {/* Category Management Section */}
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800">Categories</h3>
+            <p className="text-sm text-slate-500">Manage product categories.</p>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setEditingCategory(null);
+              setNewCategoryName("");
+              setNewCategoryColor("blue");
+              setShowCategoryModal(true);
+            }}
+          >
+            <span className="material-symbols-rounded mr-1 text-sm">add</span>
+            Add Category
+          </Button>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {activeCategories.map((category) => {
+            const productCount = products.filter((p) => p.category === category.name).length;
+            const colorClasses: Record<CategoryColor, string> = {
+              amber: "bg-amber-50 border-amber-200 text-amber-700",
+              red: "bg-red-50 border-red-200 text-red-700",
+              green: "bg-green-50 border-green-200 text-green-700",
+              blue: "bg-blue-50 border-blue-200 text-blue-700",
+              purple: "bg-purple-50 border-purple-200 text-purple-700",
+              slate: "bg-slate-50 border-slate-200 text-slate-700",
+            };
+
+            return (
+              <div key={category.id} className={`rounded-xl border p-4 ${colorClasses[category.color]}`}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="font-semibold capitalize">{category.name}</span>
+                    <p className="text-xs opacity-75">{productCount} product(s)</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleEditCategory(category)}
+                      className="rounded p-1 hover:bg-white/50"
+                      title="Edit"
+                    >
+                      <span className="material-symbols-rounded text-sm">edit</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteCategory(category)}
+                      className="rounded p-1 hover:bg-white/50"
+                      title="Delete"
+                    >
+                      <span className="material-symbols-rounded text-sm">delete</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Product Modal */}
+      <Modal
+        open={showProductModal}
+        onClose={handleCloseProductModal}
+        title={editingId ? "Edit Product" : "Add New Product"}
+        description={editingId ? "Update the product details below." : "Fill in the details to create a new product."}
+        size="lg"
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* SKU */}
           <div>
@@ -366,24 +649,69 @@ export const ProductsManagePage = () => {
             )}
           </div>
 
+          {/* Product Image */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Product Image</label>
+            <div className="flex items-start gap-4">
+              {/* Image Preview */}
+              <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border-2 border-dashed border-slate-300 bg-slate-50">
+                {form.watch("imageUrl") ? (
+                  <>
+                    <img
+                      src={form.watch("imageUrl")}
+                      alt="Product preview"
+                      className="h-full w-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => form.setValue("imageUrl", undefined)}
+                      className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow-md hover:bg-red-600"
+                    >
+                      <span className="material-symbols-rounded text-sm">close</span>
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex h-full w-full flex-col items-center justify-center text-slate-400">
+                    <span className="material-symbols-rounded text-2xl">image</span>
+                    <span className="text-xs">No image</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Upload Button */}
+              <div className="flex-1">
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50">
+                  <span className="material-symbols-rounded text-lg">upload</span>
+                  Choose Image
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        if (file.size > 2 * 1024 * 1024) {
+                          alert("Image size must be less than 2MB");
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          form.setValue("imageUrl", reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
+                <p className="mt-1 text-xs text-slate-500">PNG, JPG, or GIF. Max 2MB.</p>
+              </div>
+            </div>
+          </div>
+
           {/* Category & Unit Type */}
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <div className="mb-1 flex items-center justify-between">
-                <label className="block text-sm font-medium text-slate-700">Category *</label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingCategory(null);
-                    setNewCategoryName("");
-                    setNewCategoryColor("blue");
-                    setShowCategoryModal(true);
-                  }}
-                  className="text-xs text-blue-600 hover:text-blue-700 hover:underline"
-                >
-                  + Add New
-                </button>
-              </div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Category *</label>
               <Select {...form.register("category")}>
                 {activeCategories.map((cat) => (
                   <option key={cat.id} value={cat.name}>
@@ -423,47 +751,60 @@ export const ProductsManagePage = () => {
           <div className="grid gap-3 md:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Pack Size</label>
-              <Input type="number" placeholder="e.g. 24 for a case" {...form.register("packSize", { valueAsNumber: true })} />
+              <Input
+                type="number"
+                placeholder="e.g. 24 for a case"
+                {...form.register("packSize", { valueAsNumber: true })}
+              />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Low Stock Threshold *</label>
-              <Input type="number" placeholder="10" {...form.register("lowStockThreshold", { valueAsNumber: true })} />
+              <Input
+                type="number"
+                placeholder="10"
+                {...form.register("lowStockThreshold", { valueAsNumber: true })}
+              />
             </div>
           </div>
 
-          {/* Expiry Date */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Expiry Date (Optional)</label>
-            <Input type="date" {...form.register("expiryDate")} />
-          </div>
-
-          {/* Active Toggle */}
-          <div className="flex items-center gap-3">
-            <label className="relative inline-flex cursor-pointer items-center">
-              <input
-                type="checkbox"
-                className="peer sr-only"
-                {...form.register("isActive")}
-              />
-              <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-emerald-500 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:ring-2 peer-focus:ring-emerald-300"></div>
-            </label>
-            <span className="text-sm font-medium text-slate-700">
-              {form.watch("isActive") ? "Active" : "Inactive"}
-            </span>
+          {/* Expiry Date & Active */}
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Expiry Date (Optional)</label>
+              <Input type="date" {...form.register("expiryDate")} />
+            </div>
+            <div className="flex items-center gap-3 pt-6">
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input type="checkbox" className="peer sr-only" {...form.register("isActive")} />
+                <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-emerald-500 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:ring-2 peer-focus:ring-emerald-300"></div>
+              </label>
+              <span className="text-sm font-medium text-slate-700">
+                {form.watch("isActive") ? "Active" : "Inactive"}
+              </span>
+            </div>
           </div>
 
           {/* Barcodes */}
-          <div className="rounded-2xl border border-slate-200/70 bg-slate-50/60 p-4">
+          <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
             <div className="flex items-center justify-between">
-              <div className="font-semibold">Barcodes *</div>
-              <Button type="button" variant="secondary" size="sm" onClick={() => append({ value: "", type: "EAN13" })}>
+              <div className="font-semibold text-slate-700">Barcodes *</div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => append({ value: "", type: "EAN13" })}
+              >
                 Add barcode
               </Button>
             </div>
             <div className="mt-3 space-y-3">
               {fields.map((field, index) => (
                 <div key={field.id} className="flex gap-2">
-                  <Input placeholder="Barcode value" {...form.register(`barcodes.${index}.value` as const)} className="flex-1" />
+                  <Input
+                    placeholder="Barcode value"
+                    {...form.register(`barcodes.${index}.value` as const)}
+                    className="flex-1"
+                  />
                   <Select {...form.register(`barcodes.${index}.type` as const)} className="w-28">
                     <option value="EAN13">EAN13</option>
                     <option value="CODE128">CODE128</option>
@@ -483,239 +824,14 @@ export const ProductsManagePage = () => {
           </div>
 
           {/* Submit Buttons */}
-          <div className="flex gap-2 pt-2">
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={handleCloseProductModal}>
+              Cancel
+            </Button>
             <Button type="submit">{editingId ? "Update Product" : "Create Product"}</Button>
-            {editingId && (
-              <Button type="button" variant="secondary" onClick={() => { form.reset(); setEditingId(null); }}>
-                Cancel
-              </Button>
-            )}
           </div>
         </form>
-
-        {/* Product List */}
-        <div className="space-y-4">
-          {/* Search & Filters */}
-          <div className="space-y-3">
-            <Input
-              placeholder="Search by name, SKU, or barcode..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <div className="flex gap-2">
-              <Select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value as ProductCategory | "all")}
-                className="flex-1"
-              >
-                <option value="all">All Categories</option>
-                {activeCategories.map((cat) => (
-                  <option key={cat.id} value={cat.name}>
-                    {cat.name.charAt(0).toUpperCase() + cat.name.slice(1)}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value as "all" | "active" | "inactive")}
-                className="flex-1"
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active Only</option>
-                <option value="inactive">Inactive Only</option>
-              </Select>
-            </div>
-          </div>
-
-          {/* Products Count */}
-          <div className="text-sm text-slate-500">
-            Showing {filteredProducts.length} of {products.length} products
-          </div>
-
-          {/* Product Cards */}
-          <div className="max-h-[600px] space-y-3 overflow-y-auto pr-1">
-            {filteredProducts.length === 0 ? (
-              <div className="rounded-xl bg-slate-50 p-8 text-center text-slate-500">
-                No products found
-              </div>
-            ) : (
-              filteredProducts.map((product) => {
-                const productBarcodes = barcodes.filter((b) => b.productId === product.id);
-                const stock = getProductStock(product.id);
-                const profit = product.costMmk ? product.priceMmk - product.costMmk : null;
-                const margin = product.costMmk && product.priceMmk > 0
-                  ? ((profit! / product.priceMmk) * 100).toFixed(0)
-                  : null;
-
-                return (
-                  <div
-                    key={product.id}
-                    className={`rounded-2xl border p-4 transition-all hover:shadow-md ${
-                      product.isActive
-                        ? "border-slate-200/70 bg-white"
-                        : "border-slate-200 bg-slate-50 opacity-60"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-800">{product.name}</span>
-                          {!product.isActive && (
-                            <Badge tone="slate">Inactive</Badge>
-                          )}
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          {product.sku && <span className="font-mono">{product.sku}</span>}
-                          <span>|</span>
-                          <Badge tone={getCategoryColor(product.category)}>
-                            {product.category}
-                          </Badge>
-                          <span>|</span>
-                          <span>{product.unitType}</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-lg font-bold text-emerald-600">{formatMmk(product.priceMmk)}</div>
-                        {product.costMmk && (
-                          <div className="text-xs text-slate-500">
-                            Cost: {formatMmk(product.costMmk)}
-                            {margin && <span className="ml-1 text-emerald-600">({margin}%)</span>}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Stock & Details Row */}
-                    <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3 text-xs">
-                      <div className="flex items-center gap-1">
-                        <span className="material-symbols-rounded text-sm text-slate-400">inventory_2</span>
-                        <span className={stock <= product.lowStockThreshold ? "font-medium text-amber-600" : "text-slate-600"}>
-                          Stock: {stock} {product.unitType}
-                        </span>
-                        {stock <= product.lowStockThreshold && (
-                          <span className="text-amber-500">(Low)</span>
-                        )}
-                      </div>
-                      {product.packSize && (
-                        <div className="text-slate-500">
-                          Pack: {product.packSize}
-                        </div>
-                      )}
-                      {product.expiryDate && (
-                        <div className="flex items-center gap-1 text-slate-500">
-                          <span className="material-symbols-rounded text-sm">event</span>
-                          Exp: {new Date(product.expiryDate).toLocaleDateString()}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Barcodes */}
-                    {productBarcodes.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {productBarcodes.map((bc) => (
-                          <span key={bc.id} className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-600">
-                            {bc.value}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="mt-3 flex gap-2">
-                      <Button variant="secondary" size="sm" onClick={() => handleEdit(product.id)}>
-                        <span className="material-symbols-rounded mr-1 text-sm">edit</span>
-                        Edit
-                      </Button>
-                      {product.isActive && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            if (confirm(`Are you sure you want to deactivate "${product.name}"?`)) {
-                              handleDelete(product.id);
-                            }
-                          }}
-                        >
-                          <span className="material-symbols-rounded mr-1 text-sm text-red-500">delete</span>
-                          <span className="text-red-500">Deactivate</span>
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Category Management Section */}
-      <div className="mt-8 border-t border-slate-200 pt-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-800">Category Management</h3>
-            <p className="text-sm text-slate-500">Manage product categories for your inventory.</p>
-          </div>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setEditingCategory(null);
-              setNewCategoryName("");
-              setNewCategoryColor("blue");
-              setShowCategoryModal(true);
-            }}
-          >
-            <span className="material-symbols-rounded mr-1 text-sm">add</span>
-            Add Category
-          </Button>
-        </div>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {activeCategories.map((category) => {
-            const productCount = products.filter((p) => p.category === category.name).length;
-            const colorClasses: Record<CategoryColor, string> = {
-              amber: "bg-amber-50 border-amber-200 text-amber-700",
-              red: "bg-red-50 border-red-200 text-red-700",
-              green: "bg-green-50 border-green-200 text-green-700",
-              blue: "bg-blue-50 border-blue-200 text-blue-700",
-              purple: "bg-purple-50 border-purple-200 text-purple-700",
-              slate: "bg-slate-50 border-slate-200 text-slate-700",
-            };
-
-            return (
-              <div
-                key={category.id}
-                className={`rounded-xl border p-4 ${colorClasses[category.color]}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="font-semibold capitalize">{category.name}</span>
-                    <p className="text-xs opacity-75">{productCount} product(s)</p>
-                  </div>
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={() => handleEditCategory(category)}
-                      className="rounded p-1 hover:bg-white/50"
-                      title="Edit"
-                    >
-                      <span className="material-symbols-rounded text-sm">edit</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteCategory(category)}
-                      className="rounded p-1 hover:bg-white/50"
-                      title="Delete"
-                    >
-                      <span className="material-symbols-rounded text-sm">delete</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      </Modal>
 
       {/* Category Modal */}
       <Modal
@@ -755,7 +871,7 @@ export const ProductsManagePage = () => {
                     key={color}
                     type="button"
                     onClick={() => setNewCategoryColor(color)}
-                    className={`h-8 w-8 rounded-full ${colorStyles[color]} flex items-center justify-center transition-transform ${
+                    className={`flex h-8 w-8 items-center justify-center rounded-full ${colorStyles[color]} transition-transform ${
                       newCategoryColor === color ? "scale-110 ring-2 ring-offset-2" : "hover:scale-105"
                     }`}
                   >

@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { DataState, InventoryState, AdjustStockInput } from "../types";
 import type { AuditLog, InventoryMovement } from "../../../types";
-import { makeId } from "../utils";
+import { makeId, requirePermission } from "../utils";
 
 export const createInventorySlice: StateCreator<DataState, [], [], InventoryState> = (set, get) => ({
   inventory: [],
@@ -9,18 +9,26 @@ export const createInventorySlice: StateCreator<DataState, [], [], InventoryStat
 
   adjustStock: ({ shopId, productId, type, qtyChange, reason, actorId, referenceType, referenceId }: AdjustStockInput) =>
     set((state) => {
+      // Permission check based on movement type
+      if (type === "DAMAGE") {
+        requirePermission(state.users, actorId, "inventory:damage");
+      } else if (type === "ADJUSTMENT") {
+        requirePermission(state.users, actorId, "inventory:adjust");
+      }
+      // Note: SALE_OUT, TRANSFER_IN/OUT, PURCHASE_IN are handled by their respective slices
+
       const inventory = [...state.inventory];
       const existing = inventory.find((item) => item.shopId === shopId && item.productId === productId);
       const qtyBefore = existing?.qtyBaseUnits ?? 0;
       let qtyAfter = qtyBefore;
 
-      // Calculate new quantity based on movement type
+      // Calculate new quantity based on movement type (allow negative for accurate ledger)
       if (type === "PURCHASE_IN" || type === "TRANSFER_IN" || type === "RETURN_IN") {
         qtyAfter = qtyBefore + Math.abs(qtyChange);
       } else if (type === "SALE_OUT" || type === "TRANSFER_OUT" || type === "DAMAGE" || type === "RETURN_OUT") {
-        qtyAfter = Math.max(0, qtyBefore - Math.abs(qtyChange));
+        qtyAfter = qtyBefore - Math.abs(qtyChange);
       } else if (type === "ADJUSTMENT") {
-        qtyAfter = Math.max(0, qtyBefore + qtyChange);
+        qtyAfter = qtyBefore + qtyChange; // ADJUSTMENT can set absolute value, allow negative
       }
 
       // Update or create inventory record
