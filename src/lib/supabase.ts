@@ -6,8 +6,9 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Fire-and-forget write with error logging
-export function dbWrite(promise: Promise<{ error: { message: string } | null }>, label: string) {
-  promise.then(({ error }) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function dbWrite(query: PromiseLike<{ error: any }>, label: string) {
+  query.then(({ error }) => {
     if (error) console.error(`[DB] ${label} failed:`, error.message);
   });
 }
