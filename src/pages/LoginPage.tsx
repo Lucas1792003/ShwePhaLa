@@ -1,66 +1,44 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../stores/authStore";
 import { useAppStore } from "../stores/appStore";
-import { useDataStore } from "../stores/dataStore";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
-import { Select } from "../components/ui/Select";
-import { getRoleFromEmail } from "../features/auth/authTypes";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [shopId, setShopId] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const shops = useDataStore((state) => state.shops);
   const login = useAuthStore((state) => state.login);
   const setAppShopId = useAppStore((state) => state.setShopId);
-
-  const role = useMemo(() => getRoleFromEmail(email), [email]);
-  const requiresShop = role === "MANAGER" || role === "CASHIER";
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
 
-    if (!role) {
-      setError("Use @admin.com, @manager.com, @staff.com, or @buyer.com to select a role.");
-      return;
-    }
-    if (!password.trim()) {
-      setError("Password is required.");
-      return;
-    }
-    if (requiresShop && !shopId && shops.length === 0) {
-      setError("No shops available — contact your administrator.");
-      return;
-    }
-
-    const safeShopId = requiresShop ? (shopId || shops[0]?.id || "") : undefined;
-    if (requiresShop && !safeShopId) {
-      setError("Select a shop to continue.");
+    if (!email.trim() || !password.trim()) {
+      setError("Email and password are required.");
       return;
     }
 
     setIsSubmitting(true);
-    const authError = await login(email, password, safeShopId);
+    const result = await login(email.trim(), password);
     setIsSubmitting(false);
 
-    if (authError) {
-      setError(authError);
+    if (result.error) {
+      setError(result.error);
       return;
     }
 
-    if (role === "ADMIN") {
-      setAppShopId(shops[0]?.id ?? null);
+    if (result.shopId) setAppShopId(result.shopId);
+
+    if (result.role === "ADMIN") {
       navigate("/app/dashboard");
     } else {
-      setAppShopId(safeShopId ?? null);
       navigate("/app");
     }
   };
@@ -78,39 +56,39 @@ export const LoginPage = () => {
               </p>
             </div>
             <div className="mt-10 text-xs text-emerald-100/70">
-              Login hints: @admin.com, @manager.com, @staff.com, @buyer.com
+              Contact your administrator if you need access.
             </div>
           </div>
           <div className="p-8">
-            <div className="text-sm text-slate-500">Sign in with your role email</div>
+            <div className="text-sm text-slate-500">Sign in to your account</div>
             <form className="mt-6 space-y-4" onSubmit={handleLogin}>
               <div>
                 <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Email</div>
-                <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@admin.com" />
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  autoComplete="email"
+                />
               </div>
               <div>
                 <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Password</div>
-                <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Any password" />
+                <Input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password"
+                  autoComplete="current-password"
+                />
               </div>
-              {requiresShop && shops.length > 0 && (
-                <div>
-                  <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Shop</div>
-                  <Select value={shopId} onChange={(event) => setShopId(event.target.value)}>
-                    {shops.map((shop) => (
-                      <option key={shop.id} value={shop.id}>
-                        {shop.code} - {shop.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              )}
               {error && <div className="text-sm text-rose-600">{error}</div>}
               <Button className="w-full" type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Signing in..." : `Login${role ? ` as ${role}` : ""}`}
+                {isSubmitting ? "Signing in…" : "Sign in"}
               </Button>
             </form>
             <div className="mt-6 rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/70 p-4 text-xs text-emerald-700">
-              Demo accounts are created automatically on first login. Use any password.
+              First time? Sign in with any email to create the admin account. Staff accounts are created by the admin.
             </div>
           </div>
         </div>
