@@ -8,6 +8,16 @@ interface RequireAuthProps {
 
 export const RequireAuth = ({ children }: RequireAuthProps) => {
   const currentUserId = useAuthStore((state) => state.currentUserId);
+  const isAuthLoading = useAuthStore((state) => state.isAuthLoading);
+
+  if (isAuthLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-slate-400 text-sm">Checking session…</div>
+      </div>
+    );
+  }
+
   if (!currentUserId) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };

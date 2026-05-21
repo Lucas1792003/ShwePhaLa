@@ -4,9 +4,10 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
 import "./print/receipt.css";
-import { seedDbIfEmpty } from "./data/db";
+import { useAuthStore } from "./stores/authStore";
 
-seedDbIfEmpty();
+// Restore Supabase session on app start
+useAuthStore.getState().restoreSession();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

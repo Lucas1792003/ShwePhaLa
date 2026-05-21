@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import type { DataState, ShiftState } from "../types";
 import type { Shift } from "../../../types";
 import { makeId } from "../utils";
+import { supabase } from "../../../lib/supabase";
 
 export const createShiftSlice: StateCreator<DataState, [], [], ShiftState> = (set, get) => ({
   shifts: [],
@@ -20,11 +21,16 @@ export const createShiftSlice: StateCreator<DataState, [], [], ShiftState> = (se
       openingCashMmk,
     };
     set((state) => ({ shifts: [shift, ...state.shifts] }));
+    void supabase.from("shifts").insert({
+      id: shift.id, shop_id: shift.shopId, cashier_id: shift.cashierId,
+      started_at: shift.startedAt, opening_cash_mmk: shift.openingCashMmk,
+    });
     return shift.id;
   },
 
   endShift: ({ shiftId, closingCashMmk }) =>
     set((state) => {
+      let updatedShift: Shift | null = null;
       const shifts = state.shifts.map((shift) => {
         if (shift.id !== shiftId) return shift;
         const sales = state.sales.filter((sale) => sale.shiftId === shiftId && sale.status !== "VOID");
@@ -32,14 +38,22 @@ export const createShiftSlice: StateCreator<DataState, [], [], ShiftState> = (se
           .filter((sale) => sale.paymentMethod === "CASH")
           .reduce((sum, sale) => sum + sale.totalMmk, 0);
         const variance = closingCashMmk - expectedCash;
-        return {
+        updatedShift = {
           ...shift,
           endedAt: new Date().toISOString(),
           closingCashMmk,
           expectedCashMmk: expectedCash,
           varianceMmk: variance,
         };
+        return updatedShift;
       });
+      if (updatedShift) {
+        const s = updatedShift as Shift;
+        void supabase.from("shifts").update({
+          ended_at: s.endedAt, closing_cash_mmk: s.closingCashMmk,
+          expected_cash_mmk: s.expectedCashMmk, variance_mmk: s.varianceMmk,
+        }).eq("id", shiftId);
+      }
       return { shifts };
     }),
 

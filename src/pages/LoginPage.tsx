@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../stores/authStore";
 import { useAppStore } from "../stores/appStore";
@@ -7,7 +7,7 @@ import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
-import { getRoleFromEmail, isPasswordValid } from "../features/auth/authTypes";
+import { getRoleFromEmail } from "../features/auth/authTypes";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -15,55 +15,47 @@ export const LoginPage = () => {
   const [password, setPassword] = useState("");
   const [shopId, setShopId] = useState("");
   const [error, setError] = useState("");
-  const users = useDataStore((state) => state.users);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const shops = useDataStore((state) => state.shops);
-  const addUser = useDataStore((state) => state.addUser);
-  const updateUser = useDataStore((state) => state.updateUser);
   const login = useAuthStore((state) => state.login);
   const setAppShopId = useAppStore((state) => state.setShopId);
 
   const role = useMemo(() => getRoleFromEmail(email), [email]);
   const requiresShop = role === "MANAGER" || role === "CASHIER";
-  const derivedUserId = useMemo(() => `user-${email.replace(/[^a-z0-9]/gi, "-").toLowerCase()}`, [email]);
-  const existingUser = useMemo(() => users.find((user) => user.id === derivedUserId), [users, derivedUserId]);
 
-  useEffect(() => {
-    if (!requiresShop) return;
-    if (existingUser?.shopId) {
-      setShopId(existingUser.shopId);
-      return;
-    }
-    if (!shopId && shops.length > 0) setShopId(shops[0].id);
-  }, [requiresShop, shopId, shops, existingUser]);
-
-  const handleLogin = (event: FormEvent<HTMLFormElement>) => {
+  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
+
     if (!role) {
       setError("Use @admin.com, @manager.com, @staff.com, or @buyer.com to select a role.");
       return;
     }
-    if (!isPasswordValid(password)) {
+    if (!password.trim()) {
       setError("Password is required.");
       return;
     }
+    if (requiresShop && !shopId && shops.length === 0) {
+      setError("No shops available — contact your administrator.");
+      return;
+    }
 
-    const safeShopId = requiresShop ? shopId || shops[0]?.id || "" : undefined;
+    const safeShopId = requiresShop ? (shopId || shops[0]?.id || "") : undefined;
     if (requiresShop && !safeShopId) {
       setError("Select a shop to continue.");
       return;
     }
 
-    const userId = derivedUserId;
-    const existing = existingUser;
-    const name = email.split("@")[0]?.replace(/[^a-z0-9]/gi, " ").trim() || "Staff";
-    if (!existing) {
-      addUser({ id: userId, name, role, shopId: safeShopId, isActive: true, createdAt: new Date().toISOString() });
-    } else if (existing.role !== role || (requiresShop && !existing.shopId)) {
-      updateUser({ ...existing, role, shopId: existing.shopId ?? safeShopId });
+    setIsSubmitting(true);
+    const authError = await login(email, password, safeShopId);
+    setIsSubmitting(false);
+
+    if (authError) {
+      setError(authError);
+      return;
     }
 
-    login(userId);
     if (role === "ADMIN") {
       setAppShopId(shops[0]?.id ?? null);
       navigate("/app/dashboard");
@@ -100,28 +92,25 @@ export const LoginPage = () => {
                 <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Password</div>
                 <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Any password" />
               </div>
-              {requiresShop && (
+              {requiresShop && shops.length > 0 && (
                 <div>
                   <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Shop</div>
-                  <Select value={shopId} onChange={(event) => setShopId(event.target.value)} disabled={!!existingUser?.shopId}>
+                  <Select value={shopId} onChange={(event) => setShopId(event.target.value)}>
                     {shops.map((shop) => (
                       <option key={shop.id} value={shop.id}>
                         {shop.code} - {shop.name}
                       </option>
                     ))}
                   </Select>
-                  {existingUser?.shopId && (
-                    <div className="mt-1 text-xs text-slate-400">Shop assignment is locked after first login.</div>
-                  )}
                 </div>
               )}
               {error && <div className="text-sm text-rose-600">{error}</div>}
-              <Button className="w-full" type="submit">
-                Login {role ? `as ${role}` : ""}
+              <Button className="w-full" type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Signing in..." : `Login${role ? ` as ${role}` : ""}`}
               </Button>
             </form>
             <div className="mt-6 rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/70 p-4 text-xs text-emerald-700">
-              Demo users are created automatically on first login. Admins can switch shops in the top bar.
+              Demo accounts are created automatically on first login. Use any password.
             </div>
           </div>
         </div>

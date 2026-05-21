@@ -163,6 +163,16 @@ export interface AuditState {
 }
 
 // ============================================
+// Loading State
+// ============================================
+
+export interface LoadingState {
+  isLoading: boolean;
+  isLoaded: boolean;
+  loadData: () => Promise<void>;
+}
+
+// ============================================
 // Combined State
 // ============================================
 
@@ -175,4 +185,5 @@ export type DataState = ShopState &
   TransferState &
   PurchaseState &
   PricingState &
-  AuditState;
+  AuditState &
+  LoadingState;

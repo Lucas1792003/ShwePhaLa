@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import type { DataState, InventoryState, AdjustStockInput } from "../types";
 import type { AuditLog, InventoryMovement } from "../../../types";
 import { makeId, requirePermission } from "../utils";
+import { supabase } from "../../../lib/supabase";
 
 export const createInventorySlice: StateCreator<DataState, [], [], InventoryState> = (set, get) => ({
   inventory: [],
@@ -9,29 +10,25 @@ export const createInventorySlice: StateCreator<DataState, [], [], InventoryStat
 
   adjustStock: ({ shopId, productId, type, qtyChange, reason, actorId, referenceType, referenceId }: AdjustStockInput) =>
     set((state) => {
-      // Permission check based on movement type
       if (type === "DAMAGE") {
         requirePermission(state.users, actorId, "inventory:damage");
       } else if (type === "ADJUSTMENT") {
         requirePermission(state.users, actorId, "inventory:adjust");
       }
-      // Note: SALE_OUT, TRANSFER_IN/OUT, PURCHASE_IN are handled by their respective slices
 
       const inventory = [...state.inventory];
       const existing = inventory.find((item) => item.shopId === shopId && item.productId === productId);
       const qtyBefore = existing?.qtyBaseUnits ?? 0;
       let qtyAfter = qtyBefore;
 
-      // Calculate new quantity based on movement type (allow negative for accurate ledger)
       if (type === "PURCHASE_IN" || type === "TRANSFER_IN" || type === "RETURN_IN") {
         qtyAfter = qtyBefore + Math.abs(qtyChange);
       } else if (type === "SALE_OUT" || type === "TRANSFER_OUT" || type === "DAMAGE" || type === "RETURN_OUT") {
         qtyAfter = qtyBefore - Math.abs(qtyChange);
       } else if (type === "ADJUSTMENT") {
-        qtyAfter = qtyBefore + qtyChange; // ADJUSTMENT can set absolute value, allow negative
+        qtyAfter = qtyBefore + qtyChange;
       }
 
-      // Update or create inventory record
       if (existing) {
         existing.qtyBaseUnits = qtyAfter;
       } else {
@@ -65,6 +62,22 @@ export const createInventorySlice: StateCreator<DataState, [], [], InventoryStat
         entityId: productId,
         createdAt: movement.createdAt,
       };
+
+      void supabase.from("inventory").upsert({
+        shop_id: shopId, product_id: productId, qty_base_units: qtyAfter,
+      });
+      void supabase.from("inventory_movements").insert({
+        id: movement.id, shop_id: movement.shopId, product_id: movement.productId,
+        type: movement.type, qty_change: movement.qtyChange, qty_before: movement.qtyBefore,
+        qty_after: movement.qtyAfter, reason: movement.reason,
+        reference_type: movement.referenceType, reference_id: movement.referenceId,
+        created_by: movement.createdBy, created_at: movement.createdAt,
+      });
+      void supabase.from("audit_logs").insert({
+        id: audit.id, shop_id: audit.shopId, actor_id: audit.actorId,
+        action_type: audit.actionType, message: audit.message,
+        entity_type: audit.entityType, entity_id: audit.entityId, created_at: audit.createdAt,
+      });
 
       return {
         inventory,
