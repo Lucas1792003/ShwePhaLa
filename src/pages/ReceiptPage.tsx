@@ -31,8 +31,9 @@ export const ReceiptPage = () => {
   const [refundReason, setRefundReason] = useState("");
   const [refundSelection, setRefundSelection] = useState<Record<string, number>>({});
 
-  if (!sale) return <div>Receipt not found.</div>;
+  if (!sale) return <div className="p-8 text-slate-500">Receipt not found.</div>;
   const shop = shops.find((item) => item.id === sale.shopId);
+  if (!shop) return <div className="p-8 text-slate-500">Shop data not found.</div>;
   const cashier = users.find((item) => item.id === sale.cashierId);
 
   const lines = saleItems.map((item) => {
@@ -77,7 +78,7 @@ export const ReceiptPage = () => {
         </div>
       } />
 
-      <ReceiptPreview sale={sale} lines={lines} shop={shop!} cashier={cashier} statusNote={sale.status !== "NORMAL" ? sale.status : undefined} />
+      <ReceiptPreview sale={sale} lines={lines} shop={shop} cashier={cashier} statusNote={sale.status !== "NORMAL" ? sale.status : undefined} />
 
       <Card>
         <div className="flex items-center justify-between">
