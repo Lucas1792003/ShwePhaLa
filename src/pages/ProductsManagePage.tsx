@@ -713,14 +713,14 @@ export const ProductsManagePage = () => {
           <div className="grid gap-3 md:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Selling Price (MMK) *</label>
-              <Input type="number" placeholder="0" {...form.register("priceMmk", { valueAsNumber: true })} />
+              <Input type="text" inputMode="numeric" placeholder="0" {...form.register("priceMmk", { valueAsNumber: true })} />
               {form.formState.errors.priceMmk && (
                 <p className="mt-1 text-xs text-red-500">{form.formState.errors.priceMmk.message}</p>
               )}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Cost Price (MMK)</label>
-              <Input type="number" placeholder="0" {...form.register("costMmk", { valueAsNumber: true })} />
+              <Input type="text" inputMode="numeric" placeholder="0" {...form.register("costMmk", { valueAsNumber: true })} />
             </div>
           </div>
 
@@ -729,7 +729,8 @@ export const ProductsManagePage = () => {
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Pack Size</label>
               <Input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 placeholder="e.g. 24 for a case"
                 {...form.register("packSize", { valueAsNumber: true })}
               />
@@ -737,7 +738,8 @@ export const ProductsManagePage = () => {
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Low Stock Threshold *</label>
               <Input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 placeholder="10"
                 {...form.register("lowStockThreshold", { valueAsNumber: true })}
               />

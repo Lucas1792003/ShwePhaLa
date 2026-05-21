@@ -2,7 +2,7 @@ import type { StateCreator } from "zustand";
 import type { DataState, InventoryState, AdjustStockInput } from "../types";
 import type { AuditLog, InventoryMovement } from "../../../types";
 import { makeId, requirePermission } from "../utils";
-import { supabase } from "../../../lib/supabase";
+import { supabase, dbWrite } from "../../../lib/supabase";
 
 export const createInventorySlice: StateCreator<DataState, [], [], InventoryState> = (set, get) => ({
   inventory: [],
@@ -63,21 +63,22 @@ export const createInventorySlice: StateCreator<DataState, [], [], InventoryStat
         createdAt: movement.createdAt,
       };
 
-      void supabase.from("inventory").upsert({
-        shop_id: shopId, product_id: productId, qty_base_units: qtyAfter,
-      });
-      void supabase.from("inventory_movements").insert({
+      dbWrite(supabase.from("inventory").upsert(
+        { shop_id: shopId, product_id: productId, qty_base_units: qtyAfter },
+        { onConflict: "shop_id,product_id" }
+      ), "adjustStock inventory");
+      dbWrite(supabase.from("inventory_movements").insert({
         id: movement.id, shop_id: movement.shopId, product_id: movement.productId,
         type: movement.type, qty_change: movement.qtyChange, qty_before: movement.qtyBefore,
         qty_after: movement.qtyAfter, reason: movement.reason,
         reference_type: movement.referenceType, reference_id: movement.referenceId,
         created_by: movement.createdBy, created_at: movement.createdAt,
-      });
-      void supabase.from("audit_logs").insert({
+      }), "adjustStock movement");
+      dbWrite(supabase.from("audit_logs").insert({
         id: audit.id, shop_id: audit.shopId, actor_id: audit.actorId,
         action_type: audit.actionType, message: audit.message,
         entity_type: audit.entityType, entity_id: audit.entityId, created_at: audit.createdAt,
-      });
+      }), "adjustStock audit");
 
       return {
         inventory,

@@ -78,7 +78,7 @@ export const AdjustStockModal = ({ open, onClose, onSave }: AdjustStockModalProp
 
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Quantity</label>
-          <Input type="number" min="0" value={qty} onChange={(event) => setQty(toNumber(event.target.value))} />
+          <Input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="0" value={qty || ""} onChange={(event) => setQty(toNumber(event.target.value))} />
         </div>
 
         <div>
