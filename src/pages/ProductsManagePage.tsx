@@ -251,12 +251,26 @@ export const ProductsManagePage = () => {
     handleCloseProductModal();
   });
 
-  const generateSku = () => {
-    const category = form.watch("category");
-    const prefix = category.substring(0, 3).toUpperCase();
-    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-    form.setValue("sku", `${prefix}-${random}`);
+  const generateSku = (categoryName?: string) => {
+    const cat = categoryName ?? form.getValues("category");
+    if (!cat) return;
+    const prefix = cat.substring(0, 3).toUpperCase();
+    // Find next sequential number for this category prefix
+    const existing = products
+      .map((p) => p.sku ?? "")
+      .filter((s) => s.startsWith(prefix + "-"))
+      .map((s) => parseInt(s.slice(prefix.length + 1), 10))
+      .filter((n) => !isNaN(n));
+    const next = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+    form.setValue("sku", `${prefix}-${String(next).padStart(3, "0")}`);
   };
+
+  // Auto-generate SKU when category changes (new product only)
+  const watchedCategory = form.watch("category");
+  useEffect(() => {
+    if (!editingId && watchedCategory) generateSku(watchedCategory);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedCategory, editingId]);
 
   // Category management functions
   const handleSaveCategory = () => {
@@ -597,7 +611,7 @@ export const ProductsManagePage = () => {
             <label className="mb-1 block text-sm font-medium text-slate-700">SKU *</label>
             <div className="flex gap-2">
               <Input placeholder="e.g. BEE-001" {...form.register("sku")} className="flex-1" />
-              <Button type="button" variant="secondary" onClick={generateSku}>
+              <Button type="button" variant="secondary" onClick={() => generateSku()}>
                 Generate
               </Button>
             </div>
