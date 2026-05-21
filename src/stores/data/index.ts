@@ -189,10 +189,6 @@ export const useDataStore = create<DataState>()((...args) => {
       if (get().isLoaded) return;
       set({ isLoading: true });
       try {
-        const { data: shopsCheck } = await supabase.from("shops").select("id").limit(1);
-        if (!shopsCheck || shopsCheck.length === 0) {
-          await seedSupabase();
-        }
         const [
           shops, users, categories, products, barcodes, priceTiers,
           inventory, movements, suppliers, purchaseOrders, purchaseOrderItems,
