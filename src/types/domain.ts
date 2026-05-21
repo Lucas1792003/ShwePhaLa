@@ -12,7 +12,7 @@ export interface Category {
 }
 export type PaymentMethod = "CASH" | "OTHER";
 export type SaleStatus = "NORMAL" | "VOID" | "REFUNDED";
-export type ApprovalStatus = "REQUESTED" | "APPROVED";
+export type ApprovalStatus = "REQUESTED" | "APPROVED" | "REJECTED";
 
 // Stock Movement Types (Ledger-Based)
 export type StockMovementType =
@@ -31,59 +31,42 @@ export type TransferStatus = "PENDING" | "APPROVED" | "COMPLETED" | "CANCELED" |
 // Purchase Order Status
 export type PurchaseOrderStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "RECEIVED" | "CANCELED";
 
-// Granular Permissions
-export type Permission =
+// ============================================
+// Granular Permissions — single central registry.
+// `Permission` is derived from ALL_PERMISSIONS so the runtime list and the
+// type can never drift. Add new permissions here only.
+// ============================================
+export const ALL_PERMISSIONS = [
   // Shop Management
-  | "shop:create"
-  | "shop:read"
-  | "shop:update"
-  | "shop:delete"
+  "shop:create", "shop:read", "shop:update", "shop:delete",
   // User Management
-  | "user:create"
-  | "user:read"
-  | "user:update"
-  | "user:delete"
+  "user:create", "user:read", "user:update", "user:delete",
   // Product Management
-  | "product:create"
-  | "product:read"
-  | "product:update"
-  | "product:delete"
-  | "product:edit_price"
+  "product:create", "product:read", "product:update", "product:delete", "product:edit_price",
+  "barcode:manage",
   // Inventory Management
-  | "inventory:read"
-  | "inventory:adjust"
-  | "inventory:damage"
+  "inventory:read", "inventory:adjust", "inventory:damage",
   // Stock Transfers
-  | "transfer:create"
-  | "transfer:approve"
-  | "transfer:cancel"
-  | "transfer:view"
+  "transfer:create", "transfer:approve", "transfer:cancel", "transfer:view",
   // POS / Sales
-  | "pos:create_sale"
-  | "pos:apply_discount"
-  | "pos:override_price"
-  | "pos:override_stock"
-  | "pos:void_sale"
-  | "pos:refund"
+  "pos:create_sale", "pos:apply_discount", "pos:override_price", "pos:override_stock",
+  "pos:void_sale", "pos:refund", "sale:view",
   // Suppliers & Purchasing
-  | "supplier:create"
-  | "supplier:read"
-  | "supplier:update"
-  | "supplier:delete"
-  | "purchase:create"
-  | "purchase:approve"
-  | "purchase:receive"
+  "supplier:create", "supplier:read", "supplier:update", "supplier:delete",
+  "purchase:create", "purchase:approve", "purchase:receive", "purchase:view",
+  // Pricing
+  "pricing:manage",
+  // Approvals
+  "approval:view",
   // Shifts
-  | "shift:manage_own"
-  | "shift:manage_all"
-  | "shift:verify"
+  "shift:manage_own", "shift:manage_all", "shift:verify",
   // Reports
-  | "report:shop"
-  | "report:global"
-  | "report:profit"
+  "report:shop", "report:global", "report:profit",
   // Audit
-  | "audit:view_shop"
-  | "audit:view_global";
+  "audit:view_shop", "audit:view_global",
+] as const;
+
+export type Permission = (typeof ALL_PERMISSIONS)[number];
 
 export interface Shop {
   id: string;
@@ -102,7 +85,15 @@ export interface User {
   email?: string;
   role: Role;
   shopId?: string;
-  permissions?: Permission[]; // Custom permissions override
+  authId?: string; // Supabase Auth account link (auth.users.id)
+  /**
+   * @deprecated Legacy replacement-model permissions. Superseded by
+   * grantedPermissions / revokedPermissions. Retained only so pre-migration
+   * users keep their access until migration 002 backfills the new fields.
+   */
+  permissions?: Permission[];
+  grantedPermissions?: Permission[]; // additive — granted on top of role defaults
+  revokedPermissions?: Permission[]; // explicit denials — win over role default and grant
   isActive: boolean;
   createdAt: string;
 }
@@ -250,6 +241,7 @@ export interface Shift {
   closingCashMmk?: number;
   expectedCashMmk?: number;
   varianceMmk?: number;
+  varianceReason?: string;
 }
 
 export interface Sale {
@@ -332,22 +324,12 @@ export type Refund = RefundVoidRequest;
 
 // ============================================
 // Role-Permission Mapping (Default Permissions)
+// Keep in sync with role_default_permissions() in
+// supabase/migrations/002_rbac_permissions.sql
 // ============================================
 export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
-  ADMIN: [
-    // Full access to everything
-    "shop:create", "shop:read", "shop:update", "shop:delete",
-    "user:create", "user:read", "user:update", "user:delete",
-    "product:create", "product:read", "product:update", "product:delete", "product:edit_price",
-    "inventory:read", "inventory:adjust", "inventory:damage",
-    "transfer:create", "transfer:approve", "transfer:cancel", "transfer:view",
-    "pos:create_sale", "pos:apply_discount", "pos:override_price", "pos:override_stock", "pos:void_sale", "pos:refund",
-    "supplier:create", "supplier:read", "supplier:update", "supplier:delete",
-    "purchase:create", "purchase:approve", "purchase:receive",
-    "shift:manage_own", "shift:manage_all", "shift:verify",
-    "report:shop", "report:global", "report:profit",
-    "audit:view_shop", "audit:view_global",
-  ],
+  // ADMIN always has every permission in the registry.
+  ADMIN: [...ALL_PERMISSIONS],
   MANAGER: [
     // Shop-level management
     "shop:read",
@@ -356,8 +338,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "inventory:read", "inventory:adjust", "inventory:damage",
     "transfer:create", "transfer:approve", "transfer:view",
     "pos:create_sale", "pos:apply_discount", "pos:override_price", "pos:override_stock", "pos:void_sale", "pos:refund",
+    "sale:view",
     "supplier:read",
-    "purchase:create", "purchase:receive",
+    "purchase:create", "purchase:receive", "purchase:view",
+    "approval:view",
     "shift:manage_own", "shift:manage_all", "shift:verify",
     "report:shop", "report:profit",
     "audit:view_shop",
@@ -368,6 +352,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "inventory:read",
     "transfer:view",
     "pos:create_sale", "pos:apply_discount",
+    "sale:view",
     "shift:manage_own",
     "report:shop",
   ],
@@ -377,20 +362,5 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ],
 };
 
-// Helper function to check if a user has a specific permission
-export function hasPermission(user: User, permission: Permission): boolean {
-  // Check custom permissions first
-  if (user.permissions && user.permissions.length > 0) {
-    return user.permissions.includes(permission);
-  }
-  // Fall back to default role permissions
-  return DEFAULT_ROLE_PERMISSIONS[user.role]?.includes(permission) ?? false;
-}
-
-// Helper function to get all permissions for a user
-export function getUserPermissions(user: User): Permission[] {
-  if (user.permissions && user.permissions.length > 0) {
-    return user.permissions;
-  }
-  return DEFAULT_ROLE_PERMISSIONS[user.role] ?? [];
-}
+// Permission helper functions live in src/lib/permissions.ts (the central
+// registry). They are kept out of this types file deliberately.

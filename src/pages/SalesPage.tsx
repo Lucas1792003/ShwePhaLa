@@ -14,12 +14,14 @@ import { RefundModal } from "../components/sales/RefundModal";
 import { VoidModal } from "../components/sales/VoidModal";
 import { ReprintButton } from "../components/sales/ReprintButton";
 import { Button } from "../components/ui/Button";
+import { useToast } from "../components/ui/Toast";
 import { buildRefundItems } from "../features/sales/service";
 import { downloadCsv } from "../lib/csv";
 import { getEffectiveShopId } from "../lib/utils";
 
 export const SalesPage = () => {
   const navigate = useNavigate();
+  const toast = useToast();
   const [status, setStatus] = useState("all");
   const [cashier, setCashier] = useState("all");
   const [search, setSearch] = useState("");
@@ -84,18 +86,50 @@ export const SalesPage = () => {
     setVoidReason("");
   }, [selectedSaleId]);
 
-  const handleVoid = () => {
+  const handleVoid = async () => {
     if (!selectedSale || !currentUserId) return;
-    voidSale({ saleId: selectedSale.id, reason: voidReason || "No reason", actorId: currentUserId });
-    setVoidOpen(false);
+    try {
+      await voidSale({ saleId: selectedSale.id, reason: voidReason || "No reason", actorId: currentUserId });
+      setVoidOpen(false);
+      toast({ title: "Void request submitted", variant: "success" });
+    } catch (error) {
+      toast({
+        title: "Void request failed",
+        description: error instanceof Error ? error.message : "Could not submit the void request.",
+        variant: "error",
+      });
+    }
   };
 
-  const handleRefund = () => {
+  const handleRefund = async () => {
     if (!selectedSale || !currentUserId) return;
     const items = buildRefundItems(selectedItems, refundSelection);
     if (items.length === 0) return;
-    requestRefund({ saleId: selectedSale.id, items, reason: refundReason || "No reason", actorId: currentUserId });
-    setRefundOpen(false);
+    try {
+      await requestRefund({ saleId: selectedSale.id, items, reason: refundReason || "No reason", actorId: currentUserId });
+      setRefundOpen(false);
+      toast({ title: "Refund request submitted", variant: "success" });
+    } catch (error) {
+      toast({
+        title: "Refund request failed",
+        description: error instanceof Error ? error.message : "Could not submit the refund request.",
+        variant: "error",
+      });
+    }
+  };
+
+  const handleApprove = async (refundId: string) => {
+    if (!currentUserId) return;
+    try {
+      await approveRefund({ refundId, approverId: currentUserId });
+      toast({ title: "Approval completed", variant: "success" });
+    } catch (error) {
+      toast({
+        title: "Approval failed",
+        description: error instanceof Error ? error.message : "Could not approve the request.",
+        variant: "error",
+      });
+    }
   };
 
   return (
@@ -145,11 +179,19 @@ export const SalesPage = () => {
         actions={
           <>
             <ReprintButton
-              onReprint={() => {
+              onReprint={() => void (async () => {
                 if (!selectedSale || !currentUserId) return;
-                addReprintLog({ saleId: selectedSale.id, actorId: currentUserId });
-                navigate(`/app/sales/${selectedSale.id}`);
-              }}
+                try {
+                  await addReprintLog({ saleId: selectedSale.id, actorId: currentUserId });
+                  navigate(`/app/sales/${selectedSale.id}`);
+                } catch (error) {
+                  toast({
+                    title: "Reprint log failed",
+                    description: error instanceof Error ? error.message : "Could not record the reprint.",
+                    variant: "error",
+                  });
+                }
+              })()}
             />
             <Button variant="danger" onClick={() => setVoidOpen(true)} disabled={selectedSale?.status !== "NORMAL"}>
               Void sale
@@ -161,7 +203,7 @@ export const SalesPage = () => {
               selectedRefunds
                 .filter((refund) => refund.status === "REQUESTED")
                 .map((refund) => (
-                  <Button key={refund.id} onClick={() => currentUserId && approveRefund({ refundId: refund.id, approverId: currentUserId })}>
+                  <Button key={refund.id} onClick={() => void handleApprove(refund.id)}>
                     Approve {refund.type}
                   </Button>
                 ))}
@@ -174,7 +216,7 @@ export const SalesPage = () => {
         reason={voidReason}
         onChangeReason={setVoidReason}
         onClose={() => setVoidOpen(false)}
-        onConfirm={handleVoid}
+        onConfirm={() => void handleVoid()}
       />
 
       <RefundModal
@@ -186,7 +228,7 @@ export const SalesPage = () => {
         onChangeSelection={(productId, qty) => setRefundSelection((prev) => ({ ...prev, [productId]: qty }))}
         onChangeReason={setRefundReason}
         onClose={() => setRefundOpen(false)}
-        onSubmit={handleRefund}
+        onSubmit={() => void handleRefund()}
       />
     </div>
   );

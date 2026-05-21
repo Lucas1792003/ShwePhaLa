@@ -14,3 +14,4 @@ Displayed totals:
 - Sales count
 - Cash total
 - Other payment total
+

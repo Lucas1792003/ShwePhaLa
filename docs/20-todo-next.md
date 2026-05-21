@@ -1,161 +1,112 @@
-# Project Status & Next Steps
+# Project Status And Next Steps
 
-## Completed Features
+## Current Status
 
-### Analytics Dashboard
-- [x] Dashboard page with visual analytics (Recharts)
-- [x] Summary cards: Revenue, Investment, Profit, Orders, Avg Order Value
-- [x] Line chart for 7-day sales trend
-- [x] Pie chart for sales by category
-- [x] Top selling products list
-- [x] Low stock alerts
-- [x] Recent sales feed
+Shwe Phala POS is now a Supabase-backed app:
 
-### Internationalization (i18n)
-- [x] Language switcher (English / Myanmar)
-- [x] Zustand-based language store with localStorage persistence
-- [x] Translation files for sidebar, dashboard, POS, common UI
-- [x] `useTranslation` hook for easy component integration
+- Supabase Auth handles login.
+- `users.auth_id` links staff profiles to Auth users.
+- Business data persists in Supabase PostgreSQL.
+- localStorage is limited to UI preferences and the Supabase Auth session.
+- Granular permission strings are the only authorization model.
+- RLS is enabled and operational writes are locked behind RPCs.
 
-### UI/UX Improvements
-- [x] Redesigned POS with grid layout and product images
-- [x] Sticky search and category tabs in POS
-- [x] Sidebar reorganized into collapsible sections
-- [x] Inventory page pagination with page size selector
-- [x] Fixed sidebar height (no longer changes with page content)
-- [x] Dynamic category management (add, edit, delete with color picker)
-- [x] Decision-making dashboard with profit trends, goal tracking, inventory intelligence
+## Completed Backend Hardening
 
-### Code Architecture
-- [x] Modular dataStore using Zustand slice pattern (10 domain slices)
-- [x] Centralized type definitions in `stores/data/types.ts`
-- [x] Shared utilities extracted to `stores/data/utils.ts`
-- [x] Removed unnecessary re-export files (24 files deleted)
-- [x] Cleaned up shared folder structure
+- [x] Identity linking and awaited persistence.
+- [x] Granular RBAC with `granted_permissions` and `revoked_permissions`.
+- [x] SQL identity/permission helpers:
+  `current_app_user()`, `app_role()`, `app_shop_id()`, `app_has_perm()`,
+  `app_can_for_shop()`.
+- [x] Atomic POS checkout: `complete_sale`.
+- [x] Atomic refund/void approval: `approve_refund_request`,
+  `approve_void_request`.
+- [x] Atomic purchase receiving: `receive_purchase_order`.
+- [x] Atomic transfer completion: `complete_stock_transfer`.
+- [x] Atomic stock adjustment/damage: `adjust_stock`.
+- [x] Atomic shift open/close: `open_shift`, `close_shift`.
+- [x] PO/transfer/request/reprint status RPCs.
+- [x] Direct write lockdown for protected operational/audit tables.
+- [x] Shop-scoped operational reads.
+- [x] Live verification checklist: [29-live-supabase-rls-rpc-verification.md](./29-live-supabase-rls-rpc-verification.md).
 
-### Multi-Shop Inventory System
-- [x] Multi-shop support with isolated inventory per shop
-- [x] Shop-scoped inventory levels (`InventoryLevel` per shop/product)
-- [x] Shop switching for Admin users
+## Database Tables
 
-### Permission-Based Access Control
-- [x] 37 granular permissions across 10 categories
-- [x] Default role permissions (Admin, Manager, Cashier, Buyer)
-- [x] Custom permission overrides per user
-- [x] Permission helper functions (`canUser`, `canUserAny`, `canUserAll`)
+See [04-database-schema.md](./04-database-schema.md) for the source of truth.
 
-### Ledger-Based Stock Movements
-- [x] 8 movement types: PURCHASE_IN, SALE_OUT, TRANSFER_OUT, TRANSFER_IN, ADJUSTMENT, DAMAGE, RETURN_IN, RETURN_OUT
-- [x] Before/after quantity tracking
-- [x] Reference linking to source records
-- [x] Full audit trail
+Key current names:
 
-### Stock Transfer System
-- [x] Transfer workflow: PENDING → APPROVED → COMPLETED
-- [x] Source/destination shop tracking
-- [x] Approval/rejection with reasons
-- [x] Automatic inventory movements on completion
-- [x] Transfers page with outgoing/incoming tabs
+- Current stock table: `inventory`
+- Movement ledger: `inventory_movements`
+- Refund/void requests: `refund_void_requests`
+- Product scan-code mappings: `product_barcodes`
+- Product catalog code: `products.sku`
 
-### Supplier & Purchasing Module
-- [x] Supplier management (CRUD)
-- [x] Purchase Order workflow: DRAFT → SUBMITTED → APPROVED → RECEIVED
-- [x] Automatic stock-in on PO receive
-- [x] Suppliers page
-- [x] Purchases page
+Use these names in docs and code; avoid legacy table aliases.
 
-### Tier-Based Pricing
-- [x] Quantity-based price breaks
-- [x] Global and shop-specific tiers
-- [x] Automatic tier selection in POS
-- [x] Pricing configuration page
+## RLS Status
 
-### Advanced Reports
-- [x] Profit reports per shop
-- [x] Stock valuation report
-- [x] Transfer history
-- [x] Movement history with filters
+Current RLS model:
 
-## Database Tables (When Moving to Supabase)
+- Direct writes to protected operational tables are revoked.
+- Protected writes must go through `SECURITY DEFINER` RPCs.
+- Operational reads are shop-scoped for non-admin users.
+- Admin can read all operational data.
+- `audit_logs` direct insert/update/delete is revoked.
+- Admin/reference tables still use direct, permission-gated writes:
+  `shops`, `users`, `categories`, `products`, `product_barcodes`,
+  `price_tiers`, and `suppliers`.
 
-### Core Tables
-- `shops` - Shop/location management
-- `users` - User accounts with role and permissions
-- `products` - Product catalog
-- `product_barcodes` - Multiple barcodes per product
+## Permission Model
 
-### Inventory Tables
-- `inventory_levels` - Current stock per shop/product
-- `inventory_movements` - Ledger of all stock changes
-- `price_tiers` - Quantity-based pricing
+Use granular permission strings from `src/lib/permissions.ts`, for example:
 
-### Sales Tables
-- `shifts` - Cashier shifts
-- `sales` - Sale transactions
-- `sale_items` - Line items per sale
-- `refunds` - Refund records
+- `pos:create_sale`
+- `sale:view`
+- `product:create`
+- `barcode:manage`
+- `inventory:read`
+- `inventory:adjust`
+- `purchase:view`
+- `purchase:create`
+- `transfer:view`
+- `approval:view`
+- `report:shop`
+- `report:global`
 
-### Purchasing Tables
-- `suppliers` - Vendor management
-- `purchase_orders` - PO headers
-- `purchase_order_items` - PO line items
+Old coarse permission names are deprecated and should not appear in new docs or
+code.
 
-### Transfer Tables
-- `stock_transfers` - Transfer headers
-- `stock_transfer_items` - Transfer line items
-
-### Audit Tables
-- `audit_logs` - All system actions
-- `reprint_logs` - Receipt reprints
-
-## Row Level Security (RLS) Notes
-
-```sql
--- Admin: Full access to all shops
-CREATE POLICY admin_all ON shops FOR ALL TO authenticated
-  USING (auth.jwt() ->> 'role' = 'ADMIN');
-
--- Manager: Read/write assigned shop only
-CREATE POLICY manager_shop ON inventory_levels FOR ALL TO authenticated
-  USING (
-    shop_id = (auth.jwt() ->> 'shop_id')::uuid
-    AND auth.jwt() ->> 'role' IN ('MANAGER', 'ADMIN')
-  );
-
--- Cashier: Read own sales and shifts
-CREATE POLICY cashier_own ON sales FOR SELECT TO authenticated
-  USING (
-    created_by = auth.uid()
-    OR auth.jwt() ->> 'role' IN ('MANAGER', 'ADMIN')
-  );
-```
-
-## Future Improvements
+## Next Recommended Work
 
 ### High Priority
-- [ ] Backend migration to Supabase/PostgreSQL
-- [ ] Real-time stock updates via subscriptions
-- [ ] Barcode scanner hardware integration
-- [ ] Receipt printer integration (ESC/POS)
+
+- [ ] Run the live Script 4D verification checklist against the target Supabase project.
+- [ ] Move `src/data/seedSupabase.ts` out of browser source into service-role or SQL seed tooling.
+- [ ] Add Playwright smoke tests for POS checkout, shift close, refund/void,
+  purchase receiving, and transfer completion.
+- [ ] Add code splitting for large route chunks.
 
 ### Medium Priority
-- [ ] Customer management module
-- [ ] Customer loyalty/points system
-- [ ] Credit sales tracking
-- [ ] Multi-currency support
+
+- [ ] Customer management module.
+- [ ] Customer loyalty/points system.
+- [ ] Credit sales tracking.
+- [ ] Receipt printer integration (ESC/POS).
+- [ ] Real-time stock updates via Supabase subscriptions.
 
 ### Low Priority
-- [ ] Mobile app (React Native)
-- [ ] Offline mode with sync
-- [x] Analytics dashboard *(Completed)*
-- [ ] Email/SMS notifications
-- [ ] API for third-party integrations
 
-## Documentation
+- [ ] Mobile app.
+- [ ] Offline mode with sync.
+- [ ] Email/SMS notifications.
+- [ ] API for third-party integrations.
 
-- [13-data-model.md](./13-data-model.md) - Entity definitions and relationships
-- [01-roles-permissions.md](./01-roles-permissions.md) - Permission system
-- [06-inventory-flow.md](./06-inventory-flow.md) - Stock movement tracking
-- [14-stock-transfers.md](./14-stock-transfers.md) - Inter-shop transfers
-- [15-suppliers-purchasing.md](./15-suppliers-purchasing.md) - Vendor & PO management
-- [16-pricing-tiers.md](./16-pricing-tiers.md) - Quantity-based pricing
+## Useful Docs
+
+- [01-roles-permissions.md](./01-roles-permissions.md)
+- [04-database-schema.md](./04-database-schema.md)
+- [10-localstorage-persistence.md](./10-localstorage-persistence.md)
+- [12-supabase-setup.md](./12-supabase-setup.md)
+- [17-architecture.md](./17-architecture.md)
+- [29-live-supabase-rls-rpc-verification.md](./29-live-supabase-rls-rpc-verification.md)

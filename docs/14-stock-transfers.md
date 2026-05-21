@@ -65,13 +65,17 @@ interface StockTransferItem {
 - Approves or rejects with reason
 - Status: `APPROVED` or `REJECTED`
 
-### 3. Complete Transfer (Either Shop)
+### 3. Complete Transfer (Source Shop)
 
-- User with `transfer:approve` permission marks transfer complete
-- System creates inventory movements:
-  - `TRANSFER_OUT` at source shop (negative)
-  - `TRANSFER_IN` at destination shop (positive)
-- Stock levels updated atomically
+- User with `transfer:approve` permission for the **source shop** marks the
+  transfer complete.
+- Completion calls the **`complete_stock_transfer` RPC** — one atomic,
+  permission-checked transaction that:
+  - locks the transfer row and the source / destination inventory rows
+  - rejects insufficient source stock
+  - creates `TRANSFER_OUT` at the source shop (negative) and `TRANSFER_IN` at
+    the destination shop (positive)
+  - updates both shops' stock levels and writes the audit row
 - Status: `COMPLETED`
 
 ### 4. Cancel Transfer (Source Shop)
@@ -148,3 +152,4 @@ Transfer data is available in:
 2. **Prompt Completion**: Complete approved transfers promptly to maintain accuracy
 3. **Quantity Verification**: Receiving shop should verify quantities match
 4. **Documentation**: Use notes field for special instructions or discrepancies
+

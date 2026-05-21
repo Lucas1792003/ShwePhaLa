@@ -4,8 +4,8 @@ import { useAuthStore } from "../../stores/authStore";
 import { useAppStore } from "../../stores/appStore";
 import { useDataStore } from "../../stores/dataStore";
 import { cn } from "../../lib/utils";
-import type { Permission } from "../../shared/utils/permissions";
-import { hasPermission } from "../../shared/utils/permissions";
+import type { Permission } from "../../types";
+import { hasPermission, ROUTE_PERMISSIONS } from "../../lib/permissions";
 import { ShopSwitcher } from "./ShopSwitcher";
 import { LanguageSwitcher } from "../../components/layout/LanguageSwitcher";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -28,36 +28,36 @@ const navSections: NavSection[] = [
   {
     // Main navigation - no title
     items: [
-      { to: "/app/dashboard", labelKey: "dashboard", permission: "VIEW_REPORTS", icon: "dashboard" },
-      { to: "/app/pos", labelKey: "pos", permission: "VIEW_POS", icon: "point_of_sale" },
+      { to: "/app/dashboard", labelKey: "dashboard", permission: ROUTE_PERMISSIONS.dashboard, icon: "dashboard" },
+      { to: "/app/pos", labelKey: "pos", permission: ROUTE_PERMISSIONS.pos, icon: "point_of_sale" },
     ],
   },
   {
     titleKey: "salesOperations",
     items: [
-      { to: "/app/sales", labelKey: "salesHistory", permission: "VIEW_SALES", icon: "receipt_long" },
-      { to: "/app/shifts", labelKey: "shifts", permission: "VIEW_SHIFTS", icon: "schedule" },
-      { to: "/app/approvals", labelKey: "approvals", permission: "VIEW_APPROVALS", icon: "fact_check" },
+      { to: "/app/sales", labelKey: "salesHistory", permission: ROUTE_PERMISSIONS.sales, icon: "receipt_long" },
+      { to: "/app/shifts", labelKey: "shifts", permission: ROUTE_PERMISSIONS.shifts, icon: "schedule" },
+      { to: "/app/approvals", labelKey: "approvals", permission: ROUTE_PERMISSIONS.approvals, icon: "fact_check" },
     ],
   },
   {
     titleKey: "inventorySection",
     items: [
-      { to: "/app/inventory", labelKey: "inventory", permission: "VIEW_INVENTORY", icon: "inventory_2" },
-      { to: "/app/transfers", labelKey: "transfers", permission: "VIEW_TRANSFERS", icon: "swap_horiz" },
-      { to: "/app/purchases", labelKey: "purchases", permission: "VIEW_PURCHASES", icon: "local_shipping" },
+      { to: "/app/inventory", labelKey: "inventory", permission: ROUTE_PERMISSIONS.inventory, icon: "inventory_2" },
+      { to: "/app/transfers", labelKey: "transfers", permission: ROUTE_PERMISSIONS.transfers, icon: "swap_horiz" },
+      { to: "/app/purchases", labelKey: "purchases", permission: ROUTE_PERMISSIONS.purchases, icon: "local_shipping" },
     ],
   },
   {
     titleKey: "settings",
     adminOnly: true,
     items: [
-      { to: "/app/admin/shops", labelKey: "shops", permission: "MANAGE_SHOPS", icon: "store" },
-      { to: "/app/admin/users", labelKey: "users", permission: "MANAGE_USERS", icon: "group" },
-      { to: "/app/admin/products", labelKey: "products", permission: "MANAGE_PRODUCTS", icon: "inventory" },
-      { to: "/app/admin/suppliers", labelKey: "suppliers", permission: "VIEW_SUPPLIERS", icon: "handshake" },
-      { to: "/app/admin/pricing", labelKey: "pricing", permission: "MANAGE_PRICING", icon: "sell" },
-      { to: "/app/admin/audit", labelKey: "auditLog", permission: "VIEW_AUDIT", icon: "policy" },
+      { to: "/app/admin/shops", labelKey: "shops", permission: ROUTE_PERMISSIONS.adminShops, icon: "store" },
+      { to: "/app/admin/users", labelKey: "users", permission: ROUTE_PERMISSIONS.adminUsers, icon: "group" },
+      { to: "/app/admin/products", labelKey: "products", permission: ROUTE_PERMISSIONS.adminProducts, icon: "inventory" },
+      { to: "/app/admin/suppliers", labelKey: "suppliers", permission: ROUTE_PERMISSIONS.adminSuppliers, icon: "handshake" },
+      { to: "/app/admin/pricing", labelKey: "pricing", permission: ROUTE_PERMISSIONS.adminPricing, icon: "sell" },
+      { to: "/app/admin/audit", labelKey: "auditLog", permission: ROUTE_PERMISSIONS.adminAudit, icon: "policy" },
     ],
   },
 ];
@@ -109,7 +109,7 @@ export const Sidebar = () => {
           {navSections.map((section, sectionIndex) => {
             // Filter items by permission
             const visibleItems = section.items.filter(
-              (item) => currentUser && hasPermission(currentUser.role, item.permission)
+              (item) => hasPermission(currentUser, item.permission)
             );
 
             // Skip section if no visible items or admin-only section for non-admins

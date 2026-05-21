@@ -10,4 +10,12 @@
 
 ## Status changes
 - Sale status changes to `VOID` or `REFUNDED` after approval.
-- Refund record is stored with status `APPROVED`.
+- Request state is stored in `refund_void_requests` with status `APPROVED`.
+
+## Transactional safety
+- Approval runs through the `approve_refund_request` / `approve_void_request`
+  RPCs (rejection through `reject_refund_void_request`). Each is a single atomic,
+  permission-checked transaction — the request status, sale status, inventory
+  restock, movements, and audit row commit or roll back together.
+
+

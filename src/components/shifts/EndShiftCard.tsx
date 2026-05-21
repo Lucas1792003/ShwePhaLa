@@ -4,7 +4,7 @@ import { MoneyInput } from "../forms/MoneyInput";
 interface EndShiftCardProps {
   closingCash: number;
   onClosingCashChange: (value: number) => void;
-  onEnd: () => void;
+  onEnd: () => void | Promise<void>;
 }
 
 export const EndShiftCard = ({ closingCash, onClosingCashChange, onEnd }: EndShiftCardProps) => (

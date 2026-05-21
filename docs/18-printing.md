@@ -7,3 +7,4 @@
 ## Tips
 - Use browser print dialog to choose thermal printer.
 - Disable margins in the print dialog for best fit.
+

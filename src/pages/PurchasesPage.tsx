@@ -71,28 +71,39 @@ export const PurchasesPage = () => {
       .filter((po) => po.orderNo.toLowerCase().includes(search.toLowerCase()));
   }, [purchaseOrders, activeTab, statusFilter, search, shopId, isAdmin]);
 
-  const handleCreatePO = () => {
+  const handleCreatePO = async () => {
     if (!currentUserId || !newPO.supplierId || newPO.items.length === 0) return;
-    createPurchaseOrder({
-      shopId,
-      supplierId: newPO.supplierId,
-      items: newPO.items,
-      notes: newPO.notes,
-      createdBy: currentUserId,
-    });
-    setShowCreateModal(false);
-    setNewPO({ supplierId: "", items: [], notes: "" });
+    try {
+      await createPurchaseOrder({
+        shopId,
+        supplierId: newPO.supplierId,
+        items: newPO.items,
+        notes: newPO.notes,
+        createdBy: currentUserId,
+      });
+      setShowCreateModal(false);
+      setNewPO({ supplierId: "", items: [], notes: "" });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to create purchase order");
+    }
   };
 
-  const handleApprovePO = (poId: string) => {
+  const handleApprovePO = async (poId: string) => {
     if (!currentUserId) return;
-    approvePurchaseOrder({ purchaseOrderId: poId, approverId: currentUserId });
+    try {
+      await approvePurchaseOrder({ purchaseOrderId: poId, approverId: currentUserId });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to approve purchase order");
+    }
   };
 
-  const handleCancelPO = (poId: string) => {
+  const handleCancelPO = async (poId: string) => {
     if (!currentUserId) return;
-    if (confirm("Are you sure you want to cancel this purchase order?")) {
-      cancelPurchaseOrder({ purchaseOrderId: poId, actorId: currentUserId });
+    if (!confirm("Are you sure you want to cancel this purchase order?")) return;
+    try {
+      await cancelPurchaseOrder({ purchaseOrderId: poId, actorId: currentUserId });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to cancel purchase order");
     }
   };
 
@@ -102,14 +113,18 @@ export const PurchasesPage = () => {
     setShowReceiveModal(poId);
   };
 
-  const handleReceivePO = () => {
+  const handleReceivePO = async () => {
     if (!currentUserId || !showReceiveModal) return;
-    receivePurchaseOrder({
-      purchaseOrderId: showReceiveModal,
-      receiverId: currentUserId,
-      receivedItems: receiveItems,
-    });
-    setShowReceiveModal(null);
+    try {
+      await receivePurchaseOrder({
+        purchaseOrderId: showReceiveModal,
+        receiverId: currentUserId,
+        receivedItems: receiveItems,
+      });
+      setShowReceiveModal(null);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to receive purchase order");
+    }
   };
 
   const addItemToPO = (productId: string) => {

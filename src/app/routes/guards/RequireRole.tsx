@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
-import type { Role } from "../../../types";
+import type { Permission, Role } from "../../../types";
 import { useAuthStore } from "../../../stores/authStore";
 import { useDataStore } from "../../../stores/dataStore";
-import { hasPermission, type Permission } from "../../../shared/utils/permissions";
+import { hasPermission } from "../../../lib/permissions";
 
 interface RequireRoleProps {
   allowed?: Role[];
@@ -17,6 +17,6 @@ export const RequireRole = ({ allowed, permission, children }: RequireRoleProps)
 
   if (!currentUserId || !currentUser) return <Navigate to="/login" replace />;
   if (allowed && !allowed.includes(currentUser.role)) return <Navigate to="/app" replace />;
-  if (permission && !hasPermission(currentUser.role, permission)) return <Navigate to="/app" replace />;
+  if (permission && !hasPermission(currentUser, permission)) return <Navigate to="/app" replace />;
   return <>{children}</>;
 };

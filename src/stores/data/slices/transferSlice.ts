@@ -1,285 +1,140 @@
 import type { StateCreator } from "zustand";
 import type { DataState, TransferState, CreateTransferInput } from "../types";
-import type { AuditLog, StockTransfer, StockTransferItem, TransferStatus, StockMovementType } from "../../../types";
-import { makeId, makeTransferNo, requirePermission } from "../utils";
-import { getDateKey } from "../../../lib/utils";
+import type {
+  AuditLog, Inventory, InventoryMovement, StockTransfer, StockTransferItem,
+} from "../../../types";
+import { supabase } from "../../../lib/supabase";
+
+// ---- RPC result shapes (camelCase, ready for the store) ----
+interface CreateTransferResult {
+  stockTransfer: StockTransfer;
+  stockTransferItems: StockTransferItem[];
+  auditLogs: AuditLog[];
+}
+interface ApproveTransferResult {
+  stockTransfer: StockTransfer;
+  stockTransferItems: StockTransferItem[];
+  auditLogs: AuditLog[];
+}
+interface TransferStatusResult {
+  stockTransfer: StockTransfer;
+  auditLogs: AuditLog[];
+}
+interface CompleteTransferResult {
+  stockTransfer: StockTransfer;
+  stockTransferItems: StockTransferItem[];
+  inventory: Inventory[];
+  movements: InventoryMovement[];
+  auditLogs: AuditLog[];
+}
+
+// Merge RPC-returned inventory rows into the current store array.
+const mergeInventory = (current: Inventory[], updates: Inventory[]): Inventory[] => {
+  const result = [...current];
+  for (const u of updates) {
+    const idx = result.findIndex((i) => i.shopId === u.shopId && i.productId === u.productId);
+    if (idx >= 0) result[idx] = { ...result[idx], qtyBaseUnits: u.qtyBaseUnits };
+    else result.push(u);
+  }
+  return result;
+};
 
 export const createTransferSlice: StateCreator<DataState, [], [], TransferState> = (set, get) => ({
   stockTransfers: [],
   stockTransferItems: [],
 
-  createTransfer: ({ fromShopId, toShopId, items, notes, createdBy }: CreateTransferInput) => {
-    const state = get();
-
-    // Permission check: creator must have transfer:create
-    requirePermission(state.users, createdBy, "transfer:create");
-
-    const seq = state.stockTransfers.filter((t) => t.transferNo.includes(getDateKey())).length + 1;
-    const transferId = makeId("transfer");
-    const transferNo = makeTransferNo(seq);
-    const createdAt = new Date().toISOString();
-
-    // Validate stock availability
-    for (const item of items) {
-      const availableQty = state.inventory.find(
-        (inv) => inv.shopId === fromShopId && inv.productId === item.productId
-      )?.qtyBaseUnits ?? 0;
-      if (item.requestedQty > availableQty) {
-        throw new Error(`Insufficient stock for product ${item.productId}. Available: ${availableQty}, Requested: ${item.requestedQty}`);
-      }
-    }
-
-    const transfer: StockTransfer = {
-      id: transferId,
-      transferNo,
-      fromShopId,
-      toShopId,
-      status: "PENDING",
-      notes,
-      createdBy,
-      createdAt,
-    };
-
-    const transferItems: StockTransferItem[] = items.map((item) => ({
-      id: makeId("titem"),
-      transferId,
-      productId: item.productId,
-      requestedQty: item.requestedQty,
-    }));
-
-    const audit: AuditLog = {
-      id: makeId("audit"),
-      shopId: fromShopId,
-      actorId: createdBy,
-      actionType: "TRANSFER_CREATED",
-      message: `Transfer ${transferNo} created: ${items.length} items to shop ${toShopId}`,
-      entityType: "StockTransfer",
-      entityId: transferId,
-      createdAt,
-    };
+  // Transfer creation: atomic RPC (validates permission, shop scope, stock).
+  createTransfer: async ({ fromShopId, toShopId, items, notes }: CreateTransferInput) => {
+    const { data, error } = await supabase.rpc("create_stock_transfer", {
+      p_from_shop_id: fromShopId,
+      p_to_shop_id: toShopId,
+      p_notes: notes ?? null,
+      p_items: items.map((i) => ({ product_id: i.productId, requested_qty: i.requestedQty })),
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Create transfer returned no data.");
+    const result = data as CreateTransferResult;
 
     set((s) => ({
-      stockTransfers: [transfer, ...s.stockTransfers],
-      stockTransferItems: [...transferItems, ...s.stockTransferItems],
-      auditLogs: [audit, ...s.auditLogs],
+      stockTransfers: [result.stockTransfer, ...s.stockTransfers],
+      stockTransferItems: [...result.stockTransferItems, ...s.stockTransferItems],
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
     }));
-
-    return transferId;
+    return result.stockTransfer.id;
   },
 
-  approveTransfer: ({ transferId, approverId, approvedItems }) =>
-    set((state) => {
-      // Permission check: approver must have transfer:approve
-      requirePermission(state.users, approverId, "transfer:approve");
+  approveTransfer: async ({ transferId }) => {
+    const { data, error } = await supabase.rpc("approve_stock_transfer", { p_transfer_id: transferId });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Approve transfer returned no data.");
+    const result = data as ApproveTransferResult;
 
-      const transfer = state.stockTransfers.find((t) => t.id === transferId);
-      if (!transfer || transfer.status !== "PENDING") return state;
+    set((s) => ({
+      stockTransfers: s.stockTransfers.map((t) =>
+        t.id === result.stockTransfer.id ? result.stockTransfer : t
+      ),
+      stockTransferItems: s.stockTransferItems.map(
+        (i) => result.stockTransferItems.find((u) => u.id === i.id) ?? i
+      ),
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+  },
 
-      const items = state.stockTransferItems.filter((i) => i.transferId === transferId);
-      const approvedAt = new Date().toISOString();
+  rejectTransfer: async ({ transferId, reason }) => {
+    const { data, error } = await supabase.rpc("reject_stock_transfer", {
+      p_transfer_id: transferId,
+      p_reason: reason,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Reject transfer returned no data.");
+    const result = data as TransferStatusResult;
 
-      const updatedItems = items.map((item) => {
-        const approved = approvedItems?.find((a) => a.productId === item.productId);
-        return {
-          ...item,
-          approvedQty: approved?.approvedQty ?? item.requestedQty,
-        };
-      });
+    set((s) => ({
+      stockTransfers: s.stockTransfers.map((t) =>
+        t.id === result.stockTransfer.id ? result.stockTransfer : t
+      ),
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+  },
 
-      const updatedTransfers = state.stockTransfers.map((t) =>
-        t.id === transferId
-          ? { ...t, status: "APPROVED" as TransferStatus, approvedBy: approverId, approvedAt }
-          : t
-      );
+  // Transfer completion: atomic RPC; moves stock + writes paired movements.
+  completeTransfer: async ({ transferId }) => {
+    const { data, error } = await supabase.rpc("complete_stock_transfer", {
+      p_transfer_id: transferId,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Transfer completion returned no data.");
+    const result = data as CompleteTransferResult;
 
-      const audit: AuditLog = {
-        id: makeId("audit"),
-        shopId: transfer.fromShopId,
-        actorId: approverId,
-        actionType: "TRANSFER_APPROVED",
-        message: `Transfer ${transfer.transferNo} approved`,
-        entityType: "StockTransfer",
-        entityId: transferId,
-        createdAt: approvedAt,
-      };
+    set((s) => ({
+      stockTransfers: s.stockTransfers.map((t) =>
+        t.id === result.stockTransfer.id ? result.stockTransfer : t
+      ),
+      stockTransferItems: s.stockTransferItems.map(
+        (i) => result.stockTransferItems.find((u) => u.id === i.id) ?? i
+      ),
+      inventory: mergeInventory(s.inventory, result.inventory),
+      movements: [...result.movements, ...s.movements],
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+  },
 
-      return {
-        stockTransfers: updatedTransfers,
-        stockTransferItems: state.stockTransferItems.map((i) => {
-          const updated = updatedItems.find((u) => u.id === i.id);
-          return updated ?? i;
-        }),
-        auditLogs: [audit, ...state.auditLogs],
-      };
-    }),
+  cancelTransfer: async ({ transferId, reason }) => {
+    const { data, error } = await supabase.rpc("cancel_stock_transfer", {
+      p_transfer_id: transferId,
+      p_reason: reason,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Cancel transfer returned no data.");
+    const result = data as TransferStatusResult;
 
-  rejectTransfer: ({ transferId, actorId, reason }) =>
-    set((state) => {
-      // Permission check: actor must have transfer:approve to reject
-      requirePermission(state.users, actorId, "transfer:approve");
-
-      const transfer = state.stockTransfers.find((t) => t.id === transferId);
-      if (!transfer || transfer.status !== "PENDING") return state;
-
-      const canceledAt = new Date().toISOString();
-      const updatedTransfers = state.stockTransfers.map((t) =>
-        t.id === transferId
-          ? { ...t, status: "REJECTED" as TransferStatus, canceledBy: actorId, canceledAt, cancelReason: reason }
-          : t
-      );
-
-      const audit: AuditLog = {
-        id: makeId("audit"),
-        shopId: transfer.fromShopId,
-        actorId,
-        actionType: "TRANSFER_REJECTED",
-        message: `Transfer ${transfer.transferNo} rejected: ${reason}`,
-        entityType: "StockTransfer",
-        entityId: transferId,
-        createdAt: canceledAt,
-      };
-
-      return {
-        stockTransfers: updatedTransfers,
-        auditLogs: [audit, ...state.auditLogs],
-      };
-    }),
-
-  completeTransfer: ({ transferId, actorId }) =>
-    set((state) => {
-      // Permission check: actor must have transfer:approve to complete
-      requirePermission(state.users, actorId, "transfer:approve");
-
-      const transfer = state.stockTransfers.find((t) => t.id === transferId);
-      if (!transfer || transfer.status !== "APPROVED") return state;
-
-      const items = state.stockTransferItems.filter((i) => i.transferId === transferId);
-      const completedAt = new Date().toISOString();
-      const inventory = [...state.inventory];
-      const movements = [...state.movements];
-
-      items.forEach((item) => {
-        const qty = item.approvedQty ?? item.requestedQty;
-
-        // TRANSFER_OUT from source shop
-        const sourceRecord = inventory.find(
-          (inv) => inv.shopId === transfer.fromShopId && inv.productId === item.productId
-        );
-        const sourceQtyBefore = sourceRecord?.qtyBaseUnits ?? 0;
-        const sourceQtyAfter = sourceQtyBefore - qty; // Allow negative for accurate ledger
-        if (sourceRecord) {
-          sourceRecord.qtyBaseUnits = sourceQtyAfter;
-        }
-
-        movements.unshift({
-          id: makeId("move"),
-          shopId: transfer.fromShopId,
-          productId: item.productId,
-          type: "TRANSFER_OUT" as StockMovementType,
-          qtyChange: -qty,
-          qtyBefore: sourceQtyBefore,
-          qtyAfter: sourceQtyAfter,
-          reason: `Transfer ${transfer.transferNo} to ${transfer.toShopId}`,
-          referenceType: "transfer",
-          referenceId: transferId,
-          createdBy: actorId,
-          createdAt: completedAt,
-        });
-
-        // TRANSFER_IN to destination shop
-        const destRecord = inventory.find(
-          (inv) => inv.shopId === transfer.toShopId && inv.productId === item.productId
-        );
-        const destQtyBefore = destRecord?.qtyBaseUnits ?? 0;
-        const destQtyAfter = destQtyBefore + qty;
-        if (destRecord) {
-          destRecord.qtyBaseUnits = destQtyAfter;
-        } else {
-          inventory.push({
-            shopId: transfer.toShopId,
-            productId: item.productId,
-            qtyBaseUnits: destQtyAfter,
-          });
-        }
-
-        movements.unshift({
-          id: makeId("move"),
-          shopId: transfer.toShopId,
-          productId: item.productId,
-          type: "TRANSFER_IN" as StockMovementType,
-          qtyChange: qty,
-          qtyBefore: destQtyBefore,
-          qtyAfter: destQtyAfter,
-          reason: `Transfer ${transfer.transferNo} from ${transfer.fromShopId}`,
-          referenceType: "transfer",
-          referenceId: transferId,
-          createdBy: actorId,
-          createdAt: completedAt,
-        });
-      });
-
-      const updatedTransferItems = state.stockTransferItems.map((i) => {
-        if (i.transferId !== transferId) return i;
-        return { ...i, transferredQty: i.approvedQty ?? i.requestedQty };
-      });
-
-      const updatedTransfers = state.stockTransfers.map((t) =>
-        t.id === transferId
-          ? { ...t, status: "COMPLETED" as TransferStatus, completedAt }
-          : t
-      );
-
-      const audit: AuditLog = {
-        id: makeId("audit"),
-        shopId: transfer.fromShopId,
-        actorId,
-        actionType: "TRANSFER_COMPLETED",
-        message: `Transfer ${transfer.transferNo} completed: ${items.length} items moved`,
-        entityType: "StockTransfer",
-        entityId: transferId,
-        createdAt: completedAt,
-      };
-
-      return {
-        stockTransfers: updatedTransfers,
-        stockTransferItems: updatedTransferItems,
-        inventory,
-        movements,
-        auditLogs: [audit, ...state.auditLogs],
-      };
-    }),
-
-  cancelTransfer: ({ transferId, actorId, reason }) =>
-    set((state) => {
-      // Permission check: actor must have transfer:cancel
-      requirePermission(state.users, actorId, "transfer:cancel");
-
-      const transfer = state.stockTransfers.find((t) => t.id === transferId);
-      if (!transfer || transfer.status === "COMPLETED" || transfer.status === "CANCELED") return state;
-
-      const canceledAt = new Date().toISOString();
-      const updatedTransfers = state.stockTransfers.map((t) =>
-        t.id === transferId
-          ? { ...t, status: "CANCELED" as TransferStatus, canceledBy: actorId, canceledAt, cancelReason: reason }
-          : t
-      );
-
-      const audit: AuditLog = {
-        id: makeId("audit"),
-        shopId: transfer.fromShopId,
-        actorId,
-        actionType: "TRANSFER_CANCELED",
-        message: `Transfer ${transfer.transferNo} canceled: ${reason}`,
-        entityType: "StockTransfer",
-        entityId: transferId,
-        createdAt: canceledAt,
-      };
-
-      return {
-        stockTransfers: updatedTransfers,
-        auditLogs: [audit, ...state.auditLogs],
-      };
-    }),
+    set((s) => ({
+      stockTransfers: s.stockTransfers.map((t) =>
+        t.id === result.stockTransfer.id ? result.stockTransfer : t
+      ),
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+  },
 
   getTransfersByShop: (shopId: string) =>
     get().stockTransfers.filter((t) => t.fromShopId === shopId || t.toShopId === shopId),

@@ -41,13 +41,17 @@ export const UsersPage = () => {
     if (editingId) {
       // Edit existing user — update profile only (password change not supported from client)
       const existing = users.find((u) => u.id === editingId)!;
-      updateUser({
-        ...existing,
-        name: name.trim(),
-        role,
-        shopId: requiresShop ? shopId : undefined,
-      });
-      setFeedback({ type: "success", message: "User updated." });
+      try {
+        await updateUser({
+          ...existing,
+          name: name.trim(),
+          role,
+          shopId: requiresShop ? shopId : undefined,
+        });
+        setFeedback({ type: "success", message: "User updated." });
+      } catch (error) {
+        setFeedback({ type: "error", message: error instanceof Error ? error.message : "Failed to update user." });
+      }
       return;
     }
 
@@ -62,29 +66,53 @@ export const UsersPage = () => {
     setIsSubmitting(true);
     setFeedback(null);
 
-    // Create Supabase Auth account
-    const { error: authError } = await supabase.auth.signUp({
+    // Preserve the admin's session — supabase.auth.signUp() signs the browser
+    // in as the new user, which would make the users-table insert run as the
+    // new (unprivileged) user and fail RLS.
+    const { data: { session: adminSession } } = await supabase.auth.getSession();
+
+    // Create the Supabase Auth account.
+    const signUpResult = await supabase.auth.signUp({
       email: email.trim(),
       password,
     });
 
-    if (authError && !authError.message.includes("already registered")) {
+    if (signUpResult.error && !signUpResult.error.message.includes("already registered")) {
       setIsSubmitting(false);
-      setFeedback({ type: "error", message: `Auth error: ${authError.message}` });
+      setFeedback({ type: "error", message: `Auth error: ${signUpResult.error.message}` });
       return;
     }
 
-    // Create user record in our users table
+    // Restore the admin session so the users-table insert runs as the admin.
+    if (adminSession) {
+      await supabase.auth.setSession({
+        access_token: adminSession.access_token,
+        refresh_token: adminSession.refresh_token,
+      });
+    }
+
+    // Create user record in our users table, linked to the new auth account.
+    const newAuthId = signUpResult.data.user?.id;
     const userId = `user-${email.trim().replace(/[^a-z0-9]/gi, "-").toLowerCase()}`;
-    addUser({
-      id: userId,
-      name: name.trim(),
-      email: email.trim(),
-      role,
-      shopId: requiresShop ? shopId : undefined,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    });
+    try {
+      await addUser({
+        id: userId,
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        role,
+        shopId: requiresShop ? shopId : undefined,
+        authId: newAuthId,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      setIsSubmitting(false);
+      setFeedback({
+        type: "error",
+        message: `Could not save the staff profile: ${error instanceof Error ? error.message : "unknown error"}`,
+      });
+      return;
+    }
 
     setIsSubmitting(false);
     setFeedback({ type: "success", message: `${name} created. They can now log in with ${email}.` });
@@ -103,10 +131,14 @@ export const UsersPage = () => {
     setFeedback(null);
   };
 
-  const handleToggleActive = (id: string) => {
+  const handleToggleActive = async (id: string) => {
     const user = users.find((u) => u.id === id);
     if (!user) return;
-    updateUser({ ...user, isActive: !user.isActive });
+    try {
+      await updateUser({ ...user, isActive: !user.isActive });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Failed to update user." });
+    }
   };
 
   return (

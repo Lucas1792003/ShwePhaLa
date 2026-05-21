@@ -16,6 +16,7 @@ export const ShiftDetail = ({ shift, cashierName, saleCount }: ShiftDetailProps)
     <div>Expected cash: {formatMmk(shift.expectedCashMmk ?? 0)}</div>
     <div>Closing cash: {formatMmk(shift.closingCashMmk ?? 0)}</div>
     <div>Variance: {formatMmk(shift.varianceMmk ?? 0)}</div>
+    {shift.varianceReason && <div>Variance reason: {shift.varianceReason}</div>}
     <div>Sales count: {saleCount}</div>
   </div>
 );

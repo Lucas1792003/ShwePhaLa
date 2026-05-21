@@ -26,6 +26,7 @@ import { DashboardPage } from "../../pages/DashboardPage";
 import { NotFoundPage } from "../../pages/NotFoundPage";
 import { useAuthStore } from "../../stores/authStore";
 import { useDataStore } from "../../stores/dataStore";
+import { ROUTE_PERMISSIONS } from "../../lib/permissions";
 
 const DefaultAppRoute = () => {
   const currentUserId = useAuthStore((state) => state.currentUserId);
@@ -50,7 +51,7 @@ export const AppRouter = () => (
       <Route
         path="dashboard"
         element={
-          <RequireRole permission="VIEW_REPORTS">
+          <RequireRole permission={ROUTE_PERMISSIONS.dashboard}>
             <DashboardPage />
           </RequireRole>
         }
@@ -58,7 +59,7 @@ export const AppRouter = () => (
       <Route
         path="pos"
         element={
-          <RequireRole permission="VIEW_POS">
+          <RequireRole permission={ROUTE_PERMISSIONS.pos}>
             <PosPage />
           </RequireRole>
         }
@@ -66,7 +67,7 @@ export const AppRouter = () => (
       <Route
         path="sales"
         element={
-          <RequireRole permission="VIEW_SALES">
+          <RequireRole permission={ROUTE_PERMISSIONS.sales}>
             <SalesListPage />
           </RequireRole>
         }
@@ -74,7 +75,7 @@ export const AppRouter = () => (
       <Route
         path="sales/:saleId"
         element={
-          <RequireRole permission="VIEW_SALES">
+          <RequireRole permission={ROUTE_PERMISSIONS.sales}>
             <SaleDetailPage />
           </RequireRole>
         }
@@ -82,7 +83,7 @@ export const AppRouter = () => (
       <Route
         path="shifts"
         element={
-          <RequireRole permission="VIEW_SHIFTS">
+          <RequireRole permission={ROUTE_PERMISSIONS.shifts}>
             <ShiftsPage />
           </RequireRole>
         }
@@ -90,7 +91,7 @@ export const AppRouter = () => (
       <Route
         path="inventory"
         element={
-          <RequireRole permission="VIEW_INVENTORY">
+          <RequireRole permission={ROUTE_PERMISSIONS.inventory}>
             <InventoryPage />
           </RequireRole>
         }
@@ -98,7 +99,7 @@ export const AppRouter = () => (
       <Route
         path="transfers"
         element={
-          <RequireRole permission="VIEW_TRANSFERS">
+          <RequireRole permission={ROUTE_PERMISSIONS.transfers}>
             <TransfersPage />
           </RequireRole>
         }
@@ -106,7 +107,7 @@ export const AppRouter = () => (
       <Route
         path="purchases"
         element={
-          <RequireRole permission="VIEW_PURCHASES">
+          <RequireRole permission={ROUTE_PERMISSIONS.purchases}>
             <PurchasesPage />
           </RequireRole>
         }
@@ -114,7 +115,7 @@ export const AppRouter = () => (
       <Route
         path="approvals"
         element={
-          <RequireRole permission="VIEW_APPROVALS">
+          <RequireRole permission={ROUTE_PERMISSIONS.approvals}>
             <ApprovalsPage />
           </RequireRole>
         }
@@ -122,7 +123,7 @@ export const AppRouter = () => (
       <Route
         path="reports"
         element={
-          <RequireRole permission="VIEW_REPORTS">
+          <RequireRole permission={ROUTE_PERMISSIONS.reports}>
             <ShopReportsPage />
           </RequireRole>
         }
@@ -130,7 +131,7 @@ export const AppRouter = () => (
       <Route
         path="reports/profit"
         element={
-          <RequireRole permission="VIEW_PROFIT_REPORTS">
+          <RequireRole permission={ROUTE_PERMISSIONS.reportsProfit}>
             <ProfitReportsPage />
           </RequireRole>
         }
@@ -138,7 +139,7 @@ export const AppRouter = () => (
       <Route
         path="catalog"
         element={
-          <RequireRole permission="VIEW_CATALOG">
+          <RequireRole permission={ROUTE_PERMISSIONS.catalog}>
             <CatalogPage />
           </RequireRole>
         }
@@ -146,7 +147,7 @@ export const AppRouter = () => (
       <Route
         path="admin/shops"
         element={
-          <RequireRole permission="MANAGE_SHOPS">
+          <RequireRole permission={ROUTE_PERMISSIONS.adminShops}>
             <ShopsAdminPage />
           </RequireRole>
         }
@@ -154,7 +155,7 @@ export const AppRouter = () => (
       <Route
         path="admin/users"
         element={
-          <RequireRole permission="MANAGE_USERS">
+          <RequireRole permission={ROUTE_PERMISSIONS.adminUsers}>
             <UsersAdminPage />
           </RequireRole>
         }
@@ -162,7 +163,7 @@ export const AppRouter = () => (
       <Route
         path="admin/products"
         element={
-          <RequireRole permission="MANAGE_PRODUCTS">
+          <RequireRole permission={ROUTE_PERMISSIONS.adminProducts}>
             <ProductsAdminPage />
           </RequireRole>
         }
@@ -170,7 +171,7 @@ export const AppRouter = () => (
       <Route
         path="admin/barcodes"
         element={
-          <RequireRole permission="MANAGE_BARCODES">
+          <RequireRole permission={ROUTE_PERMISSIONS.adminBarcodes}>
             <BarcodesAdminPage />
           </RequireRole>
         }
@@ -178,7 +179,7 @@ export const AppRouter = () => (
       <Route
         path="admin/suppliers"
         element={
-          <RequireRole permission="VIEW_SUPPLIERS">
+          <RequireRole permission={ROUTE_PERMISSIONS.adminSuppliers}>
             <SuppliersPage />
           </RequireRole>
         }
@@ -186,7 +187,7 @@ export const AppRouter = () => (
       <Route
         path="admin/pricing"
         element={
-          <RequireRole permission="MANAGE_PRICING">
+          <RequireRole permission={ROUTE_PERMISSIONS.adminPricing}>
             <PricingPage />
           </RequireRole>
         }
@@ -194,7 +195,7 @@ export const AppRouter = () => (
       <Route
         path="admin/reports"
         element={
-          <RequireRole permission="VIEW_GLOBAL_REPORTS">
+          <RequireRole permission={ROUTE_PERMISSIONS.adminReports}>
             <GlobalReportsPage />
           </RequireRole>
         }
@@ -202,7 +203,7 @@ export const AppRouter = () => (
       <Route
         path="admin/audit"
         element={
-          <RequireRole permission="VIEW_AUDIT">
+          <RequireRole permission={ROUTE_PERMISSIONS.adminAudit}>
             <AuditLogPage />
           </RequireRole>
         }

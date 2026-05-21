@@ -35,7 +35,10 @@ const mapShop = (r: any): Shop => ({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mapUser = (r: any): User => ({
   id: r.id, name: r.name, email: r.email ?? undefined, role: r.role,
-  shopId: r.shop_id ?? undefined, permissions: r.permissions ?? undefined,
+  shopId: r.shop_id ?? undefined, authId: r.auth_id ?? undefined,
+  permissions: r.permissions ?? undefined,
+  grantedPermissions: r.granted_permissions ?? undefined,
+  revokedPermissions: r.revoked_permissions ?? undefined,
   isActive: r.is_active, createdAt: r.created_at,
 });
 
@@ -124,7 +127,7 @@ const mapShift = (r: any): Shift => ({
   id: r.id, shopId: r.shop_id, cashierId: r.cashier_id, startedAt: r.started_at,
   endedAt: r.ended_at ?? undefined, openingCashMmk: r.opening_cash_mmk,
   closingCashMmk: r.closing_cash_mmk ?? undefined, expectedCashMmk: r.expected_cash_mmk ?? undefined,
-  varianceMmk: r.variance_mmk ?? undefined,
+  varianceMmk: r.variance_mmk ?? undefined, varianceReason: r.variance_reason ?? undefined,
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

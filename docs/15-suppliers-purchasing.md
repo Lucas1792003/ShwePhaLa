@@ -111,9 +111,12 @@ interface PurchaseOrderItem {
 ### 4. Receive Stock
 
 - User with `purchase:receive` permission records receipt
-- Enter actual quantities received (may differ from ordered)
-- System creates `PURCHASE_IN` inventory movements
-- Updates stock levels
+- Enter actual quantities received (may differ from ordered — partial receiving
+  is supported)
+- Receiving calls the **`receive_purchase_order` RPC** — one atomic,
+  permission-checked transaction that records the received quantities, creates
+  `PURCHASE_IN` inventory movements, updates (or creates) stock levels, writes
+  the audit row, and marks the PO `RECEIVED` — all committed together.
 - Status: `RECEIVED`
 
 ## Inventory Integration
@@ -178,3 +181,4 @@ Purchase data available in:
 3. **Partial Receipts**: Record actual quantities even if less than ordered
 4. **Supplier Tracking**: Use notes field for delivery issues or quality concerns
 5. **Approval Controls**: Require approval for POs above certain amounts
+

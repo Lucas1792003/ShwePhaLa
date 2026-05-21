@@ -1,22 +1,43 @@
 import type { StateCreator } from "zustand";
 import type { DataState, PricingState } from "../types";
 import type { PriceTier } from "../../../types";
+import { supabase, dbExec } from "../../../lib/supabase";
+
+// snake_case row mapper for the price_tiers table
+const priceTierRow = (t: PriceTier) => ({
+  id: t.id, product_id: t.productId, shop_id: t.shopId ?? null,
+  min_qty: t.minQty, max_qty: t.maxQty ?? null, price_mmk: t.priceMmk,
+  is_active: t.isActive, created_at: t.createdAt, created_by: t.createdBy,
+});
 
 export const createPricingSlice: StateCreator<DataState, [], [], PricingState> = (set, get) => ({
   priceTiers: [],
 
-  addPriceTier: (tier: PriceTier) =>
-    set((state) => ({ priceTiers: [...state.priceTiers, tier] })),
+  addPriceTier: async (tier: PriceTier) => {
+    await dbExec(supabase.from("price_tiers").insert(priceTierRow(tier)), "Add price tier");
+    set((state) => ({ priceTiers: [...state.priceTiers, tier] }));
+  },
 
-  updatePriceTier: (tier: PriceTier) =>
+  updatePriceTier: async (tier: PriceTier) => {
+    await dbExec(
+      supabase.from("price_tiers").update({
+        product_id: tier.productId, shop_id: tier.shopId ?? null,
+        min_qty: tier.minQty, max_qty: tier.maxQty ?? null,
+        price_mmk: tier.priceMmk, is_active: tier.isActive,
+      }).eq("id", tier.id),
+      "Update price tier"
+    );
     set((state) => ({
       priceTiers: state.priceTiers.map((t) => (t.id === tier.id ? tier : t)),
-    })),
+    }));
+  },
 
-  deletePriceTier: (tierId: string) =>
+  deletePriceTier: async (tierId: string) => {
+    await dbExec(supabase.from("price_tiers").delete().eq("id", tierId), "Delete price tier");
     set((state) => ({
       priceTiers: state.priceTiers.filter((t) => t.id !== tierId),
-    })),
+    }));
+  },
 
   getProductPrice: (productId: string, shopId: string, qty: number) => {
     const state = get();

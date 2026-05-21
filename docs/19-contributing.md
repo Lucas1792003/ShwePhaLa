@@ -49,3 +49,4 @@ When adding new domain state to the data store:
 - Refund/void updates status + inventory
 - CSV exports download
 - Print preview layout is 80mm
+

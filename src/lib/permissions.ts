@@ -1,89 +1,162 @@
-import type { Permission, Role, User } from "../types";
-import { DEFAULT_ROLE_PERMISSIONS, hasPermission, getUserPermissions } from "../types";
+/**
+ * Central permission registry.
+ *
+ * This is the single source of truth for authorization helpers. The granular
+ * `Permission` strings (e.g. "pos:create_sale") are the only permission system
+ * — the old coarse system (VIEW_POS, MANAGE_PRODUCTS, ...) has been removed.
+ *
+ * Effective permission model:
+ *   effective = roleDefaults  ∪  grantedPermissions  −  revokedPermissions
+ * A revoke always wins over a role default and over a grant.
+ */
+import type { Permission, Role, User, Sale, StockTransfer, PurchaseOrder, PriceTier } from "../types";
+import { ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } from "../types";
 
-// Role hierarchy for backward compatibility
-export const roleRank: Record<Role, number> = {
-  BUYER: 0,
-  CASHIER: 1,
-  MANAGER: 2,
-  ADMIN: 3,
-};
+export type { Permission };
+export { ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS };
 
-// Legacy role-based check (backward compatible)
-export const hasRole = (role: Role, allowed: Role[]) => allowed.includes(role);
+// ============================================================
+// Route → permission registry
+// Used by the router guard and the sidebar so both stay consistent.
+// `satisfies` guarantees every value is a real granular permission.
+// ============================================================
+export const ROUTE_PERMISSIONS = {
+  dashboard: "report:shop",
+  pos: "pos:create_sale",
+  sales: "sale:view",
+  shifts: "shift:manage_own",
+  inventory: "inventory:read",
+  transfers: "transfer:view",
+  purchases: "purchase:view",
+  approvals: "approval:view",
+  reports: "report:shop",
+  reportsProfit: "report:profit",
+  catalog: "product:read",
+  adminShops: "shop:create",
+  adminUsers: "user:create",
+  adminProducts: "product:create",
+  adminBarcodes: "barcode:manage",
+  adminSuppliers: "supplier:read",
+  adminPricing: "pricing:manage",
+  adminReports: "report:global",
+  adminAudit: "audit:view_global",
+} as const satisfies Record<string, Permission>;
 
-// Check if user has minimum role level
-export const hasMinRole = (role: Role, minRole: Role) => roleRank[role] >= roleRank[minRole];
+// ============================================================
+// Core permission helpers
+// ============================================================
 
-// ============================================
-// Permission-Based Access Control
-// ============================================
+/** Default permissions for a role (no per-user grants/revokes applied). */
+export function getRolePermissions(role: Role): Permission[] {
+  return DEFAULT_ROLE_PERMISSIONS[role] ?? [];
+}
 
-// Re-export for convenience
-export { hasPermission, getUserPermissions, DEFAULT_ROLE_PERMISSIONS };
+/**
+ * Effective permissions for a user:
+ *   roleDefaults ∪ grantedPermissions − revokedPermissions
+ *
+ * Legacy safety net: a pre-migration user that still has the old replacement
+ * `permissions` field and no grant/deny data keeps the old semantics until
+ * migration 002 backfills grantedPermissions / revokedPermissions.
+ */
+export function getEffectivePermissions(user: User): Permission[] {
+  const noGrantDenyData =
+    user.grantedPermissions === undefined && user.revokedPermissions === undefined;
+  if (noGrantDenyData && (user.permissions?.length ?? 0) > 0) {
+    return [...new Set(user.permissions)];
+  }
 
-// Check if a user can perform a specific action
-export const canUser = (user: User | null, permission: Permission): boolean => {
-  if (!user) return false;
-  if (!user.isActive) return false;
-  return hasPermission(user, permission);
-};
+  const effective = new Set<Permission>(getRolePermissions(user.role));
+  for (const p of user.grantedPermissions ?? []) effective.add(p);
+  for (const p of user.revokedPermissions ?? []) effective.delete(p); // revoke wins
+  return [...effective];
+}
 
-// Check if user has any of the given permissions
-export const canUserAny = (user: User | null, permissions: Permission[]): boolean => {
+/** True if the (active) user holds the given permission. */
+export function hasPermission(user: User | null | undefined, permission: Permission): boolean {
   if (!user || !user.isActive) return false;
-  return permissions.some((p) => hasPermission(user, p));
-};
+  return getEffectivePermissions(user).includes(permission);
+}
 
-// Check if user has all of the given permissions
-export const canUserAll = (user: User | null, permissions: Permission[]): boolean => {
+/** True if the user holds at least one of the given permissions. */
+export function hasAnyPermission(user: User | null | undefined, permissions: Permission[]): boolean {
   if (!user || !user.isActive) return false;
-  return permissions.every((p) => hasPermission(user, p));
-};
+  const effective = getEffectivePermissions(user);
+  return permissions.some((p) => effective.includes(p));
+}
 
-// Permission groups for common actions
-export const PERMISSION_GROUPS = {
-  // Inventory management
-  canManageInventory: ["inventory:read", "inventory:adjust"] as Permission[],
-  canManageStock: ["inventory:read", "inventory:adjust", "inventory:damage"] as Permission[],
+/** True if the user holds every one of the given permissions. */
+export function hasAllPermissions(user: User | null | undefined, permissions: Permission[]): boolean {
+  if (!user || !user.isActive) return false;
+  const effective = getEffectivePermissions(user);
+  return permissions.every((p) => effective.includes(p));
+}
 
-  // Transfer management
-  canCreateTransfer: ["transfer:create"] as Permission[],
-  canApproveTransfer: ["transfer:approve"] as Permission[],
-  canManageTransfers: ["transfer:create", "transfer:approve", "transfer:cancel", "transfer:view"] as Permission[],
+// ============================================================
+// Shop-aware helpers
+// ============================================================
 
-  // POS operations
-  canUsePOS: ["pos:create_sale"] as Permission[],
-  canOverridePrice: ["pos:override_price"] as Permission[],
-  canManageRefunds: ["pos:void_sale", "pos:refund"] as Permission[],
+/**
+ * Whether the user is allowed to act within a given shop.
+ * ADMIN spans all shops; MANAGER / CASHIER / BUYER are limited to their own.
+ */
+export function canAccessShop(user: User | null | undefined, shopId: string): boolean {
+  if (!user || !user.isActive) return false;
+  if (user.role === "ADMIN") return true;
+  return user.shopId === shopId;
+}
 
-  // Supplier & purchasing
-  canManageSuppliers: ["supplier:create", "supplier:read", "supplier:update", "supplier:delete"] as Permission[],
-  canManagePurchases: ["purchase:create", "purchase:approve", "purchase:receive"] as Permission[],
+/**
+ * Permission AND shop scope. Use this for any shop-scoped action — a matching
+ * permission alone is not sufficient.
+ */
+export function hasShopPermission(
+  user: User | null | undefined,
+  permission: Permission,
+  shopId: string
+): boolean {
+  return hasPermission(user, permission) && canAccessShop(user, shopId);
+}
 
-  // Reporting
-  canViewReports: ["report:shop"] as Permission[],
-  canViewAllReports: ["report:shop", "report:global", "report:profit"] as Permission[],
+// ============================================================
+// Workflow-specific helpers (permission + relevant shop scope)
+// ============================================================
 
-  // Admin
-  canManageShops: ["shop:create", "shop:read", "shop:update", "shop:delete"] as Permission[],
-  canManageUsers: ["user:create", "user:read", "user:update", "user:delete"] as Permission[],
-  canManageProducts: ["product:create", "product:read", "product:update", "product:delete", "product:edit_price"] as Permission[],
-};
+export function canVoidSale(user: User | null | undefined, sale: Sale): boolean {
+  return hasShopPermission(user, "pos:void_sale", sale.shopId);
+}
 
-// Quick check helpers
-export const canCreateSale = (user: User | null) => canUser(user, "pos:create_sale");
-export const canApplyDiscount = (user: User | null) => canUser(user, "pos:apply_discount");
-export const canOverridePrice = (user: User | null) => canUser(user, "pos:override_price");
-export const canOverrideStock = (user: User | null) => canUser(user, "pos:override_stock");
-export const canVoidSale = (user: User | null) => canUser(user, "pos:void_sale");
-export const canRefund = (user: User | null) => canUser(user, "pos:refund");
-export const canAdjustInventory = (user: User | null) => canUser(user, "inventory:adjust");
-export const canRecordDamage = (user: User | null) => canUser(user, "inventory:damage");
-export const canCreateTransfer = (user: User | null) => canUser(user, "transfer:create");
-export const canApproveTransfer = (user: User | null) => canUser(user, "transfer:approve");
-export const canViewTransfers = (user: User | null) => canUser(user, "transfer:view");
-export const canEditPrice = (user: User | null) => canUser(user, "product:edit_price");
-export const canViewProfit = (user: User | null) => canUser(user, "report:profit");
-export const canViewGlobalReports = (user: User | null) => canUser(user, "report:global");
-export const canViewAudit = (user: User | null) => canUserAny(user, ["audit:view_shop", "audit:view_global"]);
+export function canRefundSale(user: User | null | undefined, sale: Sale): boolean {
+  return hasShopPermission(user, "pos:refund", sale.shopId);
+}
+
+export function canAdjustInventory(user: User | null | undefined, shopId: string): boolean {
+  return hasShopPermission(user, "inventory:adjust", shopId);
+}
+
+/** Transfer completion is actioned at the source shop. */
+export function canCompleteTransfer(user: User | null | undefined, transfer: StockTransfer): boolean {
+  return hasShopPermission(user, "transfer:approve", transfer.fromShopId);
+}
+
+export function canReceivePurchaseOrder(user: User | null | undefined, po: PurchaseOrder): boolean {
+  return hasShopPermission(user, "purchase:receive", po.shopId);
+}
+
+export function canApprovePurchaseOrder(user: User | null | undefined, po: PurchaseOrder): boolean {
+  return hasShopPermission(user, "purchase:approve", po.shopId);
+}
+
+/**
+ * Price tiers: a global tier (no shopId) needs only the manage permission;
+ * a shop-scoped tier additionally requires access to that shop.
+ */
+export function canManagePriceTier(
+  user: User | null | undefined,
+  priceTierOrShopId: PriceTier | string | undefined
+): boolean {
+  const shopId =
+    typeof priceTierOrShopId === "string" ? priceTierOrShopId : priceTierOrShopId?.shopId;
+  if (!shopId) return hasPermission(user, "pricing:manage");
+  return hasShopPermission(user, "pricing:manage", shopId);
+}

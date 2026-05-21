@@ -14,6 +14,7 @@ import { ProductFinder } from "../components/pos/ProductFinder";
 import { CartPanel } from "../components/pos/CartPanel";
 import { PaymentModal } from "../components/pos/PaymentModal";
 import { calculateCartTotals } from "../features/pos/service";
+import { hasShopPermission } from "../lib/permissions";
 import { getEffectiveShopId, toNumber } from "../lib/utils";
 
 const packLabel = (product: Product) => (product.packSize ? `pack of ${product.packSize}` : undefined);
@@ -27,6 +28,7 @@ export const PosPage = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [cartDiscountPct, setCartDiscountPct] = useState(0);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [overrideItem, setOverrideItem] = useState<CartItem | null>(null);
   const [overridePrice, setOverridePrice] = useState(0);
   const [stockOverrideRequest, setStockOverrideRequest] = useState<{ product: Product; usePack: boolean } | null>(null);
@@ -47,7 +49,8 @@ export const PosPage = () => {
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
   const currentShop = shops.find((s) => s.id === shopId);
   const openShift = shifts.find((shift) => shift.shopId === shopId && shift.cashierId === currentUserId && !shift.endedAt);
-  const canOverride = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
+  const canOverridePrice = hasShopPermission(currentUser, "pos:override_price", shopId);
+  const canOverrideStock = hasShopPermission(currentUser, "pos:override_stock", shopId);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -96,7 +99,7 @@ export const PosPage = () => {
     const unitsPerItem = usePack && product.packSize ? product.packSize : 1;
     const requiresOverride = qtyBase < unitsPerItem;
     if (requiresOverride && !overrideStock) {
-      if (canOverride) {
+      if (canOverrideStock) {
         setStockOverrideRequest({ product, usePack });
       } else {
         toast({ title: "Out of stock", description: "Insufficient stock for this item.", variant: "error" });
@@ -150,6 +153,7 @@ export const PosPage = () => {
   };
 
   const handleCheckout = () => {
+    if (submitting) return;
     if (!currentUser) return;
     if (currentUser.role === "CASHIER" && !openShift) {
       toast({ title: "Shift required", description: "Start a shift before checkout.", variant: "error" });
@@ -158,22 +162,35 @@ export const PosPage = () => {
     setPaymentOpen(true);
   };
 
-  const handlePaymentConfirm = (paymentMethod: "CASH" | "OTHER", paidMmk: number) => {
-    if (!currentUser) return;
-    const shiftId = openShift?.id || startShift({ shopId, cashierId: currentUser.id, openingCashMmk: 0 });
-    const saleId = createSale({
-      shopId,
-      cashierId: currentUser.id,
-      shiftId,
-      cartItems,
-      cartDiscountPct,
-      paymentMethod,
-      paidMmk,
-    });
-    setCartItems([]);
-    setCartDiscountPct(0);
-    setPaymentOpen(false);
-    navigate(`/app/sales/${saleId}`);
+  const handlePaymentConfirm = async (paymentMethod: "CASH" | "OTHER", paidMmk: number) => {
+    if (!currentUser || submitting) return;
+    setSubmitting(true);
+    try {
+      const shiftId =
+        openShift?.id || (await startShift({ shopId, cashierId: currentUser.id, openingCashMmk: 0 }));
+      const saleId = await createSale({
+        shopId,
+        cashierId: currentUser.id,
+        shiftId,
+        cartItems,
+        cartDiscountPct,
+        paymentMethod,
+        paidMmk,
+      });
+      // Clear the cart and open the receipt only after the sale is committed.
+      setCartItems([]);
+      setCartDiscountPct(0);
+      setPaymentOpen(false);
+      navigate(`/app/sales/${saleId}`);
+    } catch (error) {
+      toast({
+        title: "Checkout failed",
+        description: error instanceof Error ? error.message : "Could not complete the sale.",
+        variant: "error",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleOverrideSave = () => {
@@ -276,12 +293,12 @@ export const PosPage = () => {
             onRemove={(id) => setCartItems((items) => items.filter((item) => item.id !== id))}
             onCartDiscountChange={setCartDiscountPct}
             onCheckout={handleCheckout}
-            onOverridePrice={canOverride ? (item) => { setOverrideItem(item); setOverridePrice(item.unitPriceMmk); } : undefined}
+            onOverridePrice={canOverridePrice ? (item) => { setOverrideItem(item); setOverridePrice(item.unitPriceMmk); } : undefined}
           />
         </Card>
       </div>
 
-      <PaymentModal open={paymentOpen} onClose={() => setPaymentOpen(false)} totalMmk={total} onConfirm={handlePaymentConfirm} />
+      <PaymentModal open={paymentOpen} onClose={() => setPaymentOpen(false)} totalMmk={total} onConfirm={handlePaymentConfirm} loading={submitting} />
 
       <Modal
         open={!!overrideItem}

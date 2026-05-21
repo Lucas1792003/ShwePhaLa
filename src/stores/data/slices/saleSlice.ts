@@ -1,9 +1,48 @@
 import type { StateCreator } from "zustand";
 import type { DataState, SaleState, CreateSaleInput } from "../types";
-import type { AuditLog, InventoryMovement, Refund, Sale, SaleItem, StockMovementType } from "../../../types";
-import { makeId, requirePermission } from "../utils";
-import { buildReceiptNo, getDateKey } from "../../../lib/utils";
+import type { AuditLog, Inventory, InventoryMovement, Refund, Sale, SaleItem } from "../../../types";
 import { supabase } from "../../../lib/supabase";
+
+// Shape returned by the complete_sale RPC (keys are already camelCase).
+interface CompleteSaleResult {
+  sale: Sale;
+  items: SaleItem[];
+  movements: InventoryMovement[];
+  inventory: Inventory[];
+  auditLogs: AuditLog[];
+  shopName: string;
+  cashierName: string;
+}
+
+interface ApprovalResult {
+  request: Refund;
+  sale: Sale;
+  movements: InventoryMovement[];
+  inventory: Inventory[];
+  auditLogs: AuditLog[];
+}
+
+interface RequestResult {
+  request: Refund;
+  auditLogs: AuditLog[];
+}
+
+// Merge RPC-returned inventory rows into the current store array.
+const mergeInventory = (current: Inventory[], updates: Inventory[]): Inventory[] => {
+  const result = [...current];
+  for (const u of updates) {
+    const idx = result.findIndex((i) => i.shopId === u.shopId && i.productId === u.productId);
+    if (idx >= 0) result[idx] = { ...result[idx], qtyBaseUnits: u.qtyBaseUnits };
+    else result.push(u);
+  }
+  return result;
+};
+
+const mergeRefundRequest = (current: Refund[], request: Refund): Refund[] => {
+  const exists = current.some((item) => item.id === request.id);
+  if (!exists) return [request, ...current];
+  return current.map((item) => (item.id === request.id ? request : item));
+};
 
 export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set, get) => ({
   sales: [],
@@ -11,339 +50,130 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
   refunds: [],
   refundVoidRequests: [],
 
-  createSale: ({ shopId, cashierId, shiftId, cartItems, cartDiscountPct, paymentMethod, paidMmk }: CreateSaleInput) => {
-    const state = get();
-    requirePermission(state.users, cashierId, "pos:create_sale");
-
-    const shop = state.shops.find((item) => item.id === shopId);
-    const dateKey = getDateKey();
-    const seq = state.sales.filter((sale) => sale.shopId === shopId && sale.receiptNo.includes(dateKey)).length + 1;
-    const receiptNo = buildReceiptNo(shop?.code || "SHOP", dateKey, seq);
-
-    const saleId = makeId("sale");
-    const createdAt = new Date().toISOString();
-
-    const saleItems: SaleItem[] = cartItems.map((item) => {
+  // POS checkout: a single atomic Supabase RPC. The database validates
+  // permission, shop scope, the open shift, stock and overrides, then writes
+  // the sale, items, inventory, movements and audit rows in one transaction.
+  createSale: async ({ shopId, shiftId, cartItems, cartDiscountPct, paymentMethod, paidMmk }: CreateSaleInput) => {
+    // Resolve the per-line unit price (tier pricing / manual override) on the
+    // client; the RPC recomputes every total from these and writes atomically.
+    const items = cartItems.map((item) => {
       const qtyUnits = item.qty * item.unitsPerItem;
-      const tieredPrice = item.priceOverriddenBy
+      const unitPrice = item.priceOverriddenBy
         ? item.unitPriceMmk
-        : get().getProductPrice(item.productId, shopId, qtyUnits);
-      const unitPrice = tieredPrice || item.unitPriceMmk;
-      const itemDiscountPct = item.itemDiscountPct || 0;
-      const lineTotal = Math.round(qtyUnits * unitPrice * (1 - itemDiscountPct / 100));
+        : get().getProductPrice(item.productId, shopId, qtyUnits) || item.unitPriceMmk;
       return {
-        saleId,
-        productId: item.productId,
-        qtyUnits,
-        unitPriceMmk: unitPrice,
-        itemDiscountPct: itemDiscountPct || undefined,
-        lineTotalMmk: lineTotal,
-        priceOverriddenBy: item.priceOverriddenBy,
-        unitLabel: item.unitLabel,
-        unitsPerItem: item.unitsPerItem,
-        stockOverrideBy: item.stockOverrideBy,
+        product_id: item.productId,
+        qty: item.qty,
+        units_per_item: item.unitsPerItem,
+        unit_price_mmk: unitPrice,
+        item_discount_pct: item.itemDiscountPct ?? 0,
+        unit_label: item.unitLabel ?? null,
+        price_overridden: Boolean(item.priceOverriddenBy),
+        stock_override_requested: Boolean(item.stockOverrideBy),
       };
     });
 
-    const subtotal = saleItems.reduce((sum, item) => sum + item.unitPriceMmk * item.qtyUnits, 0);
-    const afterItemDiscount = saleItems.reduce((sum, item) => sum + item.lineTotalMmk, 0);
-    const cartDiscountMmk = Math.round(afterItemDiscount * (cartDiscountPct / 100));
-    const totalMmk = Math.max(0, afterItemDiscount - cartDiscountMmk);
-    const discountMmk = subtotal - totalMmk;
-
-    const sale: Sale = {
-      id: saleId, shopId, shiftId, receiptNo, cashierId, status: "NORMAL",
-      subtotalMmk: subtotal, discountMmk, cartDiscountPct, totalMmk,
-      paymentMethod, paidMmk, changeMmk: Math.max(0, paidMmk - totalMmk), createdAt,
-    };
-
-    const inventory = [...state.inventory];
-    const movements: InventoryMovement[] = [];
-    saleItems.forEach((item) => {
-      const record = inventory.find((inv) => inv.shopId === shopId && inv.productId === item.productId);
-      const qtyBefore = record?.qtyBaseUnits ?? 0;
-      const qtyAfter = qtyBefore - item.qtyUnits;
-      if (record) record.qtyBaseUnits = qtyAfter;
-      movements.unshift({
-        id: makeId("move"), shopId, productId: item.productId,
-        type: "SALE_OUT" as StockMovementType, qtyChange: -item.qtyUnits,
-        qtyBefore, qtyAfter, reason: `Sale ${receiptNo}`,
-        referenceType: "sale", referenceId: saleId, createdBy: cashierId, createdAt,
-      });
+    const { data, error } = await supabase.rpc("complete_sale", {
+      p_shop_id: shopId,
+      p_shift_id: shiftId,
+      p_payment_method: paymentMethod,
+      p_paid_mmk: paidMmk,
+      p_cart_discount_pct: cartDiscountPct,
+      p_items: items,
     });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Checkout returned no data.");
 
-    const auditLogs: AuditLog[] = [];
-    saleItems.forEach((item) => {
-      if (item.priceOverriddenBy) {
-        auditLogs.unshift({
-          id: makeId("audit"), shopId, actorId: item.priceOverriddenBy,
-          actionType: "PRICE_OVERRIDE",
-          message: `Price override for ${item.productId} at MMK ${item.unitPriceMmk}.`,
-          entityType: "Sale", entityId: saleId, createdAt: sale.createdAt,
-        });
-      }
-      if (item.stockOverrideBy) {
-        auditLogs.unshift({
-          id: makeId("audit"), shopId, actorId: item.stockOverrideBy,
-          actionType: "STOCK_OVERRIDE",
-          message: `Sold out-of-stock item ${item.productId}.`,
-          entityType: "Sale", entityId: saleId, createdAt: sale.createdAt,
-        });
-      }
-    });
+    const result = data as CompleteSaleResult;
 
-    set(() => ({
-      sales: [sale, ...state.sales],
-      saleItems: [...saleItems, ...state.saleItems],
-      inventory,
-      movements: [...movements, ...state.movements],
-      auditLogs: [...auditLogs, ...state.auditLogs],
+    // Reconcile local state from the authoritative RPC result.
+    set((state) => ({
+      sales: [result.sale, ...state.sales],
+      saleItems: [...result.items, ...state.saleItems],
+      inventory: mergeInventory(state.inventory, result.inventory),
+      movements: [...result.movements, ...state.movements],
+      auditLogs: [...result.auditLogs, ...state.auditLogs],
     }));
 
-    // Supabase writes (fire and forget)
-    void supabase.from("sales").insert({
-      id: sale.id, shop_id: sale.shopId, shift_id: sale.shiftId, receipt_no: sale.receiptNo,
-      cashier_id: sale.cashierId, status: sale.status, subtotal_mmk: sale.subtotalMmk,
-      discount_mmk: sale.discountMmk, cart_discount_pct: sale.cartDiscountPct,
-      total_mmk: sale.totalMmk, payment_method: sale.paymentMethod,
-      paid_mmk: sale.paidMmk, change_mmk: sale.changeMmk, created_at: sale.createdAt,
-    });
-    void supabase.from("sale_items").insert(
-      saleItems.map((i) => ({
-        sale_id: i.saleId, product_id: i.productId, qty_units: i.qtyUnits,
-        unit_price_mmk: i.unitPriceMmk, item_discount_pct: i.itemDiscountPct,
-        line_total_mmk: i.lineTotalMmk, price_overridden_by: i.priceOverriddenBy,
-        unit_label: i.unitLabel, units_per_item: i.unitsPerItem,
-        stock_override_by: i.stockOverrideBy,
-      }))
-    );
-    void supabase.from("inventory").upsert(
-      movements.map((m) => ({ shop_id: m.shopId, product_id: m.productId, qty_base_units: m.qtyAfter }))
-    );
-    void supabase.from("inventory_movements").insert(
-      movements.map((m) => ({
-        id: m.id, shop_id: m.shopId, product_id: m.productId, type: m.type,
-        qty_change: m.qtyChange, qty_before: m.qtyBefore, qty_after: m.qtyAfter,
-        reason: m.reason, reference_type: m.referenceType, reference_id: m.referenceId,
-        created_by: m.createdBy, created_at: m.createdAt,
-      }))
-    );
-    if (auditLogs.length > 0) {
-      void supabase.from("audit_logs").insert(
-        auditLogs.map((a) => ({
-          id: a.id, shop_id: a.shopId, actor_id: a.actorId, action_type: a.actionType,
-          message: a.message, entity_type: a.entityType, entity_id: a.entityId, created_at: a.createdAt,
-        }))
-      );
-    }
-
-    return saleId;
+    return result.sale.id;
   },
 
-  voidSale: ({ saleId, reason, actorId }) =>
-    set((state) => {
-      requirePermission(state.users, actorId, "pos:void_sale");
+  voidSale: async ({ saleId, reason }) => {
+    const { data, error } = await supabase.rpc("create_refund_void_request", {
+      p_sale_id: saleId,
+      p_type: "VOID",
+      p_reason: reason,
+      p_items: null,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Void request returned no data.");
+    const result = data as RequestResult;
 
-      const sale = state.sales.find((item) => item.id === saleId);
-      if (!sale || sale.status !== "NORMAL") return state;
+    set((state) => ({
+      refunds: mergeRefundRequest(state.refunds, result.request),
+      refundVoidRequests: mergeRefundRequest(state.refundVoidRequests, result.request),
+      auditLogs: [...result.auditLogs, ...state.auditLogs],
+    }));
+  },
 
-      const saleItems = state.saleItems.filter((item) => item.saleId === saleId);
-      const inventory = [...state.inventory];
-      const movements: InventoryMovement[] = [];
-      const createdAt = new Date().toISOString();
+  requestVoid: async ({ saleId, reason }) => {
+    const { data, error } = await supabase.rpc("create_refund_void_request", {
+      p_sale_id: saleId,
+      p_type: "VOID",
+      p_reason: reason,
+      p_items: null,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Void request returned no data.");
+    const result = data as RequestResult;
 
-      saleItems.forEach((item) => {
-        const record = inventory.find((inv) => inv.shopId === sale.shopId && inv.productId === item.productId);
-        const qtyBefore = record?.qtyBaseUnits ?? 0;
-        const qtyAfter = qtyBefore + item.qtyUnits;
-        if (record) {
-          record.qtyBaseUnits = qtyAfter;
-        } else {
-          inventory.push({ shopId: sale.shopId, productId: item.productId, qtyBaseUnits: qtyAfter });
-        }
-        const movement: InventoryMovement = {
-          id: makeId("move"), shopId: sale.shopId, productId: item.productId,
-          type: "RETURN_IN" as StockMovementType, qtyChange: item.qtyUnits,
-          qtyBefore, qtyAfter, reason: `Void sale ${sale.receiptNo}: ${reason}`,
-          referenceType: "sale", referenceId: saleId, createdBy: actorId, createdAt,
-        };
-        movements.unshift(movement);
-      });
+    set((state) => ({
+      refunds: mergeRefundRequest(state.refunds, result.request),
+      refundVoidRequests: mergeRefundRequest(state.refundVoidRequests, result.request),
+      auditLogs: [...result.auditLogs, ...state.auditLogs],
+    }));
+  },
 
-      const updatedSales = state.sales.map((item) =>
-        item.id === saleId ? { ...item, status: "VOID" as const } : item
-      );
+  requestRefund: async ({ saleId, items, reason }) => {
+    const { data, error } = await supabase.rpc("create_refund_void_request", {
+      p_sale_id: saleId,
+      p_type: "PARTIAL",
+      p_reason: reason,
+      p_items: items.map((item) => ({
+        productId: item.productId,
+        qtyUnits: item.qtyUnits,
+        amountMmk: item.amountMmk,
+      })),
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Refund request returned no data.");
+    const result = data as RequestResult;
 
-      const refund: Refund = {
-        id: makeId("refund"), saleId, shopId: sale.shopId,
-        type: "VOID", reason, createdBy: actorId, createdAt, status: "APPROVED",
-      };
+    set((state) => ({
+      refunds: mergeRefundRequest(state.refunds, result.request),
+      refundVoidRequests: mergeRefundRequest(state.refundVoidRequests, result.request),
+      auditLogs: [...result.auditLogs, ...state.auditLogs],
+    }));
+  },
 
-      const audit: AuditLog = {
-        id: makeId("audit"), shopId: sale.shopId, actorId,
-        actionType: "VOID_SALE", message: `Void sale ${sale.receiptNo}. Reason: ${reason}`,
-        entityType: "Sale", entityId: saleId, createdAt,
-      };
+  approveRefund: async ({ refundId }) => {
+    const request = get().refundVoidRequests.find((item) => item.id === refundId) ?? get().refunds.find((item) => item.id === refundId);
+    if (!request) throw new Error("Refund or void request not found.");
 
-      void supabase.from("sales").update({ status: "VOID" }).eq("id", saleId);
-      void supabase.from("refund_void_requests").insert({
-        id: refund.id, sale_id: refund.saleId, shop_id: refund.shopId, type: refund.type,
-        reason: refund.reason, created_by: refund.createdBy, created_at: refund.createdAt,
-        status: refund.status,
-      });
-      void supabase.from("inventory").upsert(
-        movements.map((m) => ({ shop_id: m.shopId, product_id: m.productId, qty_base_units: m.qtyAfter }))
-      );
-      void supabase.from("inventory_movements").insert(
-        movements.map((m) => ({
-          id: m.id, shop_id: m.shopId, product_id: m.productId, type: m.type,
-          qty_change: m.qtyChange, qty_before: m.qtyBefore, qty_after: m.qtyAfter,
-          reason: m.reason, reference_type: m.referenceType, reference_id: m.referenceId,
-          created_by: m.createdBy, created_at: m.createdAt,
-        }))
-      );
-      void supabase.from("audit_logs").insert({
-        id: audit.id, shop_id: audit.shopId, actor_id: audit.actorId,
-        action_type: audit.actionType, message: audit.message,
-        entity_type: audit.entityType, entity_id: audit.entityId, created_at: audit.createdAt,
-      });
+    const rpcName = request.type === "VOID" ? "approve_void_request" : "approve_refund_request";
+    const { data, error } = await supabase.rpc(rpcName, { p_request_id: refundId });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Approval returned no data.");
 
-      return {
-        sales: updatedSales,
-        refunds: [refund, ...state.refunds],
-        refundVoidRequests: [refund, ...state.refundVoidRequests],
-        inventory,
-        movements: [...movements, ...state.movements],
-        auditLogs: [audit, ...state.auditLogs],
-      };
-    }),
+    const result = data as ApprovalResult;
 
-  requestVoid: ({ saleId, reason, actorId }) =>
-    set((state) => {
-      const sale = state.sales.find((item) => item.id === saleId);
-      if (!sale || sale.status !== "NORMAL") return state;
-
-      const refund: Refund = {
-        id: makeId("refund"), saleId, shopId: sale.shopId,
-        type: "VOID", reason, createdBy: actorId,
-        createdAt: new Date().toISOString(), status: "REQUESTED",
-      };
-
-      void supabase.from("refund_void_requests").insert({
-        id: refund.id, sale_id: refund.saleId, shop_id: refund.shopId, type: refund.type,
-        reason: refund.reason, created_by: refund.createdBy, created_at: refund.createdAt,
-        status: refund.status,
-      });
-
-      return {
-        refunds: [refund, ...state.refunds],
-        refundVoidRequests: [refund, ...state.refundVoidRequests],
-      };
-    }),
-
-  requestRefund: ({ saleId, items, reason, actorId }) =>
-    set((state) => {
-      const sale = state.sales.find((item) => item.id === saleId);
-      if (!sale) return state;
-
-      const refund: Refund = {
-        id: makeId("refund"), saleId, shopId: sale.shopId,
-        type: "PARTIAL", reason, createdBy: actorId,
-        createdAt: new Date().toISOString(), items, status: "REQUESTED",
-      };
-
-      void supabase.from("refund_void_requests").insert({
-        id: refund.id, sale_id: refund.saleId, shop_id: refund.shopId, type: refund.type,
-        reason: refund.reason, created_by: refund.createdBy, created_at: refund.createdAt,
-        items: refund.items, status: refund.status,
-      });
-
-      return {
-        refunds: [refund, ...state.refunds],
-        refundVoidRequests: [refund, ...state.refundVoidRequests],
-      };
-    }),
-
-  approveRefund: ({ refundId, approverId }) =>
-    set((state) => {
-      requirePermission(state.users, approverId, "pos:refund");
-
-      const refund = state.refundVoidRequests.find((item) => item.id === refundId) ?? state.refunds.find((item) => item.id === refundId);
-      if (!refund || refund.status === "APPROVED") return state;
-
-      const sale = state.sales.find((item) => item.id === refund.saleId);
-      if (!sale) return state;
-
-      const inventory = [...state.inventory];
-      const movements: InventoryMovement[] = [];
-      const createdAt = new Date().toISOString();
-
-      const createReturnMovement = (productId: string, qtyUnits: number) => {
-        const record = inventory.find((inv) => inv.shopId === sale.shopId && inv.productId === productId);
-        const qtyBefore = record?.qtyBaseUnits ?? 0;
-        const qtyAfter = qtyBefore + qtyUnits;
-        if (record) {
-          record.qtyBaseUnits = qtyAfter;
-        } else {
-          inventory.push({ shopId: sale.shopId, productId, qtyBaseUnits: qtyAfter });
-        }
-        movements.unshift({
-          id: makeId("move"), shopId: sale.shopId, productId,
-          type: "RETURN_IN" as StockMovementType, qtyChange: qtyUnits,
-          qtyBefore, qtyAfter,
-          reason: `${refund.type === "VOID" ? "Void" : "Refund"} approved for ${sale.receiptNo}`,
-          referenceType: "sale", referenceId: refund.saleId, createdBy: approverId, createdAt,
-        });
-      };
-
-      if (refund.type === "VOID") {
-        state.saleItems.filter((item) => item.saleId === sale.id).forEach((item) => createReturnMovement(item.productId, item.qtyUnits));
-      } else if (refund.items) {
-        refund.items.forEach((item) => createReturnMovement(item.productId, item.qtyUnits));
-      }
-
-      const newStatus = refund.type === "VOID" ? ("VOID" as const) : ("REFUNDED" as const);
-      const updatedSales = state.sales.map((item) =>
-        item.id === sale.id ? { ...item, status: newStatus } : item
-      );
-      const updatedRefunds = state.refunds.map((item) =>
-        item.id === refundId ? { ...item, status: "APPROVED" as const } : item
-      );
-      const updatedRequests = state.refundVoidRequests.map((item) =>
-        item.id === refundId ? { ...item, status: "APPROVED" as const } : item
-      );
-
-      const audit: AuditLog = {
-        id: makeId("audit"), shopId: sale.shopId, actorId: approverId,
-        actionType: refund.type === "VOID" ? "VOID_SALE" : "REFUND",
-        message: `${refund.type === "VOID" ? "Void" : "Refund"} approved for ${sale.receiptNo}.`,
-        entityType: "Refund", entityId: refundId, createdAt,
-      };
-
-      void supabase.from("sales").update({ status: newStatus }).eq("id", sale.id);
-      void supabase.from("refund_void_requests").update({ status: "APPROVED" }).eq("id", refundId);
-      void supabase.from("inventory").upsert(
-        movements.map((m) => ({ shop_id: m.shopId, product_id: m.productId, qty_base_units: m.qtyAfter }))
-      );
-      void supabase.from("inventory_movements").insert(
-        movements.map((m) => ({
-          id: m.id, shop_id: m.shopId, product_id: m.productId, type: m.type,
-          qty_change: m.qtyChange, qty_before: m.qtyBefore, qty_after: m.qtyAfter,
-          reason: m.reason, reference_type: m.referenceType, reference_id: m.referenceId,
-          created_by: m.createdBy, created_at: m.createdAt,
-        }))
-      );
-      void supabase.from("audit_logs").insert({
-        id: audit.id, shop_id: audit.shopId, actor_id: audit.actorId,
-        action_type: audit.actionType, message: audit.message,
-        entity_type: audit.entityType, entity_id: audit.entityId, created_at: audit.createdAt,
-      });
-
-      return {
-        refunds: updatedRefunds, refundVoidRequests: updatedRequests,
-        sales: updatedSales, inventory,
-        movements: [...movements, ...state.movements],
-        auditLogs: [audit, ...state.auditLogs],
-      };
-    }),
+    set((state) => ({
+      refunds: mergeRefundRequest(state.refunds, result.request),
+      refundVoidRequests: mergeRefundRequest(state.refundVoidRequests, result.request),
+      sales: state.sales.map((sale) => (sale.id === result.sale.id ? result.sale : sale)),
+      inventory: mergeInventory(state.inventory, result.inventory),
+      movements: [...result.movements, ...state.movements],
+      auditLogs: [...result.auditLogs, ...state.auditLogs],
+    }));
+  },
 });

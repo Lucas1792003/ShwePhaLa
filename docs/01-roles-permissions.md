@@ -2,13 +2,19 @@
 
 ## Overview
 
-The system uses a **permission-based access control** model. Each user has a role that provides default permissions, but individual users can have **custom permission overrides** for fine-grained control.
+The system uses **granular permission-based access control**. Each user has a
+role that provides a set of default permissions; individual users may also have
+**grant** and **revoke** overrides for fine-grained control.
+
+The granular permissions (e.g. `pos:create_sale`) are the **single source of
+truth**. The old coarse permission system has been removed. The central registry lives in `src/lib/permissions.ts`, and
+the permission list + role defaults in `src/types/domain.ts`.
 
 ## Roles
 
 | Role | Description | Shop Scope |
 |------|-------------|------------|
-| **ADMIN** | Full system access, can manage all shops | Multi-shop access |
+| **ADMIN** | Full system access, every permission, all shops | Multi-shop access |
 | **MANAGER** | Shop-level management and operations | Assigned shop only |
 | **CASHIER** | POS operations and basic views | Assigned shop only |
 | **BUYER** | Read-only catalog access | N/A |
@@ -39,6 +45,7 @@ The system uses a **permission-based access control** model. Each user has a rol
 | `product:update` | Edit product details | ✅ | ✅ | ❌ | ❌ |
 | `product:delete` | Delete products | ✅ | ❌ | ❌ | ❌ |
 | `product:edit_price` | Change product prices | ✅ | ✅ | ❌ | ❌ |
+| `barcode:manage` | Manage product barcodes | ✅ | ❌ | ❌ | ❌ |
 
 ### Inventory Management
 | Permission | Description | Admin | Manager | Cashier | Buyer |
@@ -51,7 +58,7 @@ The system uses a **permission-based access control** model. Each user has a rol
 | Permission | Description | Admin | Manager | Cashier | Buyer |
 |------------|-------------|:-----:|:-------:|:-------:|:-----:|
 | `transfer:create` | Create transfer requests | ✅ | ✅ | ❌ | ❌ |
-| `transfer:approve` | Approve/reject transfers | ✅ | ✅ | ❌ | ❌ |
+| `transfer:approve` | Approve / reject / complete transfers | ✅ | ✅ | ❌ | ❌ |
 | `transfer:cancel` | Cancel pending transfers | ✅ | ❌ | ❌ | ❌ |
 | `transfer:view` | View transfer history | ✅ | ✅ | ✅ | ❌ |
 
@@ -64,6 +71,7 @@ The system uses a **permission-based access control** model. Each user has a rol
 | `pos:override_stock` | Sell without stock check | ✅ | ✅ | ❌ | ❌ |
 | `pos:void_sale` | Void completed sales | ✅ | ✅ | ❌ | ❌ |
 | `pos:refund` | Process refunds | ✅ | ✅ | ❌ | ❌ |
+| `sale:view` | View sales history | ✅ | ✅ | ✅ | ❌ |
 
 ### Suppliers & Purchasing
 | Permission | Description | Admin | Manager | Cashier | Buyer |
@@ -75,11 +83,22 @@ The system uses a **permission-based access control** model. Each user has a rol
 | `purchase:create` | Create purchase orders | ✅ | ✅ | ❌ | ❌ |
 | `purchase:approve` | Approve purchase orders | ✅ | ❌ | ❌ | ❌ |
 | `purchase:receive` | Receive stock from PO | ✅ | ✅ | ❌ | ❌ |
+| `purchase:view` | View purchase orders | ✅ | ✅ | ❌ | ❌ |
+
+### Pricing
+| Permission | Description | Admin | Manager | Cashier | Buyer |
+|------------|-------------|:-----:|:-------:|:-------:|:-----:|
+| `pricing:manage` | Manage tier pricing | ✅ | ❌ | ❌ | ❌ |
+
+### Approvals
+| Permission | Description | Admin | Manager | Cashier | Buyer |
+|------------|-------------|:-----:|:-------:|:-------:|:-----:|
+| `approval:view` | View the approvals queue | ✅ | ✅ | ❌ | ❌ |
 
 ### Shifts
 | Permission | Description | Admin | Manager | Cashier | Buyer |
 |------------|-------------|:-----:|:-------:|:-------:|:-----:|
-| `shift:manage_own` | Start/end own shifts | ✅ | ✅ | ✅ | ❌ |
+| `shift:manage_own` | Start / end own shifts | ✅ | ✅ | ✅ | ❌ |
 | `shift:manage_all` | Manage all shifts | ✅ | ✅ | ❌ | ❌ |
 | `shift:verify` | Verify shift cash counts | ✅ | ✅ | ❌ | ❌ |
 
@@ -96,73 +115,91 @@ The system uses a **permission-based access control** model. Each user has a rol
 | `audit:view_shop` | View shop audit log | ✅ | ✅ | ❌ | ❌ |
 | `audit:view_global` | View global audit log | ✅ | ❌ | ❌ | ❌ |
 
-## Shop Scoping
+## Effective Permissions — Grant / Revoke Model
 
-- **Admin**: Can switch between shops from the top navigation bar. Has access to global views and reports.
-- **Manager**: Locked to their assigned shop. All views and operations are shop-scoped.
-- **Cashier**: Locked to their assigned shop. Limited to POS and basic inventory views.
-- **Buyer**: No shop assignment. Read-only access to the product catalog.
+A user's permissions are no longer a flat replacement list. The effective set is
+computed as:
 
-## Custom Permissions
+```
+effective = roleDefaults  ∪  grantedPermissions  −  revokedPermissions
+```
 
-Individual users can have **custom permission overrides** that grant or restrict access beyond their default role:
+- **Role defaults** come from `DEFAULT_ROLE_PERMISSIONS`.
+- **`grantedPermissions`** add access on top of the role default.
+- **`revokedPermissions`** remove access — **a revoke always wins** over a role
+  default and over a grant.
 
 ```typescript
 interface User {
-  id: string;
   role: Role;
-  permissions?: Permission[]; // Optional custom permissions
+  grantedPermissions?: Permission[]; // additive
+  revokedPermissions?: Permission[]; // explicit denials (win over grant + default)
+  permissions?: Permission[];        // @deprecated legacy replacement list
   // ...
 }
 ```
 
-When checking permissions:
-1. If `user.permissions` array exists and has items, use those permissions
-2. Otherwise, fall back to default role permissions
+This allows, for example, granting one Cashier `transfer:approve` without
+changing their role, or revoking `pos:void_sale` from a specific Manager.
 
-This allows:
-- Promoting a Cashier to approve specific transfers without changing their role
-- Restricting a Manager from voiding sales in specific cases
-- Creating custom roles with specific permission sets
+> **Legacy note:** the old `permissions` field used *replacement* semantics
+> (if set, it replaced the role defaults entirely). It is kept only for
+> migration safety — `migrations/002_rbac_permissions.sql` converts any existing
+> `permissions` into equivalent `granted`/`revoked` values.
+
+## Shop Scoping
+
+A matching permission is **not sufficient** for a shop-scoped action — the user
+must also be allowed to act within the target shop.
+
+- **Admin**: spans all shops; can switch shop from the top bar.
+- **Manager / Cashier**: locked to their assigned `shopId`.
+- **Buyer**: no shop assignment; read-only catalog.
+
+Server-side, `requirePermission(users, actorId, permission, shopId?)` enforces
+the shop scope when `shopId` is supplied (used by the transfer and purchase
+slices).
 
 ## Permission Helper Functions
 
-The system provides helper functions for permission checks:
+Helpers live in `src/lib/permissions.ts` (the central registry):
 
 ```typescript
-import { canUser, canUserAny, canUserAll } from "@/lib/permissions";
+import { hasPermission, hasShopPermission, canVoidSale } from "@/lib/permissions";
 
-// Check single permission
-if (canUser(user, "pos:void_sale")) { ... }
-
-// Check if user has ANY of these permissions
-if (canUserAny(user, ["pos:void_sale", "pos:refund"])) { ... }
-
-// Check if user has ALL of these permissions
-if (canUserAll(user, ["inventory:adjust", "inventory:damage"])) { ... }
+hasPermission(user, "pos:void_sale");                 // permission only
+hasShopPermission(user, "inventory:adjust", shopId);  // permission + shop scope
+canVoidSale(user, sale);                              // workflow helper
 ```
 
-Quick check helpers are also available:
-- `canCreateSale(user)` - Check `pos:create_sale`
-- `canApplyDiscount(user)` - Check `pos:apply_discount`
-- `canOverridePrice(user)` - Check `pos:override_price`
-- `canVoidSale(user)` - Check `pos:void_sale`
-- `canRefund(user)` - Check `pos:refund`
-- `canAdjustInventory(user)` - Check `inventory:adjust`
-- `canRecordDamage(user)` - Check `inventory:damage`
-- `canCreateTransfer(user)` - Check `transfer:create`
-- `canApproveTransfer(user)` - Check `transfer:approve`
-- `canViewTransfers(user)` - Check `transfer:view`
-- `canEditPrice(user)` - Check `product:edit_price`
-- `canViewProfit(user)` - Check `report:profit`
-- `canViewGlobalReports(user)` - Check `report:global`
-- `canViewAudit(user)` - Check `audit:view_shop` or `audit:view_global`
+**Core:** `getRolePermissions`, `getEffectivePermissions`, `hasPermission`,
+`hasAnyPermission`, `hasAllPermissions`
+
+**Shop-aware:** `canAccessShop(user, shopId)`,
+`hasShopPermission(user, permission, shopId)`
+
+**Workflow** (check permission *and* the relevant shop scope):
+`canVoidSale`, `canRefundSale`, `canAdjustInventory`, `canCompleteTransfer`,
+`canReceivePurchaseOrder`, `canApprovePurchaseOrder`, `canManagePriceTier`
+
+**Registry:** `ALL_PERMISSIONS` (every permission), `ROUTE_PERMISSIONS` (route to permission map used by the router guard and the sidebar).
+
+## SQL Helpers And RLS
+
+`migrations/003_identity_rls_helpers.sql` adds identity-aware SQL functions that
+mirror this model for Row Level Security policies and SECURITY DEFINER RPCs:
+`current_app_user()`, `app_role()`, `app_shop_id()`, `app_has_perm(perm)`,
+`app_can_for_shop(perm, shop_id)`.
+
+RLS is now active for protected operational tables. Direct authenticated writes to sales, inventory, shifts, audit logs, purchase/transfer status rows, refund/void requests, and reprint logs are blocked; those workflows use RPCs.
 
 ## Permission Count Summary
 
 | Role | Total Permissions |
 |------|-------------------|
-| Admin | 37 (full access) |
-| Manager | 24 |
-| Cashier | 7 |
+| Admin | 46 (full access) |
+| Manager | 29 |
+| Cashier | 8 |
 | Buyer | 1 |
+
+

@@ -83,7 +83,7 @@ export const PricingPage = () => {
     setShowModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.productId || form.minQty < 1 || form.priceMmk < 0) {
       alert("Please fill all required fields");
       return;
@@ -102,22 +102,33 @@ export const PricingPage = () => {
       createdBy: editingTier?.createdBy ?? currentUserId,
     };
 
-    if (editingTier) {
-      updatePriceTier(tierData);
-    } else {
-      addPriceTier(tierData);
-    }
-    setShowModal(false);
-  };
-
-  const handleDelete = (tierId: string) => {
-    if (confirm("Are you sure you want to delete this price tier?")) {
-      deletePriceTier(tierId);
+    try {
+      if (editingTier) {
+        await updatePriceTier(tierData);
+      } else {
+        await addPriceTier(tierData);
+      }
+      setShowModal(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to save price tier");
     }
   };
 
-  const toggleActive = (tier: PriceTier) => {
-    updatePriceTier({ ...tier, isActive: !tier.isActive });
+  const handleDelete = async (tierId: string) => {
+    if (!confirm("Are you sure you want to delete this price tier?")) return;
+    try {
+      await deletePriceTier(tierId);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to delete price tier");
+    }
+  };
+
+  const toggleActive = async (tier: PriceTier) => {
+    try {
+      await updatePriceTier({ ...tier, isActive: !tier.isActive });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to update price tier");
+    }
   };
 
   return (

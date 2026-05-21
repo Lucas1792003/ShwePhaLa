@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDataStore } from "../stores/dataStore";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Card } from "../components/ui/Card";
@@ -14,6 +14,30 @@ export const ShopsPage = () => {
   const [code, setCode] = useState("");
   const [address, setAddress] = useState("");
 
+  // Derive a short, unique shop code from the name (used as the receipt prefix).
+  const generateShopCode = (shopName: string): string => {
+    const words = shopName.trim().split(/\s+/).filter(Boolean);
+    let base =
+      words.length >= 2
+        ? words.map((w) => w[0]).join("").replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 4)
+        : shopName.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 3);
+    if (base.length < 2) base = "SHP";
+    const taken = new Set(
+      shops.filter((s) => s.id !== editingId).map((s) => s.code.toUpperCase())
+    );
+    if (!taken.has(base)) return base;
+    let n = 2;
+    while (taken.has(`${base}${n}`)) n += 1;
+    return `${base}${n}`;
+  };
+
+  // Auto-generate the code when the name changes (new shops only).
+  useEffect(() => {
+    if (!editingId && name.trim()) setCode(generateShopCode(name));
+    if (!editingId && !name.trim()) setCode("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, editingId]);
+
   const resetForm = () => {
     setEditingId(null);
     setName("");
@@ -21,22 +45,26 @@ export const ShopsPage = () => {
     setAddress("");
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name || !code) return;
-    if (editingId) {
-      const existingShop = shops.find((s) => s.id === editingId);
-      updateShop({
-        id: editingId,
-        name,
-        code,
-        address,
-        isActive: existingShop?.isActive ?? true,
-        createdAt: existingShop?.createdAt ?? new Date().toISOString()
-      });
-    } else {
-      addShop({ id: `shop-${Date.now()}`, name, code, address, isActive: true, createdAt: new Date().toISOString() });
+    try {
+      if (editingId) {
+        const existingShop = shops.find((s) => s.id === editingId);
+        await updateShop({
+          id: editingId,
+          name,
+          code,
+          address,
+          isActive: existingShop?.isActive ?? true,
+          createdAt: existingShop?.createdAt ?? new Date().toISOString(),
+        });
+      } else {
+        await addShop({ id: `shop-${Date.now()}`, name, code, address, isActive: true, createdAt: new Date().toISOString() });
+      }
+      resetForm();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to save shop");
     }
-    resetForm();
   };
 
   const handleEdit = (id: string) => {
@@ -54,7 +82,6 @@ export const ShopsPage = () => {
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         <div className="space-y-3">
           <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Shop name" />
-          <Input value={code} onChange={(event) => setCode(event.target.value)} placeholder="Shop code" />
           <Input value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Address" />
           <div className="flex gap-2">
             <Button onClick={handleSubmit}>{editingId ? "Update" : "Create"}</Button>

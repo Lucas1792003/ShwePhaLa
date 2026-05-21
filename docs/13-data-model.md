@@ -1,10 +1,14 @@
 # Data Model
 
+This document describes the TypeScript domain model in `src/types/domain.ts`.
+Database rows use `snake_case`; Zustand state uses these `camelCase` types.
+
 ## Core Entities
 
 ### Shop
-```typescript
-Shop {
+
+```ts
+interface Shop {
   id: string;
   code: string;
   name: string;
@@ -17,51 +21,50 @@ Shop {
 ```
 
 ### User
-```typescript
-User {
+
+```ts
+interface User {
   id: string;
+  authId?: string;
   name: string;
   email?: string;
   role: "ADMIN" | "MANAGER" | "CASHIER" | "BUYER";
   shopId?: string;
-  permissions?: Permission[];  // Custom permissions override
+  grantedPermissions?: Permission[];
+  revokedPermissions?: Permission[];
+  permissions?: Permission[]; // deprecated legacy field
   isActive: boolean;
   createdAt: string;
 }
 ```
 
-### Category
-```typescript
-Category {
-  id: string;
-  name: string;
-  color: "amber" | "red" | "green" | "blue" | "purple" | "slate";
-  isActive: boolean;
-  createdAt: string;
-}
-```
+Effective permissions are role defaults plus grants minus revokes. See
+[01-roles-permissions.md](./01-roles-permissions.md).
 
 ### Product
-```typescript
-Product {
+
+```ts
+interface Product {
   id: string;
   sku?: string;
   name: string;
-  category: string;           // Dynamic category (references Category.name)
+  category: string;
   unitType: "piece" | "box" | "kg" | "liter" | "pack";
   priceMmk: number;
   costMmk?: number;
   packSize?: number;
   lowStockThreshold: number;
   expiryDate?: string;
+  imageUrl?: string;
   isActive: boolean;
   createdAt: string;
 }
 ```
 
 ### ProductBarcode
-```typescript
-ProductBarcode {
+
+```ts
+interface ProductBarcode {
   id: string;
   productId: string;
   value: string;
@@ -69,167 +72,48 @@ ProductBarcode {
 }
 ```
 
-## Inventory & Stock Movement
+SKU is the primary catalog code. `ProductBarcode` still exists for optional
+scan-code mappings, and POS barcode scan resolves through `product_barcodes`.
+
+## Inventory
 
 ### Inventory
-```typescript
-Inventory {
+
+```ts
+interface Inventory {
   shopId: string;
   productId: string;
   qtyBaseUnits: number;
-  storageLocation?: string;
-  lastCountedAt?: string;
 }
 ```
 
-### InventoryMovement (Ledger-Based)
-Every stock change MUST create a movement record for full traceability.
+The database table is `inventory`.
 
-```typescript
-InventoryMovement {
+### InventoryMovement
+
+```ts
+interface InventoryMovement {
   id: string;
   shopId: string;
   productId: string;
   type: StockMovementType;
-  qtyChange: number;      // Positive = IN, Negative = OUT
-  qtyBefore: number;      // Stock level before movement
-  qtyAfter: number;       // Stock level after movement
+  qtyChange: number;
+  qtyBefore: number;
+  qtyAfter: number;
   reason: string;
   referenceType?: "sale" | "transfer" | "purchase" | "adjustment" | "damage";
-  referenceId?: string;   // ID of related document
+  referenceId?: string;
   createdBy: string;
   createdAt: string;
 }
 ```
 
-### StockMovementType
-```typescript
-type StockMovementType =
-  | "PURCHASE_IN"    // Stock received from supplier
-  | "SALE_OUT"       // Stock sold to customer
-  | "TRANSFER_OUT"   // Stock sent to another shop
-  | "TRANSFER_IN"    // Stock received from another shop
-  | "ADJUSTMENT"     // Manual stock correction
-  | "DAMAGE"         // Damaged/expired stock write-off
-  | "RETURN_IN"      // Customer return
-  | "RETURN_OUT";    // Return to supplier
-```
+All inventory-moving workflows write movement rows through RPCs.
 
-## Stock Transfers (Inter-Shop)
+## Sales
 
-### StockTransfer
-```typescript
-StockTransfer {
-  id: string;
-  transferNo: string;           // Format: TRF-YYYYMMDD-NNNN
-  fromShopId: string;
-  toShopId: string;
-  status: "PENDING" | "APPROVED" | "COMPLETED" | "CANCELED" | "REJECTED";
-  notes?: string;
-  createdBy: string;
-  createdAt: string;
-  approvedBy?: string;
-  approvedAt?: string;
-  completedAt?: string;
-  canceledBy?: string;
-  canceledAt?: string;
-  cancelReason?: string;
-}
-```
-
-### StockTransferItem
-```typescript
-StockTransferItem {
-  id: string;
-  transferId: string;
-  productId: string;
-  requestedQty: number;
-  approvedQty?: number;
-  transferredQty?: number;
-}
-```
-
-## Suppliers & Purchasing
-
-### Supplier
-```typescript
-Supplier {
-  id: string;
-  code: string;
-  name: string;
-  contactPerson?: string;
-  phone?: string;
-  email?: string;
-  address?: string;
-  notes?: string;
-  isActive: boolean;
-  createdAt: string;
-}
-```
-
-### PurchaseOrder
-```typescript
-PurchaseOrder {
-  id: string;
-  orderNo: string;              // Format: PO-YYYYMMDD-NNNN
-  shopId: string;
-  supplierId: string;
-  status: "DRAFT" | "SUBMITTED" | "APPROVED" | "RECEIVED" | "CANCELED";
-  subtotalMmk: number;
-  taxMmk?: number;
-  totalMmk: number;
-  notes?: string;
-  createdBy: string;
-  createdAt: string;
-  approvedBy?: string;
-  approvedAt?: string;
-  receivedBy?: string;
-  receivedAt?: string;
-}
-```
-
-### PurchaseOrderItem
-```typescript
-PurchaseOrderItem {
-  id: string;
-  purchaseOrderId: string;
-  productId: string;
-  orderedQty: number;
-  receivedQty?: number;
-  unitCostMmk: number;
-  lineTotalMmk: number;
-}
-```
-
-## Tier-Based Pricing
-
-### PriceTier
-```typescript
-PriceTier {
-  id: string;
-  productId: string;
-  shopId?: string;       // null = applies to all shops
-  minQty: number;        // Minimum quantity for this tier
-  maxQty?: number;       // Maximum quantity (null = unlimited)
-  priceMmk: number;
-  isActive: boolean;
-  createdAt: string;
-  createdBy: string;
-}
-```
-
-**Example pricing tiers:**
-| Qty Range | Price/Unit |
-|-----------|------------|
-| 1-9       | MMK 2,200  |
-| 10-23     | MMK 2,100  |
-| 24+       | MMK 1,900  |
-
-## POS & Sales
-
-### Shift
-```typescript
-Shift {
+```ts
+interface Shift {
   id: string;
   shopId: string;
   cashierId: string;
@@ -239,12 +123,10 @@ Shift {
   closingCashMmk?: number;
   expectedCashMmk?: number;
   varianceMmk?: number;
+  varianceReason?: string;
 }
-```
 
-### Sale
-```typescript
-Sale {
+interface Sale {
   id: string;
   shopId: string;
   shiftId: string;
@@ -260,11 +142,8 @@ Sale {
   changeMmk: number;
   createdAt: string;
 }
-```
 
-### SaleItem
-```typescript
-SaleItem {
+interface SaleItem {
   saleId: string;
   productId: string;
   qtyUnits: number;
@@ -278,11 +157,10 @@ SaleItem {
 }
 ```
 
-## Refunds & Voids
+## Refund / Void Requests
 
-### RefundVoidRequest
-```typescript
-RefundVoidRequest {
+```ts
+interface RefundVoidRequest {
   id: string;
   saleId: string;
   shopId: string;
@@ -291,15 +169,58 @@ RefundVoidRequest {
   createdBy: string;
   createdAt: string;
   items?: { productId: string; qtyUnits: number; amountMmk: number }[];
-  status?: "REQUESTED" | "APPROVED";
+  status?: "REQUESTED" | "APPROVED" | "REJECTED";
 }
 ```
 
-## Audit & Logging
+The store aliases this type as `Refund` for UI compatibility, but the database
+table is `refund_void_requests`.
 
-### AuditLog
-```typescript
-AuditLog {
+## Purchasing And Transfers
+
+```ts
+interface PurchaseOrder {
+  id: string;
+  orderNo: string;
+  shopId: string;
+  supplierId: string;
+  status: "DRAFT" | "SUBMITTED" | "APPROVED" | "RECEIVED" | "CANCELED";
+  subtotalMmk: number;
+  taxMmk?: number;
+  totalMmk: number;
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  receivedBy?: string;
+  receivedAt?: string;
+}
+
+interface StockTransfer {
+  id: string;
+  transferNo: string;
+  fromShopId: string;
+  toShopId: string;
+  status: "PENDING" | "APPROVED" | "COMPLETED" | "CANCELED" | "REJECTED";
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  completedAt?: string;
+  canceledBy?: string;
+  canceledAt?: string;
+  cancelReason?: string;
+}
+```
+
+Item rows live in `purchase_order_items` and `stock_transfer_items`.
+
+## Audit And Reprints
+
+```ts
+interface AuditLog {
   id: string;
   shopId?: string;
   actorId: string;
@@ -309,11 +230,8 @@ AuditLog {
   entityId: string;
   createdAt: string;
 }
-```
 
-### ReprintLog
-```typescript
-ReprintLog {
+interface ReprintLog {
   id: string;
   saleId: string;
   printedBy: string;
@@ -321,40 +239,28 @@ ReprintLog {
 }
 ```
 
-## Numbering Formats
+Direct client writes to `audit_logs` are locked down; audit rows are written by
+RPCs.
 
-| Document | Format | Example |
-|----------|--------|---------|
-| Receipt | `{SHOP_CODE}-{YYYYMMDD}-{SEQ}` | `A-20260107-0002` |
-| Transfer | `TRF-{YYYYMMDD}-{SEQ}` | `TRF-20260107-0001` |
-| Purchase Order | `PO-{YYYYMMDD}-{SEQ}` | `PO-20260107-0001` |
+## Relationships
 
-## Entity Relationships
+```text
+Shop 1--N User
+Shop 1--N Inventory
+Shop 1--N Shift
+Shop 1--N Sale
+Shop 1--N PurchaseOrder
+Shop 1--N StockTransfer (source or destination)
 
-```
-Shop 1──N User
-Shop 1──N Inventory
-Shop 1──N Shift
-Shop 1──N Sale
-Shop 1──N StockTransfer (from/to)
-Shop 1──N PurchaseOrder
+Product 1--N ProductBarcode
+Product 1--N Inventory
+Product 1--N SaleItem
+Product 1--N PurchaseOrderItem
+Product 1--N StockTransferItem
+Product 1--N PriceTier
 
-Category 1──N Product (via category name)
-
-Product 1──N ProductBarcode
-Product 1──N Inventory
-Product 1──N PriceTier
-Product 1──N SaleItem
-Product 1──N StockTransferItem
-Product 1──N PurchaseOrderItem
-
-Supplier 1──N PurchaseOrder
-
-Sale 1──N SaleItem
-Sale 1──N RefundVoidRequest
-
-Shift 1──N Sale
-
-StockTransfer 1──N StockTransferItem
-PurchaseOrder 1──N PurchaseOrderItem
+Sale 1--N SaleItem
+Sale 1--N RefundVoidRequest
+PurchaseOrder 1--N PurchaseOrderItem
+StockTransfer 1--N StockTransferItem
 ```

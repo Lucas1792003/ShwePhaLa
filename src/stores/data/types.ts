@@ -75,10 +75,10 @@ export interface AdjustStockInput {
 export interface ShopState {
   shops: Shop[];
   users: User[];
-  addShop: (shop: Shop) => void;
-  updateShop: (shop: Shop) => void;
-  addUser: (user: User) => void;
-  updateUser: (user: User) => void;
+  addShop: (shop: Shop) => Promise<void>;
+  updateShop: (shop: Shop) => Promise<void>;
+  addUser: (user: User) => Promise<void>;
+  updateUser: (user: User) => Promise<void>;
 }
 
 export interface CategoryState {
@@ -99,15 +99,15 @@ export interface ProductState {
 export interface InventoryState {
   inventory: Inventory[];
   movements: InventoryMovement[];
-  adjustStock: (input: AdjustStockInput) => void;
-  recordDamage: (input: { shopId: string; productId: string; qty: number; reason: string; actorId: string }) => void;
+  adjustStock: (input: AdjustStockInput) => Promise<void>;
+  recordDamage: (input: { shopId: string; productId: string; qty: number; reason: string; actorId: string }) => Promise<void>;
   getInventoryQty: (shopId: string, productId: string) => number;
 }
 
 export interface ShiftState {
   shifts: Shift[];
-  startShift: (input: { shopId: string; cashierId: string; openingCashMmk: number }) => string;
-  endShift: (input: { shiftId: string; closingCashMmk: number }) => void;
+  startShift: (input: { shopId: string; cashierId: string; openingCashMmk: number }) => Promise<string>;
+  endShift: (input: { shiftId: string; closingCashMmk: number; varianceReason?: string }) => Promise<void>;
   requireShiftForCashier: (shopId: string, cashierId: string) => Shift | undefined;
 }
 
@@ -116,21 +116,21 @@ export interface SaleState {
   saleItems: SaleItem[];
   refunds: Refund[];
   refundVoidRequests: Refund[];
-  createSale: (input: CreateSaleInput) => string;
-  voidSale: (input: { saleId: string; reason: string; actorId: string }) => void;
-  requestVoid: (input: { saleId: string; reason: string; actorId: string }) => void;
-  requestRefund: (input: { saleId: string; items: RefundItemInput[]; reason: string; actorId: string }) => void;
-  approveRefund: (input: { refundId: string; approverId: string }) => void;
+  createSale: (input: CreateSaleInput) => Promise<string>;
+  voidSale: (input: { saleId: string; reason: string; actorId: string }) => Promise<void>;
+  requestVoid: (input: { saleId: string; reason: string; actorId: string }) => Promise<void>;
+  requestRefund: (input: { saleId: string; items: RefundItemInput[]; reason: string; actorId: string }) => Promise<void>;
+  approveRefund: (input: { refundId: string; approverId: string }) => Promise<void>;
 }
 
 export interface TransferState {
   stockTransfers: StockTransfer[];
   stockTransferItems: StockTransferItem[];
-  createTransfer: (input: CreateTransferInput) => string;
-  approveTransfer: (input: { transferId: string; approverId: string; approvedItems?: { productId: string; approvedQty: number }[] }) => void;
-  rejectTransfer: (input: { transferId: string; actorId: string; reason: string }) => void;
-  completeTransfer: (input: { transferId: string; actorId: string }) => void;
-  cancelTransfer: (input: { transferId: string; actorId: string; reason: string }) => void;
+  createTransfer: (input: CreateTransferInput) => Promise<string>;
+  approveTransfer: (input: { transferId: string; approverId: string; approvedItems?: { productId: string; approvedQty: number }[] }) => Promise<void>;
+  rejectTransfer: (input: { transferId: string; actorId: string; reason: string }) => Promise<void>;
+  completeTransfer: (input: { transferId: string; actorId: string }) => Promise<void>;
+  cancelTransfer: (input: { transferId: string; actorId: string; reason: string }) => Promise<void>;
   getTransfersByShop: (shopId: string) => StockTransfer[];
   getPendingTransfersForApproval: (shopId: string) => StockTransfer[];
 }
@@ -139,27 +139,27 @@ export interface PurchaseState {
   suppliers: Supplier[];
   purchaseOrders: PurchaseOrder[];
   purchaseOrderItems: PurchaseOrderItem[];
-  addSupplier: (supplier: Supplier) => void;
-  updateSupplier: (supplier: Supplier) => void;
-  createPurchaseOrder: (input: CreatePurchaseOrderInput) => string;
-  approvePurchaseOrder: (input: { purchaseOrderId: string; approverId: string }) => void;
-  receivePurchaseOrder: (input: { purchaseOrderId: string; receiverId: string; receivedItems: { productId: string; receivedQty: number }[] }) => void;
-  cancelPurchaseOrder: (input: { purchaseOrderId: string; actorId: string }) => void;
+  addSupplier: (supplier: Supplier) => Promise<void>;
+  updateSupplier: (supplier: Supplier) => Promise<void>;
+  createPurchaseOrder: (input: CreatePurchaseOrderInput) => Promise<string>;
+  approvePurchaseOrder: (input: { purchaseOrderId: string; approverId: string }) => Promise<void>;
+  receivePurchaseOrder: (input: { purchaseOrderId: string; receiverId: string; receivedItems: { productId: string; receivedQty: number }[] }) => Promise<void>;
+  cancelPurchaseOrder: (input: { purchaseOrderId: string; actorId: string }) => Promise<void>;
 }
 
 export interface PricingState {
   priceTiers: PriceTier[];
-  addPriceTier: (tier: PriceTier) => void;
-  updatePriceTier: (tier: PriceTier) => void;
-  deletePriceTier: (tierId: string) => void;
+  addPriceTier: (tier: PriceTier) => Promise<void>;
+  updatePriceTier: (tier: PriceTier) => Promise<void>;
+  deletePriceTier: (tierId: string) => Promise<void>;
   getProductPrice: (productId: string, shopId: string, qty: number) => number;
 }
 
 export interface AuditState {
   auditLogs: AuditLog[];
   reprintLogs: { id: string; saleId: string; printedBy: string; printedAt: string }[];
-  addAuditLog: (log: AuditLog) => void;
-  addReprintLog: (input: { saleId: string; actorId: string }) => void;
+  addAuditLog: (log: AuditLog) => Promise<void>;
+  addReprintLog: (input: { saleId: string; actorId: string }) => Promise<void>;
 }
 
 // ============================================

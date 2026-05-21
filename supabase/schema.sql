@@ -15,17 +15,22 @@ CREATE TABLE IF NOT EXISTS shops (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- users (staff profiles — separate from Supabase auth.users)
+-- users (staff profiles — linked to Supabase auth.users via auth_id)
 CREATE TABLE IF NOT EXISTS users (
   id text PRIMARY KEY,
   name text NOT NULL,
   email text,
   role text NOT NULL,
   shop_id text REFERENCES shops(id),
-  permissions text[],
+  auth_id uuid UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
+  permissions text[],            -- deprecated legacy replacement model
+  granted_permissions text[],    -- additive grants on top of role defaults
+  revoked_permissions text[],    -- explicit denials (win over default + grant)
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+-- NOTE: existing databases must run, in order, the files in supabase/migrations/:
+--   001_identity_linking.sql, 002_rbac_permissions.sql, 003_identity_rls_helpers.sql
 
 -- categories
 CREATE TABLE IF NOT EXISTS categories (
@@ -182,8 +187,13 @@ CREATE TABLE IF NOT EXISTS shifts (
   opening_cash_mmk integer NOT NULL,
   closing_cash_mmk integer,
   expected_cash_mmk integer,
-  variance_mmk integer
+  variance_mmk integer,
+  variance_reason text
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS shifts_one_open_per_cashier_shop
+  ON shifts (cashier_id, shop_id)
+  WHERE ended_at IS NULL;
 
 -- sales
 CREATE TABLE IF NOT EXISTS sales (

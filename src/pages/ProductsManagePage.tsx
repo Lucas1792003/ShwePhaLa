@@ -195,7 +195,7 @@ export const ProductsManagePage = () => {
     const updatedProduct = { ...product, isActive: false };
     updateProduct(updatedProduct, []);
 
-    addAuditLog({
+    void addAuditLog({
       id: `audit-${Math.random().toString(36).slice(2, 9)}`,
       actorId: currentUserId ?? "system",
       actionType: "PRODUCT_DELETE",
@@ -238,7 +238,7 @@ export const ProductsManagePage = () => {
     if (editingId) updateProduct(product, []);
     else addProduct(product, []);
 
-    addAuditLog({
+    void addAuditLog({
       id: `audit-${Math.random().toString(36).slice(2, 9)}`,
       actorId: currentUserId ?? "system",
       actionType: editingId ? "PRODUCT_EDIT" : "PRODUCT_CREATE",
@@ -293,7 +293,7 @@ export const ProductsManagePage = () => {
         name: categoryName,
         color: newCategoryColor,
       });
-      addAuditLog({
+      void addAuditLog({
         id: `audit-${Math.random().toString(36).slice(2, 9)}`,
         actorId: currentUserId ?? "system",
         actionType: "CATEGORY_EDIT",
@@ -311,7 +311,7 @@ export const ProductsManagePage = () => {
         createdAt: new Date().toISOString(),
       };
       addCategory(newCategory);
-      addAuditLog({
+      void addAuditLog({
         id: `audit-${Math.random().toString(36).slice(2, 9)}`,
         actorId: currentUserId ?? "system",
         actionType: "CATEGORY_CREATE",
@@ -344,7 +344,7 @@ export const ProductsManagePage = () => {
 
     if (confirm(`Are you sure you want to delete "${category.name}"?`)) {
       updateCategory({ ...category, isActive: false });
-      addAuditLog({
+      void addAuditLog({
         id: `audit-${Math.random().toString(36).slice(2, 9)}`,
         actorId: currentUserId ?? "system",
         actionType: "CATEGORY_DELETE",

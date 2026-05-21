@@ -74,10 +74,10 @@ export const TransfersPage = () => {
     (t) => t.fromShopId === shopId && t.status === "PENDING"
   );
 
-  const handleCreateTransfer = () => {
+  const handleCreateTransfer = async () => {
     if (!currentUserId || !newTransfer.toShopId || newTransfer.items.length === 0) return;
     try {
-      createTransfer({
+      await createTransfer({
         fromShopId: shopId,
         toShopId: newTransfer.toShopId,
         items: newTransfer.items,
@@ -91,29 +91,43 @@ export const TransfersPage = () => {
     }
   };
 
-  const handleApprove = (transferId: string) => {
+  const handleApprove = async (transferId: string) => {
     if (!currentUserId) return;
-    approveTransfer({ transferId, approverId: currentUserId });
-  };
-
-  const handleReject = (transferId: string) => {
-    if (!currentUserId) return;
-    const reason = prompt("Enter rejection reason:");
-    if (reason) {
-      rejectTransfer({ transferId, actorId: currentUserId, reason });
+    try {
+      await approveTransfer({ transferId, approverId: currentUserId });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to approve transfer");
     }
   };
 
-  const handleComplete = (transferId: string) => {
+  const handleReject = async (transferId: string) => {
     if (!currentUserId) return;
-    completeTransfer({ transferId, actorId: currentUserId });
+    const reason = prompt("Enter rejection reason:");
+    if (!reason) return;
+    try {
+      await rejectTransfer({ transferId, actorId: currentUserId, reason });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to reject transfer");
+    }
   };
 
-  const handleCancel = (transferId: string) => {
+  const handleComplete = async (transferId: string) => {
+    if (!currentUserId) return;
+    try {
+      await completeTransfer({ transferId, actorId: currentUserId });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to complete transfer");
+    }
+  };
+
+  const handleCancel = async (transferId: string) => {
     if (!currentUserId) return;
     const reason = prompt("Enter cancellation reason:");
-    if (reason) {
-      cancelTransfer({ transferId, actorId: currentUserId, reason });
+    if (!reason) return;
+    try {
+      await cancelTransfer({ transferId, actorId: currentUserId, reason });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to cancel transfer");
     }
   };
 

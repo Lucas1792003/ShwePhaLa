@@ -1,54 +1,47 @@
 import type { StateCreator } from "zustand";
 import type { DataState, AuditState } from "../types";
-import type { AuditLog } from "../../../types";
-import { makeId } from "../utils";
+import type { AuditLog, ReprintLog } from "../../../types";
 import { supabase } from "../../../lib/supabase";
+
+interface AuditEventResult {
+  auditLog: AuditLog;
+}
+
+interface ReprintResult {
+  reprintLog: ReprintLog;
+  auditLog: AuditLog;
+}
 
 export const createAuditSlice: StateCreator<DataState, [], [], AuditState> = (set) => ({
   auditLogs: [],
   reprintLogs: [],
 
-  addAuditLog: (log: AuditLog) => {
-    set((state) => ({ auditLogs: [log, ...state.auditLogs] }));
-    void supabase.from("audit_logs").insert({
-      id: log.id, shop_id: log.shopId, actor_id: log.actorId, action_type: log.actionType,
-      message: log.message, entity_type: log.entityType, entity_id: log.entityId,
-      created_at: log.createdAt,
+  addAuditLog: async (log: AuditLog) => {
+    const { data, error } = await supabase.rpc("log_audit_event", {
+      p_action_type: log.actionType,
+      p_message: log.message,
+      p_entity_type: log.entityType,
+      p_entity_id: log.entityId,
+      p_shop_id: log.shopId ?? null,
     });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Audit event returned no data.");
+    const result = data as AuditEventResult;
+
+    set((state) => ({ auditLogs: [result.auditLog, ...state.auditLogs] }));
   },
 
-  addReprintLog: ({ saleId, actorId }) =>
-    set((state) => {
-      const sale = state.sales.find((item) => item.id === saleId);
-      const printedAt = new Date().toISOString();
+  addReprintLog: async ({ saleId }) => {
+    const { data, error } = await supabase.rpc("log_receipt_reprint", {
+      p_sale_id: saleId,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Receipt reprint returned no data.");
+    const result = data as ReprintResult;
 
-      const audit: AuditLog = {
-        id: makeId("audit"),
-        shopId: sale?.shopId,
-        actorId,
-        actionType: "REPRINT_RECEIPT",
-        message: sale ? `Reprinted receipt ${sale.receiptNo}.` : "Reprinted receipt.",
-        entityType: "Sale",
-        entityId: saleId,
-        createdAt: printedAt,
-      };
-
-      const reprintId = makeId("reprint");
-      void supabase.from("reprint_logs").insert({
-        id: reprintId, sale_id: saleId, printed_by: actorId, printed_at: printedAt,
-      });
-      void supabase.from("audit_logs").insert({
-        id: audit.id, shop_id: audit.shopId, actor_id: audit.actorId,
-        action_type: audit.actionType, message: audit.message,
-        entity_type: audit.entityType, entity_id: audit.entityId, created_at: audit.createdAt,
-      });
-
-      return {
-        reprintLogs: [
-          { id: reprintId, saleId, printedBy: actorId, printedAt },
-          ...state.reprintLogs,
-        ],
-        auditLogs: [audit, ...state.auditLogs],
-      };
-    }),
+    set((state) => ({
+      reprintLogs: [result.reprintLog, ...state.reprintLogs],
+      auditLogs: [result.auditLog, ...state.auditLogs],
+    }));
+  },
 });

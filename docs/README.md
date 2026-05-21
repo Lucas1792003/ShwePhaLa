@@ -1,101 +1,74 @@
-# Shwe Phala POS (Web)
+# Shwe Phala POS Documentation
 
-## What this is
-A mock-data web POS + inventory system for a multi-shop family business selling drinks. The app is frontend-only for now and uses in-memory state persisted to localStorage.
+Shwe Phala POS is a React/TypeScript POS and inventory app backed by Supabase
+Auth and PostgreSQL.
 
-## Run locally
+## Run Locally
+
 ```bash
 npm install
 npm run dev
 ```
 
-## Demo accounts
-- Admin: Nandar (Admin)
-- Manager Shop A: Ko Zaw (Manager A)
-- Manager Shop B: Ma Thida (Manager B)
-- Cashier Shop A: Aye Aye (Cashier A)
-- Cashier Shop B: Tun Tun (Cashier B)
+Requires `.env.local`:
 
-## Key Features
+```bash
+VITE_SUPABASE_URL=<your-project-url>
+VITE_SUPABASE_ANON_KEY=<your-anon-key>
+```
 
-### Analytics Dashboard
-- Visual analytics with Recharts (line charts, pie charts)
-- Summary cards: Revenue, Investment, Profit, Orders, Avg Order Value
-- Top selling products, low stock alerts, recent sales
+See [12-supabase-setup.md](./12-supabase-setup.md).
 
-### Internationalization
-- Language switcher: English / Myanmar (မြန်မာ)
-- Persistent language preference via localStorage
+## Current Data Model
 
-### POS Interface
-- Grid layout with product images
-- Sticky search and category filters
-- Barcode scanner support (F3 toggle)
-- Cart panel with quantity controls
+- Business data persists in Supabase.
+- localStorage stores UI preferences and the Supabase Auth session only.
+- Critical operational writes use `SECURITY DEFINER` RPCs.
+- RLS blocks direct writes to protected operational/audit tables.
+- `inventory` is the current stock table.
+- `refund_void_requests` is the refund/void workflow table.
+- Products use `sku` as the catalog code; `product_barcodes` still exists for
+  optional scan-code lookup.
 
-### Sidebar Navigation
-- Collapsible sections (Sales & Operations, Inventory, Settings)
-- Role-based visibility
-- Language switcher in footer
+## Core Docs
 
-## Core flows
-- POS: scan barcode → add to cart → checkout → print receipt
-- Inventory: search products → adjust stock with reason → view movements
-- Sales: view history → open details → approve void/refund → reprint
-- Shift: start shift with opening cash → sell → end shift with closing cash → variance
-- Dashboard: view analytics → monitor sales trends → check low stock
+- [00-overview.md](./00-overview.md) - Product overview
+- [01-roles-permissions.md](./01-roles-permissions.md) - Granular permissions
+- [02-routing-navigation.md](./02-routing-navigation.md) - Routes and route permissions
+- [03-authentication.md](./03-authentication.md) - Supabase Auth and `users.auth_id`
+- [04-database-schema.md](./04-database-schema.md) - Tables, migrations, RPCs, RLS status
+- [10-localstorage-persistence.md](./10-localstorage-persistence.md) - Persistence model
+- [12-supabase-setup.md](./12-supabase-setup.md) - Supabase setup
+- [13-data-model.md](./13-data-model.md) - TypeScript domain model
+- [17-architecture.md](./17-architecture.md) - App architecture after RPC/RLS hardening
 
-## Routes
-- `/login`
-- `/app/dashboard` - Analytics dashboard
-- `/app/pos` - Point of Sale
-- `/app/sales`, `/app/sales/:saleId` - Sales history
-- `/app/shifts` - Shift management
-- `/app/inventory` - Stock levels & movements
-- `/app/transfers` - Inter-shop transfers
-- `/app/purchases` - Purchase orders
-- `/app/approvals` - Refund/void approvals
-- `/app/catalog` - Product catalog (Buyer role)
+## Flow Docs
 
-### Admin Routes
-- `/app/admin/shops` - Shop management
-- `/app/admin/users` - User management
-- `/app/admin/products` - Product management
-- `/app/admin/barcodes` - Barcode management
-- `/app/admin/suppliers` - Supplier management
-- `/app/admin/pricing` - Pricing tiers
-- `/app/admin/audit` - Audit logs
-- `/app/admin/reports` - Global reports
+- [05-pos-flow.md](./05-pos-flow.md)
+- [06-inventory-flow.md](./06-inventory-flow.md)
+- [07-shift-flow.md](./07-shift-flow.md)
+- [08-refund-void-flow.md](./08-refund-void-flow.md)
+- [09-audit-logging.md](./09-audit-logging.md)
+- [14-stock-transfers.md](./14-stock-transfers.md)
+- [15-suppliers-purchasing.md](./15-suppliers-purchasing.md)
+- [16-pricing-tiers.md](./16-pricing-tiers.md)
+- [18-printing.md](./18-printing.md)
 
-## Documentation Index
+## Verification Docs
 
-### Getting Started
-- [00-overview.md](./00-overview.md) - Project overview
-- [03-mock-auth.md](./03-mock-auth.md) - Mock authentication
-- [04-mock-data-schema.md](./04-mock-data-schema.md) - Mock data schema
+- [22-script-3a-checkout-rpc-tests.md](./22-script-3a-checkout-rpc-tests.md)
+- [23-script-3b-refund-void-rpc-tests.md](./23-script-3b-refund-void-rpc-tests.md)
+- [24-script-3c-receive-purchase-order-rpc-tests.md](./24-script-3c-receive-purchase-order-rpc-tests.md)
+- [24-script-3f-shift-rpc-tests.md](./24-script-3f-shift-rpc-tests.md)
+- [25-script-3d-complete-stock-transfer-rpc-tests.md](./25-script-3d-complete-stock-transfer-rpc-tests.md)
+- [26-script-3e-adjust-stock-rpc-tests.md](./26-script-3e-adjust-stock-rpc-tests.md)
+- [27-script-4a-rls-lockdown-tests.md](./27-script-4a-rls-lockdown-tests.md)
+- [28-script-4b-shop-scoped-reads-tests.md](./28-script-4b-shop-scoped-reads-tests.md)
+- [29-live-supabase-rls-rpc-verification.md](./29-live-supabase-rls-rpc-verification.md)
 
-### Core Systems
-- [01-roles-permissions.md](./01-roles-permissions.md) - Roles & permissions
-- [02-routing-navigation.md](./02-routing-navigation.md) - Routing & navigation
-- [05-pos-flow.md](./05-pos-flow.md) - POS workflow
-- [07-shift-flow.md](./07-shift-flow.md) - Shift management
-- [08-refund-void-flow.md](./08-refund-void-flow.md) - Refunds & voids
+## Status
 
-### Inventory & Stock
-- [06-inventory-flow.md](./06-inventory-flow.md) - Inventory management
-- [14-stock-transfers.md](./14-stock-transfers.md) - Stock transfers
-- [15-suppliers-purchasing.md](./15-suppliers-purchasing.md) - Suppliers & purchasing
-- [16-pricing-tiers.md](./16-pricing-tiers.md) - Pricing tiers
+- [20-todo-next.md](./20-todo-next.md) - Current project status and next steps
+- [21-recent-changes.md](./21-recent-changes.md) - Changelog
+- [19-contributing.md](./19-contributing.md) - Contribution notes
 
-### Technical
-- [11-component-structure.md](./11-component-structure.md) - Component structure
-- [13-data-model.md](./13-data-model.md) - Data model
-- [10-localstorage-persistence.md](./10-localstorage-persistence.md) - LocalStorage persistence
-- [09-audit-logging.md](./09-audit-logging.md) - Audit logging
-- [17-architecture.md](./17-architecture.md) - Architecture
-- [18-printing.md](./18-printing.md) - Receipt printing
-
-### Other
-- [12-future-supabase-plan.md](./12-future-supabase-plan.md) - Future Supabase migration
-- [19-contributing.md](./19-contributing.md) - Contributing guidelines
-- [20-todo-next.md](./20-todo-next.md) - Project status & next steps

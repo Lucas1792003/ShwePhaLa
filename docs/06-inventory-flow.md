@@ -108,6 +108,23 @@ inventoryLevel.qtyBaseUnits = newQty;
 inventoryLevel.lastUpdated = now;
 ```
 
+## Transactional Safety
+
+Every stock movement is produced by an **atomic, permission-checked Supabase
+RPC** — never by independent frontend writes:
+
+| Operation | RPC |
+|-----------|-----|
+| Sale checkout (`SALE_OUT`) | `complete_sale` |
+| Refund / void (`RETURN_IN`) | `approve_refund_request` / `approve_void_request` |
+| Purchase receiving (`PURCHASE_IN`) | `receive_purchase_order` |
+| Transfer completion (`TRANSFER_OUT` / `TRANSFER_IN`) | `complete_stock_transfer` |
+| Manual adjustment / damage (`ADJUSTMENT` / `DAMAGE`) | `adjust_stock` |
+
+Each RPC locks the inventory row, computes before/after quantities, writes the
+movement and audit rows, and commits everything in one transaction — so an
+inventory level and its ledger can never drift apart.
+
 ## Low Stock Logic
 
 - **Low Stock Badge**: Appears when `qtyBaseUnits <= lowStockThreshold`
@@ -138,3 +155,4 @@ const newAvgCost = totalCost / (existingQty + newQty);
 | Adjust stock | `inventory:adjust` |
 | Record damage | `inventory:damage` |
 | Override stock check | `pos:override_stock` |
+

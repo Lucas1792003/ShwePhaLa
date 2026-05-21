@@ -66,36 +66,44 @@ export const SuppliersPage = () => {
     setShowModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim() || !form.code.trim()) {
       alert("Code and Name are required");
       return;
     }
 
-    if (editingSupplier) {
-      updateSupplier({
-        ...editingSupplier,
-        ...form,
-      });
-    } else {
-      addSupplier({
-        id: `supplier-${Date.now()}`,
-        code: form.code,
-        name: form.name,
-        contactPerson: form.contactPerson || undefined,
-        phone: form.phone || undefined,
-        email: form.email || undefined,
-        address: form.address || undefined,
-        notes: form.notes || undefined,
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      });
+    try {
+      if (editingSupplier) {
+        await updateSupplier({
+          ...editingSupplier,
+          ...form,
+        });
+      } else {
+        await addSupplier({
+          id: `supplier-${Date.now()}`,
+          code: form.code,
+          name: form.name,
+          contactPerson: form.contactPerson || undefined,
+          phone: form.phone || undefined,
+          email: form.email || undefined,
+          address: form.address || undefined,
+          notes: form.notes || undefined,
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      setShowModal(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to save supplier");
     }
-    setShowModal(false);
   };
 
-  const toggleActive = (supplier: Supplier) => {
-    updateSupplier({ ...supplier, isActive: !supplier.isActive });
+  const toggleActive = async (supplier: Supplier) => {
+    try {
+      await updateSupplier({ ...supplier, isActive: !supplier.isActive });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to update supplier");
+    }
   };
 
   const getOrderCount = (supplierId: string) => {

@@ -1,13 +1,15 @@
 import type { CartItem } from "../../types";
-import { formatMmk } from "../../lib/utils";
+import { formatMmk, toNumber } from "../../lib/utils";
 
 interface CartItemRowProps {
   item: CartItem;
   onQtyChange: (id: string, delta: number) => void;
   onRemove?: (id: string) => void;
+  onDiscountChange?: (id: string, value: number) => void;
+  onOverridePrice?: (item: CartItem) => void;
 }
 
-export const CartItemRow = ({ item, onQtyChange, onRemove }: CartItemRowProps) => (
+export const CartItemRow = ({ item, onQtyChange, onRemove, onDiscountChange, onOverridePrice }: CartItemRowProps) => (
   <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-2">
     {/* Product Image/Icon */}
     <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-slate-100 to-slate-200">
@@ -23,7 +25,34 @@ export const CartItemRow = ({ item, onQtyChange, onRemove }: CartItemRowProps) =
     {/* Product Info */}
     <div className="flex-1 min-w-0">
       <h4 className="truncate text-sm font-semibold text-slate-800">{item.name}</h4>
-      <p className="text-sm font-bold text-emerald-600">{formatMmk(item.unitPriceMmk)}</p>
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-bold text-emerald-600">{formatMmk(item.unitPriceMmk)}</p>
+        {onOverridePrice && (
+          <button
+            type="button"
+            onClick={() => onOverridePrice(item)}
+            className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700"
+            title="Override price"
+          >
+            <span className="material-symbols-rounded text-base">edit</span>
+          </button>
+        )}
+      </div>
+      {onDiscountChange && (
+        <label className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+          Disc
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={item.itemDiscountPct ?? ""}
+            onChange={(event) => onDiscountChange(item.id, toNumber(event.target.value))}
+            className="h-6 w-14 rounded-md border border-slate-200 bg-white px-1 text-center text-xs outline-none focus:border-emerald-400"
+            placeholder="0"
+          />
+          %
+        </label>
+      )}
     </div>
 
     {/* Quantity Controls */}

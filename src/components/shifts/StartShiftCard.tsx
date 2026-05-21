@@ -4,7 +4,7 @@ import { MoneyInput } from "../forms/MoneyInput";
 interface StartShiftCardProps {
   openingCash: number;
   onOpeningCashChange: (value: number) => void;
-  onStart: () => void;
+  onStart: () => void | Promise<void>;
 }
 
 export const StartShiftCard = ({ openingCash, onOpeningCashChange, onStart }: StartShiftCardProps) => (

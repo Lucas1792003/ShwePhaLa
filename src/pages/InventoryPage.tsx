@@ -172,18 +172,21 @@ export const InventoryPage = () => {
       <AdjustStockModal
         open={!!adjustProductId}
         onClose={() => setAdjustProductId(null)}
-        onSave={({ type, qtyChange, reason }) => {
+        onSave={async ({ type, qtyChange, reason }) => {
           if (!adjustProductId || !currentUserId) return;
-          adjustStock({
-            shopId,
-            productId: adjustProductId,
-            type,
-            qtyChange,
-            reason: reason || "Manual adjustment",
-            actorId: currentUserId,
-            referenceType: type === "DAMAGE" ? "damage" : "adjustment",
-          });
-          setAdjustProductId(null);
+          try {
+            await adjustStock({
+              shopId,
+              productId: adjustProductId,
+              type,
+              qtyChange,
+              reason: reason || "Manual adjustment",
+              actorId: currentUserId,
+            });
+            setAdjustProductId(null);
+          } catch (error) {
+            alert(error instanceof Error ? error.message : "Failed to adjust stock");
+          }
         }}
       />
     </Card>

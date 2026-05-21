@@ -26,12 +26,12 @@ export const CartPanel = ({
   cartDiscount,
   total,
   cartDiscountPct,
-  onDiscountChange: _onDiscountChange,
+  onDiscountChange,
   onQtyChange,
   onRemove,
   onCartDiscountChange,
   onCheckout,
-  onOverridePrice: _onOverridePrice,
+  onOverridePrice,
 }: CartPanelProps) => (
   <div className="flex h-full flex-col">
     {/* Header */}
@@ -57,6 +57,8 @@ export const CartPanel = ({
             item={item}
             onQtyChange={onQtyChange}
             onRemove={onRemove}
+            onDiscountChange={onDiscountChange}
+            onOverridePrice={onOverridePrice}
           />
         ))
       )}

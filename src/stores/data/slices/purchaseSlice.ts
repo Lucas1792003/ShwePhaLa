@@ -1,212 +1,157 @@
 import type { StateCreator } from "zustand";
 import type { DataState, PurchaseState, CreatePurchaseOrderInput } from "../types";
-import type { AuditLog, PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus, Supplier, StockMovementType } from "../../../types";
-import { makeId, makePurchaseOrderNo, requirePermission } from "../utils";
-import { getDateKey } from "../../../lib/utils";
+import type {
+  AuditLog, Inventory, InventoryMovement, PurchaseOrder, PurchaseOrderItem,
+  Supplier,
+} from "../../../types";
+import { supabase, dbExec } from "../../../lib/supabase";
 
-export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState> = (set, get) => ({
+// Shape returned by the receive_purchase_order RPC (camelCase keys).
+interface ReceivePurchaseOrderResult {
+  purchaseOrder: PurchaseOrder;
+  purchaseOrderItems: PurchaseOrderItem[];
+  inventory: Inventory[];
+  movements: InventoryMovement[];
+  auditLogs: AuditLog[];
+}
+
+interface CreatePurchaseOrderResult {
+  purchaseOrder: PurchaseOrder;
+  purchaseOrderItems: PurchaseOrderItem[];
+  auditLogs: AuditLog[];
+}
+
+interface PurchaseOrderStatusResult {
+  purchaseOrder: PurchaseOrder;
+  auditLogs: AuditLog[];
+}
+
+// Merge RPC-returned inventory rows into the current store array.
+const mergeInventory = (current: Inventory[], updates: Inventory[]): Inventory[] => {
+  const result = [...current];
+  for (const u of updates) {
+    const idx = result.findIndex((i) => i.shopId === u.shopId && i.productId === u.productId);
+    if (idx >= 0) result[idx] = { ...result[idx], qtyBaseUnits: u.qtyBaseUnits };
+    else result.push(u);
+  }
+  return result;
+};
+
+// snake_case row mappers for purchasing tables
+const supplierRow = (s: Supplier) => ({
+  id: s.id, code: s.code, name: s.name, contact_person: s.contactPerson ?? null,
+  phone: s.phone ?? null, email: s.email ?? null, address: s.address ?? null,
+  notes: s.notes ?? null, is_active: s.isActive, created_at: s.createdAt,
+});
+
+export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState> = (set) => ({
   suppliers: [],
   purchaseOrders: [],
   purchaseOrderItems: [],
 
-  addSupplier: (supplier: Supplier) =>
-    set((state) => ({ suppliers: [...state.suppliers, supplier] })),
-
-  updateSupplier: (supplier: Supplier) =>
-    set((state) => ({
-      suppliers: state.suppliers.map((s) => (s.id === supplier.id ? supplier : s)),
-    })),
-
-  createPurchaseOrder: ({ shopId, supplierId, items, notes, createdBy }: CreatePurchaseOrderInput) => {
-    const state = get();
-
-    // Permission check: creator must have purchase:create
-    requirePermission(state.users, createdBy, "purchase:create");
-
-    const seq = state.purchaseOrders.filter((po) => po.orderNo.includes(getDateKey())).length + 1;
-    const purchaseOrderId = makeId("po");
-    const orderNo = makePurchaseOrderNo(seq);
-    const createdAt = new Date().toISOString();
-
-    const poItems: PurchaseOrderItem[] = items.map((item) => ({
-      id: makeId("poitem"),
-      purchaseOrderId,
-      productId: item.productId,
-      orderedQty: item.orderedQty,
-      unitCostMmk: item.unitCostMmk,
-      lineTotalMmk: item.orderedQty * item.unitCostMmk,
-    }));
-
-    const subtotal = poItems.reduce((sum, item) => sum + item.lineTotalMmk, 0);
-
-    const purchaseOrder: PurchaseOrder = {
-      id: purchaseOrderId,
-      orderNo,
-      shopId,
-      supplierId,
-      status: "DRAFT",
-      subtotalMmk: subtotal,
-      totalMmk: subtotal,
-      notes,
-      createdBy,
-      createdAt,
-    };
-
-    const audit: AuditLog = {
-      id: makeId("audit"),
-      shopId,
-      actorId: createdBy,
-      actionType: "PO_CREATED",
-      message: `Purchase order ${orderNo} created: ${items.length} items`,
-      entityType: "PurchaseOrder",
-      entityId: purchaseOrderId,
-      createdAt,
-    };
-
-    set((s) => ({
-      purchaseOrders: [purchaseOrder, ...s.purchaseOrders],
-      purchaseOrderItems: [...poItems, ...s.purchaseOrderItems],
-      auditLogs: [audit, ...s.auditLogs],
-    }));
-
-    return purchaseOrderId;
+  addSupplier: async (supplier: Supplier) => {
+    await dbExec(supabase.from("suppliers").insert(supplierRow(supplier)), "Add supplier");
+    set((state) => ({ suppliers: [...state.suppliers, supplier] }));
   },
 
-  approvePurchaseOrder: ({ purchaseOrderId, approverId }) =>
-    set((state) => {
-      // Permission check: approver must have purchase:approve
-      requirePermission(state.users, approverId, "purchase:approve");
+  updateSupplier: async (supplier: Supplier) => {
+    await dbExec(
+      supabase.from("suppliers").update({
+        code: supplier.code, name: supplier.name, contact_person: supplier.contactPerson ?? null,
+        phone: supplier.phone ?? null, email: supplier.email ?? null,
+        address: supplier.address ?? null, notes: supplier.notes ?? null, is_active: supplier.isActive,
+      }).eq("id", supplier.id),
+      "Update supplier"
+    );
+    set((state) => ({
+      suppliers: state.suppliers.map((s) => (s.id === supplier.id ? supplier : s)),
+    }));
+  },
 
-      const po = state.purchaseOrders.find((p) => p.id === purchaseOrderId);
-      if (!po || (po.status !== "DRAFT" && po.status !== "SUBMITTED")) return state;
+  createPurchaseOrder: async ({ shopId, supplierId, items, notes }: CreatePurchaseOrderInput) => {
+    const { data, error } = await supabase.rpc("create_purchase_order", {
+      p_shop_id: shopId,
+      p_supplier_id: supplierId,
+      p_notes: notes ?? null,
+      p_items: items.map((item) => ({
+        product_id: item.productId,
+        ordered_qty: item.orderedQty,
+        unit_cost_mmk: item.unitCostMmk,
+      })),
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Create purchase order returned no data.");
+    const result = data as CreatePurchaseOrderResult;
 
-      const approvedAt = new Date().toISOString();
-      const updatedPOs = state.purchaseOrders.map((p) =>
-        p.id === purchaseOrderId
-          ? { ...p, status: "APPROVED" as PurchaseOrderStatus, approvedBy: approverId, approvedAt }
-          : p
-      );
+    set((s) => ({
+      purchaseOrders: [result.purchaseOrder, ...s.purchaseOrders],
+      purchaseOrderItems: [...result.purchaseOrderItems, ...s.purchaseOrderItems],
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+    return result.purchaseOrder.id;
+  },
 
-      const audit: AuditLog = {
-        id: makeId("audit"),
-        shopId: po.shopId,
-        actorId: approverId,
-        actionType: "PO_APPROVED",
-        message: `Purchase order ${po.orderNo} approved`,
-        entityType: "PurchaseOrder",
-        entityId: purchaseOrderId,
-        createdAt: approvedAt,
-      };
+  approvePurchaseOrder: async ({ purchaseOrderId }) => {
+    const { data, error } = await supabase.rpc("approve_purchase_order", {
+      p_purchase_order_id: purchaseOrderId,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Approve purchase order returned no data.");
+    const result = data as PurchaseOrderStatusResult;
 
-      return {
-        purchaseOrders: updatedPOs,
-        auditLogs: [audit, ...state.auditLogs],
-      };
-    }),
+    set((s) => ({
+      purchaseOrders: s.purchaseOrders.map((p) =>
+        p.id === result.purchaseOrder.id ? result.purchaseOrder : p
+      ),
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+  },
 
-  receivePurchaseOrder: ({ purchaseOrderId, receiverId, receivedItems }) =>
-    set((state) => {
-      // Permission check: receiver must have purchase:receive
-      requirePermission(state.users, receiverId, "purchase:receive");
+  // Purchase receiving: a single atomic Supabase RPC. The database validates
+  // permission, shop scope and the PO status, then writes the PO status,
+  // received quantities, inventory, movements and audit row in one transaction.
+  receivePurchaseOrder: async ({ purchaseOrderId, receivedItems }) => {
+    const { data, error } = await supabase.rpc("receive_purchase_order", {
+      p_purchase_order_id: purchaseOrderId,
+      p_received_items: receivedItems.map((r) => ({
+        product_id: r.productId,
+        received_qty: r.receivedQty,
+      })),
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Receiving returned no data.");
 
-      const po = state.purchaseOrders.find((p) => p.id === purchaseOrderId);
-      if (!po || po.status !== "APPROVED") return state;
+    const result = data as ReceivePurchaseOrderResult;
 
-      const receivedAt = new Date().toISOString();
-      const inventory = [...state.inventory];
-      const movements = [...state.movements];
+    // Reconcile local state from the authoritative RPC result.
+    set((s) => ({
+      purchaseOrders: s.purchaseOrders.map((p) =>
+        p.id === result.purchaseOrder.id ? result.purchaseOrder : p
+      ),
+      purchaseOrderItems: s.purchaseOrderItems.map(
+        (i) => result.purchaseOrderItems.find((u) => u.id === i.id) ?? i
+      ),
+      inventory: mergeInventory(s.inventory, result.inventory),
+      movements: [...result.movements, ...s.movements],
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+  },
 
-      const updatedPOItems = state.purchaseOrderItems.map((item) => {
-        if (item.purchaseOrderId !== purchaseOrderId) return item;
-        const received = receivedItems.find((r) => r.productId === item.productId);
-        const receivedQty = received?.receivedQty ?? item.orderedQty;
+  cancelPurchaseOrder: async ({ purchaseOrderId }) => {
+    const { data, error } = await supabase.rpc("cancel_purchase_order", {
+      p_purchase_order_id: purchaseOrderId,
+      p_reason: null,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Cancel purchase order returned no data.");
+    const result = data as PurchaseOrderStatusResult;
 
-        const invRecord = inventory.find(
-          (inv) => inv.shopId === po.shopId && inv.productId === item.productId
-        );
-        const qtyBefore = invRecord?.qtyBaseUnits ?? 0;
-        const qtyAfter = qtyBefore + receivedQty;
-
-        if (invRecord) {
-          invRecord.qtyBaseUnits = qtyAfter;
-        } else {
-          inventory.push({
-            shopId: po.shopId,
-            productId: item.productId,
-            qtyBaseUnits: qtyAfter,
-          });
-        }
-
-        movements.unshift({
-          id: makeId("move"),
-          shopId: po.shopId,
-          productId: item.productId,
-          type: "PURCHASE_IN" as StockMovementType,
-          qtyChange: receivedQty,
-          qtyBefore,
-          qtyAfter,
-          reason: `Purchase order ${po.orderNo} received`,
-          referenceType: "purchase",
-          referenceId: purchaseOrderId,
-          createdBy: receiverId,
-          createdAt: receivedAt,
-        });
-
-        return { ...item, receivedQty };
-      });
-
-      const updatedPOs = state.purchaseOrders.map((p) =>
-        p.id === purchaseOrderId
-          ? { ...p, status: "RECEIVED" as PurchaseOrderStatus, receivedBy: receiverId, receivedAt }
-          : p
-      );
-
-      const audit: AuditLog = {
-        id: makeId("audit"),
-        shopId: po.shopId,
-        actorId: receiverId,
-        actionType: "PO_RECEIVED",
-        message: `Purchase order ${po.orderNo} received: ${receivedItems.length} items`,
-        entityType: "PurchaseOrder",
-        entityId: purchaseOrderId,
-        createdAt: receivedAt,
-      };
-
-      return {
-        purchaseOrders: updatedPOs,
-        purchaseOrderItems: updatedPOItems,
-        inventory,
-        movements,
-        auditLogs: [audit, ...state.auditLogs],
-      };
-    }),
-
-  cancelPurchaseOrder: ({ purchaseOrderId, actorId }) =>
-    set((state) => {
-      // Permission check: actor must have purchase:create to cancel
-      requirePermission(state.users, actorId, "purchase:create");
-
-      const po = state.purchaseOrders.find((p) => p.id === purchaseOrderId);
-      if (!po || po.status === "RECEIVED" || po.status === "CANCELED") return state;
-
-      const updatedPOs = state.purchaseOrders.map((p) =>
-        p.id === purchaseOrderId ? { ...p, status: "CANCELED" as PurchaseOrderStatus } : p
-      );
-
-      const audit: AuditLog = {
-        id: makeId("audit"),
-        shopId: po.shopId,
-        actorId,
-        actionType: "PO_CANCELED",
-        message: `Purchase order ${po.orderNo} canceled`,
-        entityType: "PurchaseOrder",
-        entityId: purchaseOrderId,
-        createdAt: new Date().toISOString(),
-      };
-
-      return {
-        purchaseOrders: updatedPOs,
-        auditLogs: [audit, ...state.auditLogs],
-      };
-    }),
+    set((s) => ({
+      purchaseOrders: s.purchaseOrders.map((p) =>
+        p.id === result.purchaseOrder.id ? result.purchaseOrder : p
+      ),
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+  },
 });
+

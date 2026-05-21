@@ -6,9 +6,11 @@ import { PageHeader } from "../../../components/layout/PageHeader";
 import { Card } from "../../../components/ui/Card";
 import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
+import { useToast } from "../../../components/ui/Toast";
 import { getEffectiveShopId } from "../../../lib/utils";
 
 export const ApprovalsPage = () => {
+  const toast = useToast();
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const refunds = useDataStore((state) => state.refundVoidRequests);
   const shops = useDataStore((state) => state.shops);
@@ -24,6 +26,20 @@ export const ApprovalsPage = () => {
   );
   const saleMap = useMemo(() => Object.fromEntries(sales.map((sale) => [sale.id, sale])), [sales]);
   const userMap = useMemo(() => Object.fromEntries(users.map((user) => [user.id, user])), [users]);
+
+  const handleApprove = async (requestId: string) => {
+    if (!currentUserId) return;
+    try {
+      await approveRefund({ refundId: requestId, approverId: currentUserId });
+      toast({ title: "Approval completed", variant: "success" });
+    } catch (error) {
+      toast({
+        title: "Approval failed",
+        description: error instanceof Error ? error.message : "Could not approve the request.",
+        variant: "error",
+      });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -48,12 +64,7 @@ export const ApprovalsPage = () => {
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge tone="amber">{request.status ?? "REQUESTED"}</Badge>
-                    <Button
-                      onClick={() => {
-                        if (!currentUserId) return;
-                        approveRefund({ refundId: request.id, approverId: currentUserId });
-                      }}
-                    >
+                    <Button onClick={() => void handleApprove(request.id)}>
                       Approve
                     </Button>
                   </div>

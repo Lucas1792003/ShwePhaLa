@@ -8,19 +8,21 @@ import { Card } from "../components/ui/Card";
 import { ReceiptPreview } from "../components/pos/ReceiptPreview";
 import { RefundModal } from "../components/sales/RefundModal";
 import { VoidModal } from "../components/sales/VoidModal";
+import { useToast } from "../components/ui/Toast";
 import { buildRefundItems } from "../features/sales/service";
 import { formatDateTime, formatMmk } from "../lib/utils";
 
 export const ReceiptPage = () => {
   const { saleId } = useParams();
+  const toast = useToast();
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) => state.users.find((user) => user.id === currentUserId));
   const sale = useDataStore((state) => state.sales.find((item) => item.id === saleId));
-  const saleItems = useDataStore((state) => state.saleItems.filter((item) => item.saleId === saleId));
+  const allSaleItems = useDataStore((state) => state.saleItems);
   const products = useDataStore((state) => state.products);
   const shops = useDataStore((state) => state.shops);
   const users = useDataStore((state) => state.users);
-  const reprintLogs = useDataStore((state) => state.reprintLogs.filter((item) => item.saleId === saleId));
+  const allReprintLogs = useDataStore((state) => state.reprintLogs);
   const addReprintLog = useDataStore((state) => state.addReprintLog);
   const requestVoid = useDataStore((state) => state.requestVoid);
   const requestRefund = useDataStore((state) => state.requestRefund);
@@ -30,6 +32,11 @@ export const ReceiptPage = () => {
   const [refundOpen, setRefundOpen] = useState(false);
   const [refundReason, setRefundReason] = useState("");
   const [refundSelection, setRefundSelection] = useState<Record<string, number>>({});
+
+  // Filter in the render body — never inside a Zustand selector (a selector
+  // that returns a fresh array on every call causes an infinite render loop).
+  const saleItems = allSaleItems.filter((item) => item.saleId === saleId);
+  const reprintLogs = allReprintLogs.filter((item) => item.saleId === saleId);
 
   if (!sale) return <div className="p-8 text-center text-slate-500">Receipt not found.</div>;
   const shop = shops.find((item) => item.id === sale.shopId) ?? {
@@ -48,18 +55,49 @@ export const ReceiptPage = () => {
   });
   const productNames = Object.fromEntries(products.map((product) => [product.id, product.name]));
 
-  const handleRequestVoid = () => {
+  const handleRequestVoid = async () => {
     if (!currentUserId) return;
-    requestVoid({ saleId: sale.id, reason: voidReason || "No reason", actorId: currentUserId });
-    setVoidOpen(false);
+    try {
+      await requestVoid({ saleId: sale.id, reason: voidReason || "No reason", actorId: currentUserId });
+      setVoidOpen(false);
+      toast({ title: "Void request submitted", variant: "success" });
+    } catch (error) {
+      toast({
+        title: "Void request failed",
+        description: error instanceof Error ? error.message : "Could not submit the void request.",
+        variant: "error",
+      });
+    }
   };
 
-  const handleRequestRefund = () => {
+  const handleRequestRefund = async () => {
     if (!currentUserId) return;
     const items = buildRefundItems(saleItems, refundSelection);
     if (items.length === 0) return;
-    requestRefund({ saleId: sale.id, items, reason: refundReason || "No reason", actorId: currentUserId });
-    setRefundOpen(false);
+    try {
+      await requestRefund({ saleId: sale.id, items, reason: refundReason || "No reason", actorId: currentUserId });
+      setRefundOpen(false);
+      toast({ title: "Refund request submitted", variant: "success" });
+    } catch (error) {
+      toast({
+        title: "Refund request failed",
+        description: error instanceof Error ? error.message : "Could not submit the refund request.",
+        variant: "error",
+      });
+    }
+  };
+
+  const handleReprint = async () => {
+    try {
+      if (currentUserId) await addReprintLog({ saleId: sale.id, actorId: currentUserId });
+      window.print();
+    } catch (error) {
+      toast({
+        title: "Reprint log failed",
+        description: error instanceof Error ? error.message : "Could not record the reprint.",
+        variant: "error",
+      });
+    }
   };
 
   return (
@@ -69,12 +107,7 @@ export const ReceiptPage = () => {
           <Button variant="secondary" onClick={() => window.print()}>
             Print
           </Button>
-          <Button
-            onClick={() => {
-              if (currentUserId) addReprintLog({ saleId: sale.id, actorId: currentUserId });
-              window.print();
-            }}
-          >
+          <Button onClick={() => void handleReprint()}>
             Reprint
           </Button>
         </div>
@@ -113,7 +146,7 @@ export const ReceiptPage = () => {
         reason={voidReason}
         onChangeReason={setVoidReason}
         onClose={() => setVoidOpen(false)}
-        onConfirm={handleRequestVoid}
+        onConfirm={() => void handleRequestVoid()}
       />
 
       <RefundModal
@@ -125,7 +158,7 @@ export const ReceiptPage = () => {
         onChangeSelection={(productId, qty) => setRefundSelection((prev) => ({ ...prev, [productId]: qty }))}
         onChangeReason={setRefundReason}
         onClose={() => setRefundOpen(false)}
-        onSubmit={handleRequestRefund}
+        onSubmit={() => void handleRequestRefund()}
       />
     </div>
   );
