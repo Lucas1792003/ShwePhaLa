@@ -13,12 +13,13 @@ interface LanguageState {
 export const useLanguageStore = create<LanguageState>()(
   persist(
     (set) => ({
-      language: "en",
+      language: detectZawgyiSystem() ? "my" : "en",
       isZawgyi: detectZawgyiSystem(),
       setLanguage: (language) => set({ language }),
     }),
     {
       name: "pos-language",
+      version: 1,
       // Never persist isZawgyi — always detect fresh from system
       partialize: (state) => ({ language: state.language }),
     }
