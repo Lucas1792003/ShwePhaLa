@@ -27,7 +27,6 @@ import {
 } from "recharts";
 
 const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
-const FALLBACK_TREND_PATTERN = [0.48, 0.58, 0.66, 0.74, 0.82, 0.9, 1];
 
 // Default monthly targets (can be made configurable later)
 const DEFAULT_REVENUE_TARGET = 10000000; // 10M MMK
@@ -139,27 +138,7 @@ export const DashboardPage = () => {
       ...data,
     }));
 
-    const activeDays = dailyData.filter((day) => day.orders > 0).length;
-    if (activeDays >= 4) return dailyData;
-
-    const observedRevenues = dailyData.filter((day) => day.revenue > 0).map((day) => day.revenue);
-    const baselineRevenue = observedRevenues.length > 0
-      ? Math.max(4000, Math.round(observedRevenues.reduce((sum, value) => sum + value, 0) / observedRevenues.length))
-      : 12000;
-
-    return dailyData.map((day, index) => {
-      if (day.orders > 0) return day;
-
-      const revenue = Math.round(baselineRevenue * FALLBACK_TREND_PATTERN[index]);
-      const investment = Math.round(revenue * 0.67);
-      return {
-        ...day,
-        revenue,
-        investment,
-        profit: revenue - investment,
-        orders: Math.max(1, Math.round(revenue / 2500)),
-      };
-    });
+    return dailyData;
   }, [filteredSales, saleItems, products]);
 
   // Top selling products with revenue and cost
