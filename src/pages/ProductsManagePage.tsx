@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuthStore } from "../stores/authStore";
 import { useDataStore } from "../stores/dataStore";
-import type { ProductBarcode, ProductCategory, Category, Product } from "../types";
+import type { ProductCategory, Category, Product } from "../types";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
@@ -165,7 +165,6 @@ export const ProductsManagePage = () => {
 
   // Open modal for editing product
   const handleEditProduct = (product: Product) => {
-    const productBarcodes = barcodes.filter((barcode) => barcode.productId === product.id);
     form.reset({
       id: product.id,
       sku: product.sku || "",
@@ -194,8 +193,7 @@ export const ProductsManagePage = () => {
     if (!confirm(`Are you sure you want to deactivate "${product.name}"?`)) return;
 
     const updatedProduct = { ...product, isActive: false };
-    const productBarcodes = barcodes.filter((b) => b.productId === product.id);
-    updateProduct(updatedProduct, productBarcodes);
+    updateProduct(updatedProduct, []);
 
     addAuditLog({
       id: `audit-${Math.random().toString(36).slice(2, 9)}`,

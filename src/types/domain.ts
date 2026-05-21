@@ -6,7 +6,7 @@ export type BarcodeType = "EAN13" | "CODE128" | "QR";
 export interface Category {
   id: string;
   name: string;
-  color: "amber" | "red" | "green" | "blue" | "purple" | "slate";
+  color: "amber" | "red" | "green" | "blue" | "purple" | "slate" | "pink" | "teal" | "indigo" | "yellow" | "orange" | "cyan";
   isActive: boolean;
   createdAt: string;
 }
