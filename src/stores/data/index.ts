@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import type { DataState } from "./types";
 import { supabase } from "../../lib/supabase";
-import { seedSupabase } from "../../data/seedSupabase";
 import type {
   AuditLog, Category, Inventory, InventoryMovement, PriceTier,
   Product, ProductBarcode, PurchaseOrder, PurchaseOrderItem,
