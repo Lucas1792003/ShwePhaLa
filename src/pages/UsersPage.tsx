@@ -134,12 +134,14 @@ export const UsersPage = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="staff@yourcompany.com"
+                autoComplete="off"
               />
               <Input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password (min 6 characters)"
+                autoComplete="new-password"
               />
             </>
           )}
