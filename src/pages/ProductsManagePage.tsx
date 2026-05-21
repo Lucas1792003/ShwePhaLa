@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuthStore } from "../stores/authStore";
@@ -35,7 +35,6 @@ interface FormValues {
   expiryDate?: string;
   imageUrl?: string;
   isActive: boolean;
-  barcodes: { value: string; type: "EAN13" | "CODE128" | "QR" }[];
 }
 
 export const ProductsManagePage = () => {
@@ -87,21 +86,6 @@ export const ProductsManagePage = () => {
       expiryDate: z.string().optional(),
       imageUrl: z.string().optional(),
       isActive: z.boolean(),
-      barcodes: z
-        .array(
-          z.object({
-            value: z.string(),
-            type: z.enum(["EAN13", "CODE128", "QR"]),
-          })
-        )
-        .superRefine((items, ctx) => {
-          const filled = items.filter((i) => i.value.trim().length > 0);
-          const values = filled.map((i) => i.value.trim());
-          const uniqueValues = new Set(values);
-          if (uniqueValues.size !== values.length) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Duplicate barcode values." });
-          }
-        }),
     });
   }, []);
 
@@ -119,11 +103,9 @@ export const ProductsManagePage = () => {
       expiryDate: undefined,
       imageUrl: undefined,
       isActive: true,
-      barcodes: [],
     },
   });
 
-  const { fields, append, remove } = useFieldArray({ control: form.control, name: "barcodes" });
 
   // Reset page when filters change
   useEffect(() => {
@@ -176,7 +158,6 @@ export const ProductsManagePage = () => {
       expiryDate: undefined,
       imageUrl: undefined,
       isActive: true,
-      barcodes: [],
     });
     setEditingId(null);
     setShowProductModal(true);
@@ -198,7 +179,6 @@ export const ProductsManagePage = () => {
       expiryDate: product.expiryDate,
       imageUrl: product.imageUrl,
       isActive: product.isActive,
-      barcodes: productBarcodes.map((barcode) => ({ value: barcode.value, type: barcode.type })),
     });
     setEditingId(product.id);
     setShowProductModal(true);
@@ -229,15 +209,6 @@ export const ProductsManagePage = () => {
   };
 
   const handleSubmit = form.handleSubmit((values) => {
-    const filledBarcodes = values.barcodes.filter((b) => b.value.trim().length > 0);
-    const existingValues = barcodes
-      .filter((barcode) => barcode.productId !== editingId)
-      .map((barcode) => barcode.value);
-    if (filledBarcodes.some((barcode) => existingValues.includes(barcode.value.trim()))) {
-      form.setError("barcodes", { message: "Barcode already exists in another product." });
-      return;
-    }
-
     // Check for duplicate SKU
     const existingSku = products.find((p) => p.sku === values.sku && p.id !== editingId);
     if (existingSku) {
@@ -266,15 +237,8 @@ export const ProductsManagePage = () => {
       createdAt: existingProduct?.createdAt ?? new Date().toISOString(),
     };
 
-    const barcodeEntries: ProductBarcode[] = filledBarcodes.map((barcode) => ({
-      id: `bc-${Math.random().toString(36).slice(2, 8)}`,
-      productId,
-      value: barcode.value.trim(),
-      type: barcode.type,
-    }));
-
-    if (editingId) updateProduct(product, barcodeEntries);
-    else addProduct(product, barcodeEntries);
+    if (editingId) updateProduct(product, []);
+    else addProduct(product, []);
 
     addAuditLog({
       id: `audit-${Math.random().toString(36).slice(2, 9)}`,
@@ -786,45 +750,6 @@ export const ProductsManagePage = () => {
                 {form.watch("isActive") ? "Active" : "Inactive"}
               </span>
             </div>
-          </div>
-
-          {/* Barcodes */}
-          <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
-            <div className="flex items-center justify-between">
-              <div className="font-semibold text-slate-700">Barcodes <span className="text-xs font-normal text-slate-400">(optional)</span></div>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => append({ value: "", type: "EAN13" })}
-              >
-                Add barcode
-              </Button>
-            </div>
-            <div className="mt-3 space-y-3">
-              {fields.map((field, index) => (
-                <div key={field.id} className="flex gap-2">
-                  <Input
-                    placeholder="Barcode value"
-                    {...form.register(`barcodes.${index}.value` as const)}
-                    className="flex-1"
-                  />
-                  <Select {...form.register(`barcodes.${index}.type` as const)} className="w-28">
-                    <option value="EAN13">EAN13</option>
-                    <option value="CODE128">CODE128</option>
-                    <option value="QR">QR</option>
-                  </Select>
-                  {fields.length > 1 && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => remove(index)}>
-                      <span className="material-symbols-rounded text-red-500">delete</span>
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-            {form.formState.errors.barcodes?.message && (
-              <div className="mt-2 text-xs text-red-500">{form.formState.errors.barcodes.message}</div>
-            )}
           </div>
 
           {/* Submit Buttons */}
