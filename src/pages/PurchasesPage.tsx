@@ -11,6 +11,7 @@ import { Modal } from "../components/ui/Modal";
 import { Select } from "../components/ui/Select";
 import { SearchInput } from "../components/forms/SearchInput";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
+import { hasPermission } from "../lib/permissions";
 import type { PurchaseOrderStatus } from "../types";
 
 const statusColors: Record<PurchaseOrderStatus, "gray" | "yellow" | "green" | "blue" | "red"> = {
@@ -57,6 +58,9 @@ export const PurchasesPage = () => {
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
   const isAdmin = currentUser?.role === "ADMIN";
   const isManager = currentUser?.role === "MANAGER" || isAdmin;
+  // Creating a PO is permission-gated (managers, admins and buyers) rather
+  // than role-gated, so the limited BUYER role can raise purchase orders.
+  const canCreatePO = hasPermission(currentUser, "purchase:create");
 
   const filteredOrders = useMemo(() => {
     return purchaseOrders
@@ -169,7 +173,7 @@ export const PurchasesPage = () => {
         title="Purchase Orders"
         subtitle="Manage supplier purchases and stock-in"
         actions={
-          isManager && (
+          canCreatePO && (
             <Button onClick={() => setShowCreateModal(true)}>New Purchase Order</Button>
           )
         }

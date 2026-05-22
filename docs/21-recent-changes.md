@@ -1,5 +1,83 @@
 # Recent Changes
 
+## Product images moved to Supabase Storage
+- **No more base64 on product rows.** The product create/edit flow now uploads
+  the compressed photo to the Supabase Storage bucket `product-images` and
+  saves only the **public URL** in `products.image_url`. Base64 data URLs are
+  no longer written.
+- **New helper.** `src/lib/productImageStorage.ts` — `uploadProductImage()`
+  uploads the `compressProductImage` blob (still `<= 100 KB`) to
+  `products/<productId>/<timestamp>.<ext>` and returns the public URL;
+  `buildProductImagePath()` builds the deterministic path.
+- **Bucket + policies.** Added `016_product_images_storage.sql` — a public
+  `product-images` bucket and `storage.objects` policies (public read; insert/
+  update/delete gated by `app_has_perm('product:create' | 'product:update')`).
+  Setup steps in `docs/31-product-images-storage-setup.md`.
+- **UI.** `ProductImageInput` shows a Compressing → Uploading state, the
+  compressed size, and a friendly error if the upload fails (the product is
+  never saved with a broken image). Display is unchanged — `<img src>` loads
+  the Storage URL.
+- **Follow-up.** Replacing/removing an image does not delete the old Storage
+  object yet; orphan cleanup is documented as a follow-up.
+
+## Inventory shop-scoping audit
+- **Audit result.** Reviewed the data model, RPCs, RLS, store slices and every
+  inventory read across the app. The architecture is correct: products are a
+  shared catalog, but `inventory` is one row per `(shop_id, product_id)`
+  (composite primary key), and `complete_sale`, `receive_purchase_order`,
+  `complete_stock_transfer`, `adjust_stock` and the refund/void RPCs all
+  read/write inventory keyed by `shop_id` + `product_id`.
+- **Bug fixed.** `ProductsManagePage` (admin Product Management) computed its
+  "Stock" column by summing `qty_base_units` across **all shops** into one fake
+  global quantity. It now shows on-hand units for the **currently selected
+  shop** only, with the shop name printed under the column header; the low/out
+  badges and `lowStockThreshold` check are now per-shop.
+- **Sanctioned aggregates.** The Dashboard and `ProfitReportsPage` still sum
+  stock across shops, but only when an ADMIN explicitly selects "All Shops" —
+  this is the intended admin aggregate, not a leak.
+- **Tests.** Added `src/features/inventory/selectors.test.ts` (11 tests):
+  per-shop stock independence, "no global collapse", RPC SQL inventory writes
+  keyed by `(shop_id, product_id)`, and the composite-PK schema check.
+
+## RBAC follow-up - permission-gated RLS, dashboard gating, docs sync
+- **Permission-gated SELECT RLS.** Added `015_permission_gated_select_rls.sql`.
+  SELECT policies on sensitive tables (`sales`, `sale_items`, `inventory`,
+  `inventory_movements`, `shifts`, `purchase_orders`, `purchase_order_items`,
+  `stock_transfers`, `stock_transfer_items`, `refund_void_requests`,
+  `reprint_logs`, `audit_logs`) now check a **permission** in addition to shop
+  scope. A same-shop cashier can no longer read every shop sale, movement
+  history or audit log directly through the API — only its own sales/shift
+  rows. Child tables are readable iff their parent is. Adds the `app_user_id()`
+  identity helper. Write policies, REVOKEs and the RPC architecture are
+  unchanged.
+- **Dashboard profit gating.** `DashboardPage` profit / cost / margin /
+  investment cards, the profit-trend + goal-tracker row and the sales-trend
+  chart now require `report:shop_profit`; the inventory cards require
+  `report:shop_inventory`. A manager no longer sees profit/cost on the
+  dashboard unless explicitly granted `report:shop_profit`.
+- **BUYER is per-shop.** The Users page now requires a shop for every non-admin
+  role, including BUYER, so a BUYER can actually create/view shop-scoped
+  purchase orders. A shopless BUYER is a misconfiguration.
+- **Docs.** `01-roles-permissions.md`, `02-routing-navigation.md` and
+  `06-inventory-flow.md` updated to the tuned matrix; added
+  `docs/30-rls-permission-gating-checklist.md`.
+
+## RBAC role tuning - migration 014
+- **Less over-permissive roles.** Added `014_rbac_role_tuning.sql`, which
+  replaces `role_default_permissions()` with tuned defaults and remaps renamed
+  permissions inside existing per-user grant/revoke arrays.
+- **Split permissions.** `inventory:read` -> `inventory:view_stock` +
+  `inventory:view_movements`; `report:shop` -> `report:shop_sales` +
+  `report:shop_inventory`; `report:profit` -> `report:shop_profit`. New:
+  `inventory:override_negative`, `pos:request_refund`, `pos:request_void`,
+  `sales:view_own_shift`, `receipt:reprint`, `report:own_shift`.
+- **CASHIER narrowed** to POS + own shift; **MANAGER** loses profit by default;
+  **BUYER** becomes a per-shop catalog + purchasing role.
+- **RPC checks.** `adjust_stock` now checks `inventory:override_negative` for
+  the negative-stock override; `create_refund_void_request` checks
+  `pos:request_void`/`pos:request_refund`; `log_receipt_reprint` checks
+  `receipt:reprint`.
+
 ## Backend hardening - Script 3F: shift open / close RPCs
 - **Atomic shift lifecycle.** Added `009_shift_rpc.sql` with `open_shift()`
   and `close_shift()` SECURITY DEFINER functions.
@@ -83,7 +161,7 @@
 - **Checklist.** Added `docs/22-script-3a-checkout-rpc-tests.md`.
 
 ## Backend hardening - Script 2: RBAC overhaul
-- **One permission system.** The coarse permission system was removed; granular permission strings such as `pos:create_sale`, `product:create`, and `report:shop` are now the single source of truth.
+- **One permission system.** The coarse permission system was removed; granular permission strings such as `pos:create_sale`, `product:create`, and `report:global` are now the single source of truth.
   `src/lib/permissions.ts` is the central registry.
 - **Grant / revoke model.** Custom user permissions are no longer a flat
   replacement list. Effective = `roleDefaults ∪ granted − revoked`; a revoke

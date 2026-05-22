@@ -45,12 +45,22 @@ export const ALL_PERMISSIONS = [
   "product:create", "product:read", "product:update", "product:delete", "product:edit_price",
   "barcode:manage",
   // Inventory Management
-  "inventory:read", "inventory:adjust", "inventory:damage",
+  //   view_stock       = current on-hand availability (POS + stock list)
+  //   view_movements   = stock movement / ledger history
+  //   adjust / damage  = manual stock corrections / damage write-off
+  //   override_negative = allow a manual adjustment to drive stock negative
+  "inventory:view_stock", "inventory:view_movements", "inventory:adjust", "inventory:damage",
+  "inventory:override_negative",
   // Stock Transfers
   "transfer:create", "transfer:approve", "transfer:cancel", "transfer:view",
   // POS / Sales
+  //   request_refund / request_void = raise an approval request (cashier-level)
+  //   refund / void_sale            = approve those requests (manager-level)
+  //   sale:view          = full shop sales history
+  //   sales:view_own_shift = the caller's own-shift sales (receipt access)
   "pos:create_sale", "pos:apply_discount", "pos:override_price", "pos:override_stock",
-  "pos:void_sale", "pos:refund", "sale:view",
+  "pos:void_sale", "pos:refund", "pos:request_refund", "pos:request_void",
+  "sale:view", "sales:view_own_shift", "receipt:reprint",
   // Suppliers & Purchasing
   "supplier:create", "supplier:read", "supplier:update", "supplier:delete",
   "purchase:create", "purchase:approve", "purchase:receive", "purchase:view",
@@ -61,7 +71,11 @@ export const ALL_PERMISSIONS = [
   // Shifts
   "shift:manage_own", "shift:manage_all", "shift:verify",
   // Reports
-  "report:shop", "report:global", "report:profit",
+  //   own_shift   = a cashier's own shift summary
+  //   shop_*      = assigned-shop reports (sales / inventory / profit)
+  //   global      = cross-shop reporting. Profit/cost stays isolated in shop_profit.
+  "report:own_shift", "report:shop_sales", "report:shop_inventory", "report:shop_profit",
+  "report:global",
   // Audit
   "audit:view_shop", "audit:view_global",
 ] as const;
@@ -324,41 +338,48 @@ export type Refund = RefundVoidRequest;
 
 // ============================================
 // Role-Permission Mapping (Default Permissions)
-// Keep in sync with role_default_permissions() in
-// supabase/migrations/002_rbac_permissions.sql
+// MUST be kept in sync with role_default_permissions() in
+// supabase/migrations/014_rbac_role_tuning.sql — the SQL function is the
+// source of truth for RLS / RPC checks and this object for the frontend.
+// Any change here requires a matching change there (and a new migration).
 // ============================================
 export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   // ADMIN always has every permission in the registry.
   ADMIN: [...ALL_PERMISSIONS],
   MANAGER: [
-    // Shop-level management
+    // Shop-scoped management & operations for the assigned shop only.
     "shop:read",
     "user:read",
     "product:read", "product:update", "product:edit_price",
-    "inventory:read", "inventory:adjust", "inventory:damage",
+    "inventory:view_stock", "inventory:view_movements", "inventory:adjust", "inventory:damage",
+    "inventory:override_negative",
     "transfer:create", "transfer:approve", "transfer:view",
-    "pos:create_sale", "pos:apply_discount", "pos:override_price", "pos:override_stock", "pos:void_sale", "pos:refund",
-    "sale:view",
+    "pos:create_sale", "pos:apply_discount", "pos:override_price", "pos:override_stock",
+    "pos:void_sale", "pos:refund", "pos:request_refund", "pos:request_void",
+    "sale:view", "sales:view_own_shift", "receipt:reprint",
     "supplier:read",
     "purchase:create", "purchase:receive", "purchase:view",
     "approval:view",
     "shift:manage_own", "shift:manage_all", "shift:verify",
-    "report:shop", "report:profit",
+    // Operational shop reports only — profit/global stay ADMIN-only.
+    "report:own_shift", "report:shop_sales", "report:shop_inventory",
     "audit:view_shop",
   ],
   CASHIER: [
-    // POS operations only
+    // POS-only: ring up sales, run own shift, raise (not approve) requests.
     "product:read",
-    "inventory:read",
-    "transfer:view",
-    "pos:create_sale", "pos:apply_discount",
-    "sale:view",
+    "inventory:view_stock",
+    "pos:create_sale", "pos:apply_discount", "pos:request_refund", "pos:request_void",
+    "sales:view_own_shift", "receipt:reprint",
     "shift:manage_own",
-    "report:shop",
+    "report:own_shift",
   ],
   BUYER: [
-    // Read-only catalog access
+    // Limited catalog + purchasing role: browse catalog/suppliers and
+    // create/view purchase orders. No approving, receiving or stock writes.
     "product:read",
+    "supplier:read",
+    "purchase:view", "purchase:create",
   ],
 };
 

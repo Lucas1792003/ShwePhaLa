@@ -8,9 +8,24 @@ The system uses **ledger-based inventory tracking** where every stock change cre
 
 **CRITICAL**: Inventory is **NOT shared** between shops. Each shop maintains its own isolated stock levels:
 
-- `InventoryLevel` records are unique per `(shopId, productId)` combination
-- Moving stock between shops requires a formal **Stock Transfer**
-- Each shop tracks its own stock valuations and movement history
+- The `inventory` table has a composite **primary key `(shop_id, product_id)`** —
+  exactly one stock row per shop per product.
+- `products` and `product_barcodes` *are* shared: one catalog / one scan-code
+  map across all shops. Only the stock quantity is per-shop.
+- Moving stock between shops requires a formal **Stock Transfer**.
+- Each shop tracks its own stock valuations and movement history.
+
+### Per-shop stock in the UI
+
+Every stock lookup is keyed by `(shopId, productId)` — never `productId` alone:
+
+- POS, the Inventory page and Transfers show stock for the **active shop**.
+- The Product Management page's "Stock" column shows on-hand units for the
+  **selected shop only** (the shop name is printed under the column header). It
+  never sums shops into a single global quantity.
+- The Dashboard and Profit reports aggregate stock across shops **only** when an
+  ADMIN explicitly chooses "All Shops"; a manager/cashier always sees just their
+  assigned shop (also enforced server-side by the `inventory` SELECT RLS policy).
 
 ## Movement Types
 
@@ -151,8 +166,16 @@ const newAvgCost = totalCost / (existingQty + newQty);
 
 | Action | Required Permission |
 |--------|---------------------|
-| View movements | `inventory:read` |
+| View current stock | `inventory:view_stock` |
+| View movement history | `inventory:view_movements` |
 | Adjust stock | `inventory:adjust` |
 | Record damage | `inventory:damage` |
-| Override stock check | `pos:override_stock` |
+| Drive stock negative via a manual adjustment | `inventory:override_negative` |
+| Sell below stock at POS | `pos:override_stock` |
+
+> `inventory:view_stock` and `inventory:view_movements` replace the old broad
+> `inventory:read`. The `adjust_stock` RPC checks `inventory:override_negative`
+> (not `pos:override_stock`) when an adjustment would push stock below zero.
+> Both the SELECT RLS policies and the `/app/inventory` Movements tab enforce
+> `inventory:view_movements`, so a cashier sees stock but not movement history.
 

@@ -14,6 +14,7 @@ import { MovementsTable } from "../components/inventory/MovementsTable";
 import { AdjustStockModal } from "../components/inventory/AdjustStockModal";
 import { Button } from "../components/ui/Button";
 import { downloadCsv } from "../lib/csv";
+import { hasPermission } from "../lib/permissions";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -42,6 +43,12 @@ export const InventoryPage = () => {
   const [movementPageSize, setMovementPageSize] = useState(10);
 
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
+
+  // Permission gating: stock availability is broadly visible, but movement
+  // history and manual adjustment are restricted (cashiers see stock only).
+  const canViewMovements = hasPermission(currentUser, "inventory:view_movements");
+  const canAdjust = hasPermission(currentUser, "inventory:adjust");
+  const effectiveTab = activeTab === "movements" && !canViewMovements ? "stock" : activeTab;
 
   const stockRows = useMemo(() => {
     return products
@@ -101,14 +108,14 @@ export const InventoryPage = () => {
         <Tabs
           tabs={[
             { id: "stock", label: "Stock" },
-            { id: "movements", label: "Movements" },
+            ...(canViewMovements ? [{ id: "movements", label: "Movements" }] : []),
           ]}
-          active={activeTab}
+          active={effectiveTab}
           onChange={setActiveTab}
         />
       </div>
 
-      {activeTab === "stock" && (
+      {effectiveTab === "stock" && (
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center gap-3">
             <SearchInput value={search} onChange={setSearch} placeholder="Search product" />
@@ -127,7 +134,10 @@ export const InventoryPage = () => {
               </Select>
             </div>
           </div>
-          <InventoryTable rows={paginatedStockRows} onAdjust={setAdjustProductId} />
+          <InventoryTable
+            rows={paginatedStockRows}
+            onAdjust={canAdjust ? setAdjustProductId : undefined}
+          />
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-500">
               Showing {((stockPage - 1) * stockPageSize) + 1}-{Math.min(stockPage * stockPageSize, stockRows.length)} of {stockRows.length} products
@@ -137,7 +147,7 @@ export const InventoryPage = () => {
         </div>
       )}
 
-      {activeTab === "movements" && (
+      {effectiveTab === "movements" && canViewMovements && (
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center gap-3">
             <SearchInput value={movementSearch} onChange={setMovementSearch} placeholder="Filter by product" />

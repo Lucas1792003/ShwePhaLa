@@ -7,8 +7,11 @@ role that provides a set of default permissions; individual users may also have
 **grant** and **revoke** overrides for fine-grained control.
 
 The granular permissions (e.g. `pos:create_sale`) are the **single source of
-truth**. The old coarse permission system has been removed. The central registry lives in `src/lib/permissions.ts`, and
-the permission list + role defaults in `src/types/domain.ts`.
+truth**. The old coarse permission system has been removed. The central
+registry lives in `src/lib/permissions.ts`, and the permission list + role
+defaults in `src/types/domain.ts`. The SQL half of the contract is
+`role_default_permissions()` in `migrations/014_rbac_role_tuning.sql` — it MUST
+be kept in sync with `DEFAULT_ROLE_PERMISSIONS`.
 
 ## Roles
 
@@ -16,8 +19,13 @@ the permission list + role defaults in `src/types/domain.ts`.
 |------|-------------|------------|
 | **ADMIN** | Full system access, every permission, all shops | Multi-shop access |
 | **MANAGER** | Shop-level management and operations | Assigned shop only |
-| **CASHIER** | POS operations and basic views | Assigned shop only |
-| **BUYER** | Read-only catalog access | N/A |
+| **CASHIER** | POS operations and own-shift views only | Assigned shop only |
+| **BUYER** | Per-shop catalog browsing + purchase-order creation | Assigned shop only |
+
+> **BUYER is a per-shop role.** Its `purchase:create` / `purchase:view`
+> permissions are shop-scoped by RLS, so a BUYER **must be assigned a `shopId`**.
+> The Users page enforces this (every non-admin role requires a shop). A
+> shopless BUYER is a misconfiguration and has no operational access.
 
 ## Permission Categories
 
@@ -48,11 +56,17 @@ the permission list + role defaults in `src/types/domain.ts`.
 | `barcode:manage` | Manage product barcodes | ✅ | ❌ | ❌ | ❌ |
 
 ### Inventory Management
+`inventory:view_stock` and `inventory:view_movements` replace the old broad
+`inventory:read`. A cashier can see **current stock** but **not** movement
+history.
+
 | Permission | Description | Admin | Manager | Cashier | Buyer |
 |------------|-------------|:-----:|:-------:|:-------:|:-----:|
-| `inventory:read` | View stock levels | ✅ | ✅ | ✅ | ❌ |
+| `inventory:view_stock` | View current on-hand stock | ✅ | ✅ | ✅ | ❌ |
+| `inventory:view_movements` | View stock movement / ledger history | ✅ | ✅ | ❌ | ❌ |
 | `inventory:adjust` | Manual stock adjustments | ✅ | ✅ | ❌ | ❌ |
 | `inventory:damage` | Record damaged stock | ✅ | ✅ | ❌ | ❌ |
+| `inventory:override_negative` | Allow a manual adjustment to drive stock negative | ✅ | ✅ | ❌ | ❌ |
 
 ### Stock Transfers
 | Permission | Description | Admin | Manager | Cashier | Buyer |
@@ -60,30 +74,39 @@ the permission list + role defaults in `src/types/domain.ts`.
 | `transfer:create` | Create transfer requests | ✅ | ✅ | ❌ | ❌ |
 | `transfer:approve` | Approve / reject / complete transfers | ✅ | ✅ | ❌ | ❌ |
 | `transfer:cancel` | Cancel pending transfers | ✅ | ❌ | ❌ | ❌ |
-| `transfer:view` | View transfer history | ✅ | ✅ | ✅ | ❌ |
+| `transfer:view` | View transfer history | ✅ | ✅ | ❌ | ❌ |
 
 ### POS / Sales
+`request_*` permissions raise an approval request (cashier-level); `refund` /
+`void_sale` approve them (manager-level). `sale:view` is the full shop sales
+history; `sales:view_own_shift` is the narrow cashier scope (own sales only,
+enough for the receipt page and shift summary).
+
 | Permission | Description | Admin | Manager | Cashier | Buyer |
 |------------|-------------|:-----:|:-------:|:-------:|:-----:|
 | `pos:create_sale` | Create sales transactions | ✅ | ✅ | ✅ | ❌ |
 | `pos:apply_discount` | Apply discounts to sales | ✅ | ✅ | ✅ | ❌ |
 | `pos:override_price` | Override item prices | ✅ | ✅ | ❌ | ❌ |
 | `pos:override_stock` | Sell without stock check | ✅ | ✅ | ❌ | ❌ |
-| `pos:void_sale` | Void completed sales | ✅ | ✅ | ❌ | ❌ |
-| `pos:refund` | Process refunds | ✅ | ✅ | ❌ | ❌ |
-| `sale:view` | View sales history | ✅ | ✅ | ✅ | ❌ |
+| `pos:request_refund` | Raise a refund request | ✅ | ✅ | ✅ | ❌ |
+| `pos:request_void` | Raise a void request | ✅ | ✅ | ✅ | ❌ |
+| `pos:refund` | Approve refund requests | ✅ | ✅ | ❌ | ❌ |
+| `pos:void_sale` | Approve void requests | ✅ | ✅ | ❌ | ❌ |
+| `sale:view` | View full shop sales history | ✅ | ✅ | ❌ | ❌ |
+| `sales:view_own_shift` | View own-shift sales (receipt access) | ✅ | ✅ | ✅ | ❌ |
+| `receipt:reprint` | Reprint a receipt | ✅ | ✅ | ✅ | ❌ |
 
 ### Suppliers & Purchasing
 | Permission | Description | Admin | Manager | Cashier | Buyer |
 |------------|-------------|:-----:|:-------:|:-------:|:-----:|
 | `supplier:create` | Add new suppliers | ✅ | ❌ | ❌ | ❌ |
-| `supplier:read` | View supplier list | ✅ | ✅ | ❌ | ❌ |
+| `supplier:read` | View supplier list | ✅ | ✅ | ❌ | ✅ |
 | `supplier:update` | Edit supplier details | ✅ | ❌ | ❌ | ❌ |
 | `supplier:delete` | Delete suppliers | ✅ | ❌ | ❌ | ❌ |
-| `purchase:create` | Create purchase orders | ✅ | ✅ | ❌ | ❌ |
+| `purchase:create` | Create purchase orders | ✅ | ✅ | ❌ | ✅ |
 | `purchase:approve` | Approve purchase orders | ✅ | ❌ | ❌ | ❌ |
 | `purchase:receive` | Receive stock from PO | ✅ | ✅ | ❌ | ❌ |
-| `purchase:view` | View purchase orders | ✅ | ✅ | ❌ | ❌ |
+| `purchase:view` | View purchase orders | ✅ | ✅ | ❌ | ✅ |
 
 ### Pricing
 | Permission | Description | Admin | Manager | Cashier | Buyer |
@@ -103,17 +126,40 @@ the permission list + role defaults in `src/types/domain.ts`.
 | `shift:verify` | Verify shift cash counts | ✅ | ✅ | ❌ | ❌ |
 
 ### Reports
+The broad `report:shop` / `report:profit` are split. **Profit, cost and margin
+reporting is ADMIN-only by default** — a manager sees operational sales and
+inventory reports but not profit unless explicitly granted `report:shop_profit`.
+
 | Permission | Description | Admin | Manager | Cashier | Buyer |
 |------------|-------------|:-----:|:-------:|:-------:|:-----:|
-| `report:shop` | View shop-level reports | ✅ | ✅ | ✅ | ❌ |
+| `report:own_shift` | View own shift summary | ✅ | ✅ | ✅ | ❌ |
+| `report:shop_sales` | View shop sales reports / dashboard | ✅ | ✅ | ❌ | ❌ |
+| `report:shop_inventory` | View shop inventory reports | ✅ | ✅ | ❌ | ❌ |
+| `report:shop_profit` | View profit / cost / margin reports | ✅ | ❌ | ❌ | ❌ |
 | `report:global` | View cross-shop reports | ✅ | ❌ | ❌ | ❌ |
-| `report:profit` | View profit reports | ✅ | ✅ | ❌ | ❌ |
 
 ### Audit
 | Permission | Description | Admin | Manager | Cashier | Buyer |
 |------------|-------------|:-----:|:-------:|:-------:|:-----:|
 | `audit:view_shop` | View shop audit log | ✅ | ✅ | ❌ | ❌ |
 | `audit:view_global` | View global audit log | ✅ | ❌ | ❌ | ❌ |
+
+## What Changed In RBAC Role Tuning (migrations 014–015)
+
+- **CASHIER narrowed.** Lost broad shop reports, full sales history, movement
+  history, transfer/purchase/audit visibility. Keeps: POS sales, own shift,
+  current stock, request (not approve) refund/void, reprint, own-shift sales.
+- **MANAGER — no profit by default.** Operational sales/inventory reports only;
+  `report:shop_profit` and the Profit & Analytics page are ADMIN-only unless a
+  manager is explicitly granted `report:shop_profit`.
+- **BUYER — per-shop purchasing role.** Gains `supplier:read`, `purchase:view`,
+  `purchase:create`. Must be assigned a shop.
+- **`inventory:view_stock` vs `inventory:view_movements`.** Current stock vs
+  movement history are now separate grants.
+- **`report:shop_sales` vs `report:shop_profit`.** Operational sales vs
+  sensitive profit/cost are now separate grants.
+- **Permission-gated RLS reads (migration 015).** SELECT policies on sensitive
+  tables now check a permission, not just shop scope (see below).
 
 ## Effective Permissions — Grant / Revoke Model
 
@@ -140,12 +186,12 @@ interface User {
 ```
 
 This allows, for example, granting one Cashier `transfer:approve` without
-changing their role, or revoking `pos:void_sale` from a specific Manager.
+changing their role, or granting a specific Manager `report:shop_profit`.
 
-> **Legacy note:** the old `permissions` field used *replacement* semantics
-> (if set, it replaced the role defaults entirely). It is kept only for
-> migration safety — `migrations/002_rbac_permissions.sql` converts any existing
-> `permissions` into equivalent `granted`/`revoked` values.
+> **Legacy note:** the old `permissions` field used *replacement* semantics. It
+> is kept only for migration safety — `002_rbac_permissions.sql` converts any
+> existing `permissions` into `granted`/`revoked` values, and
+> `014_rbac_role_tuning.sql` remaps renamed permissions inside those arrays.
 
 ## Shop Scoping
 
@@ -153,12 +199,7 @@ A matching permission is **not sufficient** for a shop-scoped action — the use
 must also be allowed to act within the target shop.
 
 - **Admin**: spans all shops; can switch shop from the top bar.
-- **Manager / Cashier**: locked to their assigned `shopId`.
-- **Buyer**: no shop assignment; read-only catalog.
-
-Server-side, `requirePermission(users, actorId, permission, shopId?)` enforces
-the shop scope when `shopId` is supplied (used by the transfer and purchase
-slices).
+- **Manager / Cashier / Buyer**: locked to their assigned `shopId`.
 
 ## Permission Helper Functions
 
@@ -178,28 +219,50 @@ canVoidSale(user, sale);                              // workflow helper
 **Shop-aware:** `canAccessShop(user, shopId)`,
 `hasShopPermission(user, permission, shopId)`
 
-**Workflow** (check permission *and* the relevant shop scope):
-`canVoidSale`, `canRefundSale`, `canAdjustInventory`, `canCompleteTransfer`,
-`canReceivePurchaseOrder`, `canApprovePurchaseOrder`, `canManagePriceTier`
+**Workflow:** `canVoidSale`, `canRefundSale`, `canAdjustInventory`,
+`canCompleteTransfer`, `canReceivePurchaseOrder`, `canApprovePurchaseOrder`,
+`canManagePriceTier`
 
-**Registry:** `ALL_PERMISSIONS` (every permission), `ROUTE_PERMISSIONS` (route to permission map used by the router guard and the sidebar).
+**Registry:** `ALL_PERMISSIONS`, `ROUTE_PERMISSIONS` (route → permission map
+used by the router guard and the sidebar).
 
 ## SQL Helpers And RLS
 
-`migrations/003_identity_rls_helpers.sql` adds identity-aware SQL functions that
-mirror this model for Row Level Security policies and SECURITY DEFINER RPCs:
+`003_identity_rls_helpers.sql` adds identity-aware SQL functions:
 `current_app_user()`, `app_role()`, `app_shop_id()`, `app_has_perm(perm)`,
-`app_can_for_shop(perm, shop_id)`.
+`app_can_for_shop(perm, shop_id)`. `015_permission_gated_select_rls.sql` adds
+`app_user_id()`.
 
-RLS is now active for protected operational tables. Direct authenticated writes to sales, inventory, shifts, audit logs, purchase/transfer status rows, refund/void requests, and reprint logs are blocked; those workflows use RPCs.
+### Permission-gated SELECT RLS (migration 015)
+
+SELECT policies on sensitive tables check a **permission**, not just shop scope.
+A same-shop user can no longer read rows the UI hides:
+
+| Table | Read rule |
+|-------|-----------|
+| `sales` | ADMIN; `sale:view` + shop; or `sales:view_own_shift` for own sales/shift |
+| `sale_items` | iff parent sale is readable |
+| `inventory` | ADMIN; `inventory:view_stock` + shop |
+| `inventory_movements` | ADMIN; `inventory:view_movements` + shop |
+| `shifts` | ADMIN; `shift:manage_all`/`report:shop_sales` + shop; or own shifts |
+| `purchase_orders` | ADMIN; `purchase:view` + shop |
+| `purchase_order_items` | iff parent PO is readable |
+| `stock_transfers` | ADMIN; `transfer:view` + source/destination shop |
+| `stock_transfer_items` | iff parent transfer is readable |
+| `refund_void_requests` | ADMIN; `pos:refund`/`pos:void_sale` + shop; or own (`created_by`) |
+| `reprint_logs` | iff parent sale is readable, or `printed_by` self |
+| `audit_logs` | ADMIN; `audit:view_global`; or `audit:view_shop` + shop |
+
+Reference/catalog tables (`shops`, `users`, `categories`, `products`,
+`product_barcodes`, `price_tiers`, `suppliers`) stay globally readable — the POS
+and shared UI need them. Direct authenticated writes to operational tables
+remain blocked; those workflows use SECURITY DEFINER RPCs.
 
 ## Permission Count Summary
 
 | Role | Total Permissions |
 |------|-------------------|
-| Admin | 46 (full access) |
-| Manager | 29 |
-| Cashier | 8 |
-| Buyer | 1 |
-
-
+| Admin | 54 (full access) |
+| Manager | 36 |
+| Cashier | 10 |
+| Buyer | 4 |

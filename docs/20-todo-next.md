@@ -62,20 +62,22 @@ Current RLS model:
 Use granular permission strings from `src/lib/permissions.ts`, for example:
 
 - `pos:create_sale`
-- `sale:view`
+- `sale:view` / `sales:view_own_shift`
 - `product:create`
 - `barcode:manage`
-- `inventory:read`
+- `inventory:view_stock` / `inventory:view_movements`
 - `inventory:adjust`
 - `purchase:view`
 - `purchase:create`
 - `transfer:view`
 - `approval:view`
-- `report:shop`
+- `report:shop_sales` / `report:shop_profit`
 - `report:global`
 
 Old coarse permission names are deprecated and should not appear in new docs or
-code.
+code. The removed broad permissions `inventory:read`, `report:shop` and
+`report:profit` were split/renamed by `014_rbac_role_tuning.sql` — see
+`docs/01-roles-permissions.md` for the current matrix.
 
 ## Next Recommended Work
 

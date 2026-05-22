@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuthStore } from "../stores/authStore";
+import { useAppStore } from "../stores/appStore";
 import { useDataStore } from "../stores/dataStore";
 import type { ProductCategory, Category, Product } from "../types";
 import { PageHeader } from "../components/layout/PageHeader";
@@ -14,6 +15,7 @@ import { Badge } from "../components/ui/Badge";
 import { Modal } from "../components/ui/Modal";
 import { Table, THead, TBody, TR, TH, TD } from "../components/ui/Table";
 import { SearchInput } from "../components/forms/SearchInput";
+import { ProductImageInput } from "../components/forms/ProductImageInput";
 import { Pagination } from "../components/ui/Pagination";
 import { formatMmk } from "../lib/utils";
 
@@ -39,9 +41,11 @@ interface FormValues {
 
 export const ProductsManagePage = () => {
   const currentUserId = useAuthStore((state) => state.currentUserId);
+  const currentShopId = useAppStore((state) => state.currentShopId);
   const products = useDataStore((state) => state.products);
   const barcodes = useDataStore((state) => state.barcodes);
   const inventory = useDataStore((state) => state.inventory);
+  const shops = useDataStore((state) => state.shops);
   const categories = useDataStore((state) => state.categories);
   const addProduct = useDataStore((state) => state.addProduct);
   const updateProduct = useDataStore((state) => state.updateProduct);
@@ -52,6 +56,9 @@ export const ProductsManagePage = () => {
   // Product modal state
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // The product id used for BOTH the storage image path and the saved row.
+  // Generated up-front on "Add" so the image can be uploaded before submit.
+  const [formProductId, setFormProductId] = useState("");
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -132,11 +139,17 @@ export const ProductsManagePage = () => {
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
   const paginatedProducts = filteredProducts.slice((page - 1) * pageSize, page * pageSize);
 
-  // Get total stock for a product across all shops
+  // Inventory is per-shop: stock is shown for the currently selected shop,
+  // never summed into a fake global quantity. Switch shops in the sidebar to
+  // see another shop's stock for the same shared product.
+  const currentShopName =
+    shops.find((s) => s.id === currentShopId)?.name ?? "No shop selected";
   const getProductStock = (productId: string) => {
-    return inventory
-      .filter((inv) => inv.productId === productId)
-      .reduce((sum, inv) => sum + (inv.qtyBaseUnits || 0), 0);
+    if (!currentShopId) return 0;
+    const record = inventory.find(
+      (inv) => inv.shopId === currentShopId && inv.productId === productId,
+    );
+    return record?.qtyBaseUnits ?? 0;
   };
 
   const getCategoryColor = (categoryName: string): CategoryColor => {
@@ -160,6 +173,7 @@ export const ProductsManagePage = () => {
       isActive: true,
     });
     setEditingId(null);
+    setFormProductId(`prod-${Date.now()}`);
     setShowProductModal(true);
   };
 
@@ -180,6 +194,7 @@ export const ProductsManagePage = () => {
       isActive: product.isActive,
     });
     setEditingId(product.id);
+    setFormProductId(product.id);
     setShowProductModal(true);
   };
 
@@ -214,7 +229,8 @@ export const ProductsManagePage = () => {
       return;
     }
 
-    const productId = editingId ?? `prod-${Date.now()}`;
+    // Same id used for the storage image path (see formProductId / ProductImageInput).
+    const productId = editingId || formProductId || `prod-${Date.now()}`;
     const existingProduct = editingId ? products.find((p) => p.id === editingId) : null;
     const costMmk = Number.isFinite(values.costMmk) ? values.costMmk : undefined;
     const packSize = Number.isFinite(values.packSize) ? values.packSize : undefined;
@@ -360,7 +376,7 @@ export const ProductsManagePage = () => {
     <Card>
       <PageHeader
         title="Product Management"
-        subtitle="Manage your product catalog."
+        subtitle="Products are a shared catalog; the Stock column shows on-hand units for the selected shop only."
         actions={
           <Button onClick={handleAddProduct}>
             <span className="material-symbols-rounded mr-1 text-sm">add</span>
@@ -422,7 +438,12 @@ export const ProductsManagePage = () => {
               <TH>Category</TH>
               <TH className="text-right">Price</TH>
               <TH className="text-right">Cost</TH>
-              <TH className="text-right">Stock</TH>
+              <TH className="text-right">
+                Stock
+                <span className="block text-[10px] font-normal text-slate-400">
+                  {currentShopName}
+                </span>
+              </TH>
               <TH>Status</TH>
               <TH className="text-right">Actions</TH>
             </TR>
@@ -453,6 +474,7 @@ export const ProductsManagePage = () => {
                             <img
                               src={product.imageUrl}
                               alt={product.name}
+                              loading="lazy"
                               className="h-full w-full object-cover"
                             />
                           ) : (
@@ -626,63 +648,14 @@ export const ProductsManagePage = () => {
             )}
           </div>
 
-          {/* Product Image */}
+          {/* Product Image — compressed to < 100 KB before it is stored. */}
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Product Image</label>
-            <div className="flex items-start gap-4">
-              {/* Image Preview */}
-              <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border-2 border-dashed border-slate-300 bg-slate-50">
-                {form.watch("imageUrl") ? (
-                  <>
-                    <img
-                      src={form.watch("imageUrl")}
-                      alt="Product preview"
-                      className="h-full w-full object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => form.setValue("imageUrl", undefined)}
-                      className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow-md hover:bg-red-600"
-                    >
-                      <span className="material-symbols-rounded text-sm">close</span>
-                    </button>
-                  </>
-                ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center text-slate-400">
-                    <span className="material-symbols-rounded text-2xl">image</span>
-                    <span className="text-xs">No image</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Upload Button */}
-              <div className="flex-1">
-                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50">
-                  <span className="material-symbols-rounded text-lg">upload</span>
-                  Choose Image
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        if (file.size > 2 * 1024 * 1024) {
-                          alert("Image size must be less than 2MB");
-                          return;
-                        }
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          form.setValue("imageUrl", reader.result as string);
-                        };
-                        reader.readAsDataURL(file);
-                      }
-                    }}
-                  />
-                </label>
-                <p className="mt-1 text-xs text-slate-500">PNG, JPG, or GIF. Max 2MB.</p>
-              </div>
-            </div>
+            <ProductImageInput
+              productId={formProductId}
+              value={form.watch("imageUrl")}
+              onChange={(value) => form.setValue("imageUrl", value)}
+            />
           </div>
 
           {/* Category & Unit Type */}

@@ -21,16 +21,17 @@ export { ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS };
 // `satisfies` guarantees every value is a real granular permission.
 // ============================================================
 export const ROUTE_PERMISSIONS = {
-  dashboard: "report:shop",
+  dashboard: "report:shop_sales",
   pos: "pos:create_sale",
   sales: "sale:view",
+  saleDetail: "sales:view_own_shift",
   shifts: "shift:manage_own",
-  inventory: "inventory:read",
+  inventory: "inventory:view_stock",
   transfers: "transfer:view",
   purchases: "purchase:view",
   approvals: "approval:view",
-  reports: "report:shop",
-  reportsProfit: "report:profit",
+  reports: "report:shop_sales",
+  reportsProfit: "report:shop_profit",
   catalog: "product:read",
   adminShops: "shop:create",
   adminUsers: "user:create",

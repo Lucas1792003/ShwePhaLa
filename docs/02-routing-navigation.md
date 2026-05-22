@@ -7,18 +7,25 @@ in `src/lib/permissions.ts`.
 ## Core Routes
 
 - `/login` - Login page
-- `/app/dashboard` - Analytics dashboard (`report:shop`)
+- `/app/dashboard` - Analytics dashboard (`report:shop_sales`)
 - `/app/pos` - Point of Sale (`pos:create_sale`)
-- `/app/sales` - Sales history (`sale:view`)
-- `/app/sales/:saleId` - Sale details (`sale:view`)
+- `/app/sales` - Full sales history (`sale:view`)
+- `/app/sales/:saleId` - Sale / receipt details (`sales:view_own_shift`)
 - `/app/shifts` - Shift management (`shift:manage_own`)
-- `/app/inventory` - Stock levels and movements (`inventory:read`)
+- `/app/inventory` - Stock levels and movements (`inventory:view_stock`)
 - `/app/transfers` - Inter-shop transfers (`transfer:view`)
 - `/app/purchases` - Purchase orders (`purchase:view`)
 - `/app/approvals` - Refund/void approvals (`approval:view`)
-- `/app/reports` - Shop reports (`report:shop`)
-- `/app/reports/profit` - Profit reports (`report:profit`)
+- `/app/reports` - Shop sales reports (`report:shop_sales`)
+- `/app/reports/profit` - Profit & analytics, ADMIN-only (`report:shop_profit`)
 - `/app/catalog` - Product catalog for buyers (`product:read`)
+
+> The `/app/sales` **list** still needs `sale:view` (managers/admins), while
+> `/app/sales/:saleId` **receipt detail** uses `sales:view_own_shift` so a
+> cashier can open the receipt of a sale they just rang up. Inside
+> `/app/inventory`, the Movements tab and the Adjust action are additionally
+> gated by `inventory:view_movements` / `inventory:adjust`. On `/app/dashboard`
+> the profit/cost cards require `report:shop_profit`.
 
 ## Admin Routes
 

@@ -5,6 +5,7 @@ import { useDataStore } from "../stores/dataStore";
 import { Card } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { formatMmk, getEffectiveShopId } from "../lib/utils";
+import { hasPermission } from "../lib/permissions";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDashboardInsights } from "../hooks/useDashboardInsights";
 import {
@@ -45,6 +46,14 @@ export const DashboardPage = () => {
 
   const defaultShopId = getEffectiveShopId(currentUser, currentShopId, shops);
   const isAdmin = currentUser?.role === "ADMIN";
+
+  // Dashboard card gating. The route already requires `report:shop_sales`,
+  // so revenue / sales cards need no extra gate. Profit, cost, margin and
+  // investment figures need `report:shop_profit`; inventory cards need
+  // `report:shop_inventory`. ADMIN holds every permission by default, so a
+  // MANAGER without an explicit grant does not see profit/cost.
+  const canViewProfit = hasPermission(currentUser, "report:shop_profit");
+  const canViewInventory = hasPermission(currentUser, "report:shop_inventory");
 
   // Shop filter state - admin can select any shop, non-admin sees only their shop
   const [selectedShopId, setSelectedShopId] = useState<string | "all">(isAdmin ? "all" : defaultShopId || "all");
@@ -265,6 +274,8 @@ export const DashboardPage = () => {
           </div>
         </Card>
 
+        {/* Investment (cost of goods) — sensitive, requires report:shop_profit */}
+        {canViewProfit && (
         <Card className="group cursor-pointer bg-gradient-to-br from-violet-500 to-violet-600 text-white transition-transform hover:scale-[1.02]">
           <div className="flex items-center justify-between">
             <div>
@@ -277,7 +288,10 @@ export const DashboardPage = () => {
             {language === "my" ? "ကုန်ပစ္စည်းဝယ်ယူမှုတန်ဖိုး" : "Cost of goods sold"}
           </div>
         </Card>
+        )}
 
+        {/* Profit & margin — sensitive, requires report:shop_profit */}
+        {canViewProfit && (
         <Card className={`group cursor-pointer text-white transition-transform hover:scale-[1.02] ${metrics.totalProfit >= 0 ? "bg-gradient-to-br from-blue-500 to-blue-600" : "bg-gradient-to-br from-red-500 to-red-600"}`}>
           <div className="flex items-center justify-between">
             <div>
@@ -293,6 +307,7 @@ export const DashboardPage = () => {
             {language === "my" ? "ဝင်ငွေ - ကုန်ကျစရိတ်" : "Revenue minus costs"}
           </div>
         </Card>
+        )}
 
         <Card className="group cursor-pointer bg-gradient-to-br from-amber-500 to-amber-600 text-white transition-transform hover:scale-[1.02]">
           <div className="flex items-center justify-between">
@@ -321,7 +336,8 @@ export const DashboardPage = () => {
         </Card>
       </div>
 
-      {/* Profit Trend + Goal Tracker Row */}
+      {/* Profit Trend + Goal Tracker Row — sensitive, requires report:shop_profit */}
+      {canViewProfit && (
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <ProfitTrendChart
@@ -339,10 +355,12 @@ export const DashboardPage = () => {
           currentProfit={monthlyMetrics.profit}
         />
       </div>
+      )}
 
       {/* Charts Row */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Sales Trend Chart */}
+        {/* Sales Trend Chart — plots investment & profit, requires report:shop_profit */}
+        {canViewProfit && (
         <Card>
           <h3 className="mb-4 text-lg font-semibold text-slate-800">{t("dashboard", "salesTrend")}</h3>
           <div className="h-64">
@@ -377,6 +395,7 @@ export const DashboardPage = () => {
             </ResponsiveContainer>
           </div>
         </Card>
+        )}
 
         {/* Sales by Category Pie Chart */}
         <Card>
@@ -411,11 +430,13 @@ export const DashboardPage = () => {
 
       {/* Inventory Intelligence + Top Products Row */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Inventory Intelligence */}
-        <InventoryIntelligence
-          stockHealth={stockHealth}
-          fastSlowMovers={fastSlowMovers}
-        />
+        {/* Inventory Intelligence — requires report:shop_inventory */}
+        {canViewInventory && (
+          <InventoryIntelligence
+            stockHealth={stockHealth}
+            fastSlowMovers={fastSlowMovers}
+          />
+        )}
 
         {/* Top Products Table */}
         <Card className="lg:col-span-2">
@@ -428,9 +449,14 @@ export const DashboardPage = () => {
                 <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
                   <th className="pb-3 pr-4">{t("dashboard", "productName")}</th>
                   <th className="pb-3 pr-4 text-right">{t("dashboard", "sales")}</th>
-                  <th className="pb-3 pr-4 text-right">{t("dashboard", "revenue")}</th>
-                  <th className="pb-3 pr-4 text-right">{t("dashboard", "cost")}</th>
-                  <th className="pb-3 text-right">{t("dashboard", "profit")}</th>
+                  <th className={`pb-3 pr-4 text-right${canViewProfit ? "" : " pr-0"}`}>{t("dashboard", "revenue")}</th>
+                  {/* Cost & profit columns — require report:shop_profit */}
+                  {canViewProfit && (
+                    <>
+                      <th className="pb-3 pr-4 text-right">{t("dashboard", "cost")}</th>
+                      <th className="pb-3 text-right">{t("dashboard", "profit")}</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -447,15 +473,19 @@ export const DashboardPage = () => {
                       </td>
                       <td className="py-3 pr-4 text-right text-sm text-slate-600">{product.qty}</td>
                       <td className="py-3 pr-4 text-right text-sm font-medium text-emerald-600">{formatMmk(product.revenue)}</td>
-                      <td className="py-3 pr-4 text-right text-sm text-slate-600">{formatMmk(product.cost)}</td>
-                      <td className={`py-3 text-right text-sm font-semibold ${product.profit >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                        {formatMmk(product.profit)}
-                      </td>
+                      {canViewProfit && (
+                        <>
+                          <td className="py-3 pr-4 text-right text-sm text-slate-600">{formatMmk(product.cost)}</td>
+                          <td className={`py-3 text-right text-sm font-semibold ${product.profit >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                            {formatMmk(product.profit)}
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-sm text-slate-400">{t("dashboard", "noSalesYet")}</td>
+                    <td colSpan={canViewProfit ? 5 : 3} className="py-8 text-center text-sm text-slate-400">{t("dashboard", "noSalesYet")}</td>
                   </tr>
                 )}
               </tbody>
@@ -466,7 +496,8 @@ export const DashboardPage = () => {
 
       {/* Bottom Row */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Low Stock Alert */}
+        {/* Low Stock Alert — requires report:shop_inventory */}
+        {canViewInventory && (
         <Card>
           <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-800">
             <span className="material-symbols-rounded text-amber-500">warning</span>
@@ -503,6 +534,7 @@ export const DashboardPage = () => {
             )}
           </div>
         </Card>
+        )}
 
         {/* Recent Sales */}
         <Card>
@@ -527,10 +559,15 @@ export const DashboardPage = () => {
                       <p className="text-sm font-medium text-slate-700">#{sale.receiptNo}</p>
                       <p className="text-xs text-slate-500">
                         {new Date(sale.createdAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-                        {" • "}
-                        <span className={profit >= 0 ? "text-emerald-600" : "text-red-600"}>
-                          {language === "my" ? "အမြတ်" : "Profit"}: {formatMmk(profit)}
-                        </span>
+                        {/* Per-sale profit — requires report:shop_profit */}
+                        {canViewProfit && (
+                          <>
+                            {" • "}
+                            <span className={profit >= 0 ? "text-emerald-600" : "text-red-600"}>
+                              {language === "my" ? "အမြတ်" : "Profit"}: {formatMmk(profit)}
+                            </span>
+                          </>
+                        )}
                       </p>
                     </div>
                     <span className="text-sm font-semibold text-emerald-600">{formatMmk(sale.totalMmk)}</span>

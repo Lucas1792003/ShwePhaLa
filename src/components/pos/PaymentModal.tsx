@@ -17,6 +17,8 @@ export const PaymentModal = ({ open, totalMmk, loading = false, onClose, onConfi
   const [method, setMethod] = useState<"CASH" | "OTHER">("CASH");
   const [paid, setPaid] = useState(totalMmk);
   const change = Math.max(0, paid - totalMmk);
+  const isUnderpaid = paid < totalMmk;
+  const canConfirm = !loading && paid >= totalMmk;
 
   const handleClose = () => {
     if (!loading) onClose();
@@ -37,19 +39,77 @@ export const PaymentModal = ({ open, totalMmk, loading = false, onClose, onConfi
           <Button variant="secondary" onClick={handleClose} disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={() => onConfirm(method, paid)} disabled={paid < totalMmk || loading}>
+          <Button onClick={() => onConfirm(method, paid)} disabled={!canConfirm}>
             {loading ? "Processing..." : "Confirm payment"}
           </Button>
         </>
       }
     >
-      <div className="space-y-4">
-        <Select value={method} onChange={(event) => setMethod(event.target.value as "CASH" | "OTHER")}>
-          <option value="CASH">Cash</option>
-          <option value="OTHER">Other</option>
-        </Select>
-        <Input type="number" value={paid} onChange={(event) => setPaid(toNumber(event.target.value))} />
-        <div className="text-sm text-slate-600">Change: {formatMmk(change)}</div>
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                Total due
+              </div>
+              <div className="mt-1 text-2xl font-bold text-slate-950">
+                {formatMmk(totalMmk)}
+              </div>
+            </div>
+            <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm">
+              {method === "CASH" ? "Cash payment" : "Other payment"}
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl bg-white p-3 shadow-sm">
+              <div className="text-xs text-slate-500">Amount received</div>
+              <div className="mt-1 text-base font-semibold text-slate-900">
+                {formatMmk(paid)}
+              </div>
+            </div>
+            <div className="rounded-xl bg-white p-3 shadow-sm">
+              <div className="text-xs text-slate-500">Change</div>
+              <div className="mt-1 text-base font-semibold text-emerald-700">
+                {formatMmk(change)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4">
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">Payment method</span>
+            <Select value={method} onChange={(event) => setMethod(event.target.value as "CASH" | "OTHER")}>
+              <option value="CASH">Cash</option>
+              <option value="OTHER">Other</option>
+            </Select>
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">Amount received</span>
+            <Input
+              type="number"
+              min={0}
+              value={paid}
+              onChange={(event) => setPaid(toNumber(event.target.value))}
+              className="text-base font-semibold"
+            />
+          </label>
+        </div>
+
+        {isUnderpaid ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+            Amount received is less than total.
+          </div>
+        ) : (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm font-medium text-slate-600">Change to return</span>
+              <span className="text-lg font-bold text-emerald-700">{formatMmk(change)}</span>
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );

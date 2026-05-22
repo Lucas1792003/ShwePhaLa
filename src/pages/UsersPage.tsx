@@ -23,7 +23,10 @@ export const UsersPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const requiresShop = role === "MANAGER" || role === "CASHIER";
+  // Every non-admin role is bound to a single shop. BUYER is a per-shop
+  // purchasing role: its `purchase:create` / `purchase:view` permissions are
+  // shop-scoped by RLS, so a shopless BUYER would be unable to do anything.
+  const requiresShop = role !== "ADMIN";
 
   const resetForm = () => {
     setEditingId(null);

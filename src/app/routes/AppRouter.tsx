@@ -75,7 +75,7 @@ export const AppRouter = () => (
       <Route
         path="sales/:saleId"
         element={
-          <RequireRole permission={ROUTE_PERMISSIONS.sales}>
+          <RequireRole permission={ROUTE_PERMISSIONS.saleDetail}>
             <SaleDetailPage />
           </RequireRole>
         }

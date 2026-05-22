@@ -12,7 +12,8 @@ interface InventoryRow {
 
 interface InventoryTableProps {
   rows: InventoryRow[];
-  onAdjust: (productId: string) => void;
+  /** Omit to render the table read-only (no Adjust action / column). */
+  onAdjust?: (productId: string) => void;
 }
 
 export const InventoryTable = ({ rows, onAdjust }: InventoryTableProps) => (
@@ -24,7 +25,7 @@ export const InventoryTable = ({ rows, onAdjust }: InventoryTableProps) => (
           <TH>Category</TH>
           <TH>On-hand</TH>
           <TH>Last movement</TH>
-          <TH></TH>
+          {onAdjust && <TH></TH>}
         </TR>
       </THead>
       <TBody>
@@ -36,11 +37,13 @@ export const InventoryTable = ({ rows, onAdjust }: InventoryTableProps) => (
               <StockBadge qty={qty} lowThreshold={product.lowStockThreshold} /> {qty}
             </TD>
             <TD>{lastMovement ? formatDateTime(lastMovement) : "-"}</TD>
-            <TD>
-              <Button variant="secondary" size="sm" onClick={() => onAdjust(product.id)}>
-                Adjust
-              </Button>
-            </TD>
+            {onAdjust && (
+              <TD>
+                <Button variant="secondary" size="sm" onClick={() => onAdjust(product.id)}>
+                  Adjust
+                </Button>
+              </TD>
+            )}
           </TR>
         ))}
       </TBody>

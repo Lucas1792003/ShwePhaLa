@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { User, Sale, StockTransfer, PurchaseOrder, PriceTier, Permission } from "../types";
 import {
   ALL_PERMISSIONS,
@@ -71,18 +73,24 @@ describe("role default permissions", () => {
   it("CASHIER has POS permissions but not management ones", () => {
     const cashier = makeUser({ role: "CASHIER", shopId: "shop-a" });
     expect(hasPermission(cashier, "pos:create_sale")).toBe(true);
-    expect(hasPermission(cashier, "sale:view")).toBe(true);
-    expect(hasPermission(cashier, "report:shop")).toBe(true);
-    expect(hasPermission(cashier, "inventory:read")).toBe(true);
+    expect(hasPermission(cashier, "sales:view_own_shift")).toBe(true);
+    expect(hasPermission(cashier, "report:own_shift")).toBe(true);
+    expect(hasPermission(cashier, "inventory:view_stock")).toBe(true);
+    expect(hasPermission(cashier, "sale:view")).toBe(false);
     expect(hasPermission(cashier, "pos:void_sale")).toBe(false);
     expect(hasPermission(cashier, "inventory:adjust")).toBe(false);
   });
 
-  it("BUYER has only catalog read access", () => {
+  it("BUYER is a limited catalog + purchasing role", () => {
     const buyer = makeUser({ role: "BUYER" });
     expect(hasPermission(buyer, "product:read")).toBe(true);
+    expect(hasPermission(buyer, "supplier:read")).toBe(true);
+    expect(hasPermission(buyer, "purchase:view")).toBe(true);
+    expect(hasPermission(buyer, "purchase:create")).toBe(true);
     expect(hasPermission(buyer, "pos:create_sale")).toBe(false);
-    expect(getRolePermissions("BUYER")).toEqual(["product:read"]);
+    expect(getRolePermissions("BUYER")).toEqual([
+      "product:read", "supplier:read", "purchase:view", "purchase:create",
+    ]);
   });
 });
 
@@ -117,12 +125,12 @@ describe("grant / revoke model", () => {
     const cashier = makeUser({
       role: "CASHIER",
       grantedPermissions: ["pos:void_sale"],
-      revokedPermissions: ["report:shop"],
+      revokedPermissions: ["report:own_shift"],
     });
     const eff = getEffectivePermissions(cashier);
-    expect(eff).toContain("pos:create_sale"); // role default kept
-    expect(eff).toContain("pos:void_sale");   // granted
-    expect(eff).not.toContain("report:shop"); // revoked
+    expect(eff).toContain("pos:create_sale");      // role default kept
+    expect(eff).toContain("pos:void_sale");        // granted
+    expect(eff).not.toContain("report:own_shift"); // revoked
   });
 });
 
@@ -283,5 +291,299 @@ describe("permission registry", () => {
     // Admin-only route — cashier denied, admin allowed
     expect(hasPermission(cashier, ROUTE_PERMISSIONS.adminShops)).toBe(false);
     expect(hasPermission(admin, ROUTE_PERMISSIONS.adminShops)).toBe(true);
+  });
+});
+
+// ---- RBAC role tuning (migration 014) ------------------------------------
+
+describe("RBAC role tuning", () => {
+  const cashier = () => makeUser({ role: "CASHIER", shopId: "shop-a" });
+  const manager = () => makeUser({ role: "MANAGER", shopId: "shop-a" });
+  const admin = () => makeUser({ role: "ADMIN" });
+  const buyer = () => makeUser({ role: "BUYER", shopId: "shop-a" });
+
+  it("CASHIER cannot access any shop or global report", () => {
+    const c = cashier();
+    expect(hasPermission(c, "report:shop_sales")).toBe(false);
+    expect(hasPermission(c, "report:shop_inventory")).toBe(false);
+    expect(hasPermission(c, "report:shop_profit")).toBe(false);
+    expect(hasPermission(c, "report:global")).toBe(false);
+  });
+
+  it("CASHIER can view its own shift report", () => {
+    expect(hasPermission(cashier(), "report:own_shift")).toBe(true);
+  });
+
+  it("CASHIER can complete a POS sale", () => {
+    expect(hasPermission(cashier(), "pos:create_sale")).toBe(true);
+  });
+
+  it("CASHIER can request a refund/void but cannot approve one", () => {
+    const c = cashier();
+    expect(hasPermission(c, "pos:request_refund")).toBe(true);
+    expect(hasPermission(c, "pos:request_void")).toBe(true);
+    expect(hasPermission(c, "pos:refund")).toBe(false);
+    expect(hasPermission(c, "pos:void_sale")).toBe(false);
+    expect(canRefundSale(c, makeSale("shop-a"))).toBe(false);
+    expect(canVoidSale(c, makeSale("shop-a"))).toBe(false);
+  });
+
+  it("CASHIER can view stock availability but not movement history", () => {
+    const c = cashier();
+    expect(hasPermission(c, "inventory:view_stock")).toBe(true);
+    expect(hasPermission(c, "inventory:view_movements")).toBe(false);
+  });
+
+  it("CASHIER can reprint a receipt and see its own-shift sales only", () => {
+    const c = cashier();
+    expect(hasPermission(c, "receipt:reprint")).toBe(true);
+    expect(hasPermission(c, "sales:view_own_shift")).toBe(true);
+    expect(hasPermission(c, "sale:view")).toBe(false); // not the full history
+  });
+
+  it("CASHIER no longer has broad transfer / purchase / audit visibility", () => {
+    const c = cashier();
+    expect(hasPermission(c, "transfer:view")).toBe(false);
+    expect(hasPermission(c, "purchase:view")).toBe(false);
+    expect(hasPermission(c, "audit:view_shop")).toBe(false);
+  });
+
+  it("MANAGER can access assigned-shop operational data", () => {
+    const m = manager();
+    expect(hasShopPermission(m, "report:shop_sales", "shop-a")).toBe(true);
+    expect(hasShopPermission(m, "report:shop_inventory", "shop-a")).toBe(true);
+    expect(hasShopPermission(m, "inventory:view_movements", "shop-a")).toBe(true);
+    expect(hasShopPermission(m, "inventory:adjust", "shop-a")).toBe(true);
+    expect(hasShopPermission(m, "transfer:approve", "shop-a")).toBe(true);
+    expect(hasShopPermission(m, "purchase:create", "shop-a")).toBe(true);
+    expect(hasShopPermission(m, "pos:refund", "shop-a")).toBe(true);
+    // ...but only for the assigned shop
+    expect(hasShopPermission(m, "inventory:adjust", "shop-b")).toBe(false);
+  });
+
+  it("MANAGER cannot access global / profit / admin-only data", () => {
+    const m = manager();
+    expect(hasPermission(m, "report:global")).toBe(false);
+    expect(hasPermission(m, "report:shop_profit")).toBe(false);
+    expect(hasPermission(m, "purchase:approve")).toBe(false);
+    expect(hasPermission(m, "shop:create")).toBe(false);
+    expect(hasPermission(m, "user:create")).toBe(false);
+    expect(hasPermission(m, "pricing:manage")).toBe(false);
+    expect(hasPermission(m, "audit:view_global")).toBe(false);
+  });
+
+  it("MANAGER profit access can still be granted explicitly", () => {
+    const m = makeUser({
+      role: "MANAGER",
+      shopId: "shop-a",
+      grantedPermissions: ["report:shop_profit"],
+    });
+    expect(hasPermission(m, "report:shop_profit")).toBe(true);
+  });
+
+  it("BUYER can create and view purchase orders", () => {
+    const b = buyer();
+    expect(hasPermission(b, "purchase:create")).toBe(true);
+    expect(hasPermission(b, "purchase:view")).toBe(true);
+    expect(hasPermission(b, "product:read")).toBe(true);
+    expect(hasPermission(b, "supplier:read")).toBe(true);
+  });
+
+  it("BUYER cannot receive/approve purchase orders or adjust stock", () => {
+    const b = buyer();
+    expect(hasPermission(b, "purchase:receive")).toBe(false);
+    expect(hasPermission(b, "purchase:approve")).toBe(false);
+    expect(hasPermission(b, "inventory:adjust")).toBe(false);
+    expect(hasPermission(b, "inventory:override_negative")).toBe(false);
+    expect(hasPermission(b, "user:create")).toBe(false);
+    expect(canReceivePurchaseOrder(b, makePO("shop-a"))).toBe(false);
+  });
+
+  it("ADMIN holds every tuned permission", () => {
+    const a = admin();
+    for (const p of ALL_PERMISSIONS) expect(hasPermission(a, p)).toBe(true);
+  });
+
+  it("granted_permissions can add report access for a cashier", () => {
+    const c = makeUser({ role: "CASHIER", grantedPermissions: ["report:shop_sales"] });
+    expect(hasPermission(c, "report:shop_sales")).toBe(true);
+  });
+
+  it("revoked_permissions can remove a cashier role default", () => {
+    const c = makeUser({ role: "CASHIER", revokedPermissions: ["pos:request_refund"] });
+    expect(hasPermission(c, "pos:request_refund")).toBe(false);
+  });
+
+  it("the negative-stock override is its own inventory permission", () => {
+    // adjust_stock (migration 014) checks inventory:override_negative — no
+    // longer reuses pos:override_stock. They are independent grants now.
+    expect((ALL_PERMISSIONS as readonly string[]).includes("inventory:override_negative")).toBe(true);
+    expect(hasPermission(manager(), "inventory:override_negative")).toBe(true);
+    expect(hasPermission(cashier(), "inventory:override_negative")).toBe(false);
+  });
+});
+
+// ---- SQL / TypeScript sync contract --------------------------------------
+
+describe("SQL / TypeScript role-default sync", () => {
+  // DEFAULT_ROLE_PERMISSIONS (src/types/domain.ts) and the SQL function
+  // role_default_permissions() in supabase/migrations/014_rbac_role_tuning.sql
+  // are TWO HALVES OF ONE CONTRACT. This block is a tripwire: if a role's
+  // default set changes, migration 014's SQL must change in the same commit
+  // (and a follow-up migration shipped). The counts are the migration-014
+  // contract.
+  it("each role has the documented number of default permissions", () => {
+    expect(getRolePermissions("ADMIN")).toHaveLength(ALL_PERMISSIONS.length);
+    expect(getRolePermissions("ADMIN").length).toBe(54);
+    expect(getRolePermissions("MANAGER")).toHaveLength(36);
+    expect(getRolePermissions("CASHIER")).toHaveLength(10);
+    expect(getRolePermissions("BUYER")).toHaveLength(4);
+  });
+
+  it("permissions removed by migration 014 are gone from the registry", () => {
+    const removed = ["inventory:read", "report:shop", "report:profit"];
+    for (const name of removed) {
+      expect((ALL_PERMISSIONS as readonly string[]).includes(name)).toBe(false);
+    }
+  });
+});
+
+// ---- RBAC follow-up: permission-gated RLS read contract ------------------
+//
+// Migration 015 makes operational SELECT policies permission-gated. RLS itself
+// runs in Postgres and cannot be exercised by vitest, but the *read model*
+// depends on these role facts. If a role default drifts, the RLS reads drift
+// silently — this block is the tripwire. The live behaviour is verified by
+// docs/30-rls-permission-gating-checklist.md.
+
+describe("RBAC follow-up — permission-gated RLS read contract", () => {
+  const cashier = () => makeUser({ role: "CASHIER", shopId: "shop-a" });
+  const manager = () => makeUser({ role: "MANAGER", shopId: "shop-a" });
+  const buyer = () => makeUser({ role: "BUYER", shopId: "shop-a" });
+  const admin = () => makeUser({ role: "ADMIN" });
+
+  it("CASHIER reads only own sales — has sales:view_own_shift, not sale:view", () => {
+    const c = cashier();
+    expect(hasPermission(c, "sales:view_own_shift")).toBe(true); // own-sale / receipt reads
+    expect(hasPermission(c, "sale:view")).toBe(false);           // no full shop history
+  });
+
+  it("CASHIER cannot read movements / audit / purchases through RLS", () => {
+    const c = cashier();
+    // The migration-015 policies require these permissions; a cashier lacks
+    // them, so those SELECTs return zero rows.
+    expect(hasPermission(c, "inventory:view_movements")).toBe(false);
+    expect(hasPermission(c, "audit:view_shop")).toBe(false);
+    expect(hasPermission(c, "audit:view_global")).toBe(false);
+    expect(hasPermission(c, "purchase:view")).toBe(false);
+    expect(hasPermission(c, "transfer:view")).toBe(false);
+    // ...but keeps current stock visibility for the POS.
+    expect(hasPermission(c, "inventory:view_stock")).toBe(true);
+  });
+
+  it("MANAGER keeps assigned-shop operational reads", () => {
+    const m = manager();
+    expect(hasPermission(m, "sale:view")).toBe(true);
+    expect(hasPermission(m, "inventory:view_stock")).toBe(true);
+    expect(hasPermission(m, "inventory:view_movements")).toBe(true);
+    expect(hasPermission(m, "purchase:view")).toBe(true);
+    expect(hasPermission(m, "transfer:view")).toBe(true);
+    expect(hasPermission(m, "audit:view_shop")).toBe(true);
+  });
+
+  it("MANAGER cannot see the profit dashboard unless granted report:shop_profit", () => {
+    expect(hasPermission(manager(), "report:shop_profit")).toBe(false);
+    const granted = makeUser({
+      role: "MANAGER",
+      shopId: "shop-a",
+      grantedPermissions: ["report:shop_profit"],
+    });
+    expect(hasPermission(granted, "report:shop_profit")).toBe(true);
+    // ADMIN always sees profit.
+    expect(hasPermission(admin(), "report:shop_profit")).toBe(true);
+  });
+
+  it("MANAGER keeps operational dashboard/report access", () => {
+    const m = manager();
+    expect(hasPermission(m, "report:shop_sales")).toBe(true);
+    expect(hasPermission(m, "report:shop_inventory")).toBe(true);
+  });
+
+  it("BUYER (with a shop) reads & creates purchase orders", () => {
+    const b = buyer();
+    expect(b.shopId).toBeDefined(); // a shopless BUYER is a misconfiguration
+    expect(hasPermission(b, "purchase:view")).toBe(true);
+    expect(hasPermission(b, "purchase:create")).toBe(true);
+    expect(hasShopPermission(b, "purchase:create", "shop-a")).toBe(true);
+    expect(hasShopPermission(b, "purchase:create", "shop-b")).toBe(false);
+  });
+
+  it("BUYER cannot read sales / audit / movements through RLS", () => {
+    const b = buyer();
+    expect(hasPermission(b, "sale:view")).toBe(false);
+    expect(hasPermission(b, "sales:view_own_shift")).toBe(false);
+    expect(hasPermission(b, "inventory:view_movements")).toBe(false);
+    expect(hasPermission(b, "audit:view_shop")).toBe(false);
+  });
+
+  it("ADMIN reads everything", () => {
+    const a = admin();
+    for (const p of ALL_PERMISSIONS) expect(hasPermission(a, p)).toBe(true);
+  });
+});
+
+// ---- migration 015 SQL: every sensitive SELECT policy is permission-gated --
+
+describe("migration 015 — permission-gated SELECT RLS policies", () => {
+  const sql = readFileSync(
+    fileURLToPath(new URL("../../supabase/migrations/015_permission_gated_select_rls.sql", import.meta.url)),
+    "utf8",
+  );
+
+  const policyBody = (table: string): string => {
+    const marker = `CREATE POLICY "${table}_sel"`;
+    const start = sql.indexOf(marker);
+    expect(start, `${table}_sel policy must exist`).toBeGreaterThan(-1);
+    return sql.slice(start, sql.indexOf(";", start));
+  };
+
+  it("adds the app_user_id() identity helper", () => {
+    expect(sql).toContain("FUNCTION app_user_id()");
+  });
+
+  // Directly-gated tables must check a permission (app_has_perm), not just shop.
+  const directGated: Record<string, string> = {
+    sales: "sale:view",
+    inventory: "inventory:view_stock",
+    inventory_movements: "inventory:view_movements",
+    shifts: "report:own_shift",
+    purchase_orders: "purchase:view",
+    stock_transfers: "transfer:view",
+    refund_void_requests: "pos:refund",
+    audit_logs: "audit:view_shop",
+  };
+  for (const [table, perm] of Object.entries(directGated)) {
+    it(`${table}_sel checks a permission, not only shop scope`, () => {
+      const body = policyBody(table);
+      expect(body).toContain("app_has_perm(");
+      expect(body).toContain(perm);
+    });
+  }
+
+  // Child tables must be readable only via their parent row.
+  const childTables = ["sale_items", "purchase_order_items", "stock_transfer_items", "reprint_logs"];
+  for (const table of childTables) {
+    it(`${table}_sel is gated by parent-row visibility`, () => {
+      // the policy delegates to an EXISTS sub-select on the parent table
+      const body = policyBody(table);
+      expect(body).toContain("EXISTS");
+      expect(body).toContain("SELECT 1 FROM");
+    });
+  }
+
+  it("does not modify write policies or grants", () => {
+    expect(sql).not.toContain("FOR INSERT");
+    expect(sql).not.toContain("FOR UPDATE");
+    expect(sql).not.toContain("FOR DELETE");
   });
 });

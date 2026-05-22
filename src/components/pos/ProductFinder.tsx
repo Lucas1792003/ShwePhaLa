@@ -68,6 +68,7 @@ export const ProductFinder = ({ products, search, category, onSearch, onCategory
                 <img
                   src={product.imageUrl}
                   alt={product.name}
+                  loading="lazy"
                   className="h-full w-full object-cover"
                 />
               ) : (
