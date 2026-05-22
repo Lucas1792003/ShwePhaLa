@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useDataStore } from "../stores/dataStore";
 import { Card } from "../components/ui/Card";
-import { Select } from "../components/ui/Select";
 import { SearchInput } from "../components/forms/SearchInput";
 import { PageHeader } from "../components/layout/PageHeader";
+import { CategoryFilter } from "../features/categories/CategoryFilter";
 import { formatMmk } from "../lib/utils";
 
 export const ProductsPage = () => {
@@ -21,18 +21,13 @@ export const ProductsPage = () => {
   return (
     <Card>
       <PageHeader title="Products" subtitle="Read-only catalog with barcodes and pack sizes." />
-      <div className="mt-6 flex flex-wrap gap-3">
+      <div className="mt-6 space-y-3">
         <SearchInput value={search} onChange={setSearch} />
-        <Select value={category} onChange={(event) => setCategory(event.target.value)}>
-          <option value="all">All Categories</option>
-          {categories
-            .filter((c) => c.isActive)
-            .map((c) => (
-              <option key={c.id} value={c.name}>
-                {c.name.charAt(0).toUpperCase() + c.name.slice(1)}
-              </option>
-            ))}
-        </Select>
+        <CategoryFilter
+          categories={categories}
+          selectedCategory={category}
+          onChange={setCategory}
+        />
       </div>
       <div className="mt-6 space-y-3">
         {filtered.map((product) => (

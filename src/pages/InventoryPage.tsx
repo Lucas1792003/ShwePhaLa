@@ -15,6 +15,7 @@ import { AdjustStockModal } from "../components/inventory/AdjustStockModal";
 import { Button } from "../components/ui/Button";
 import { downloadCsv } from "../lib/csv";
 import { hasPermission } from "../lib/permissions";
+import { CategoryFilter } from "../features/categories/CategoryFilter";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -120,16 +121,6 @@ export const InventoryPage = () => {
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center gap-3">
             <SearchInput value={search} onChange={setSearch} placeholder="Search product" />
-            <Select value={category} onChange={(event) => setCategory(event.target.value)}>
-              <option value="all">All Categories</option>
-              {categories
-                .filter((c) => c.isActive)
-                .map((c) => (
-                  <option key={c.id} value={c.name}>
-                    {c.name.charAt(0).toUpperCase() + c.name.slice(1)}
-                  </option>
-                ))}
-            </Select>
             <div className="ml-auto flex items-center gap-2">
               <span className="text-sm text-slate-500">Show:</span>
               <Select value={stockPageSize} onChange={(e) => { setStockPageSize(Number(e.target.value)); setStockPage(1); }}>
@@ -139,6 +130,12 @@ export const InventoryPage = () => {
               </Select>
             </div>
           </div>
+          {/* Category filter — shared icon-chip filter (no native dropdown) */}
+          <CategoryFilter
+            categories={categories}
+            selectedCategory={category}
+            onChange={setCategory}
+          />
           <InventoryTable
             rows={paginatedStockRows}
             onAdjust={canAdjust ? setAdjustProductId : undefined}

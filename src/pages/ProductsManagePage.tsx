@@ -20,6 +20,7 @@ import { Pagination } from "../components/ui/Pagination";
 import { formatMmk } from "../lib/utils";
 import { CATEGORY_ICONS, resolveCategoryIcon } from "../features/categories/categoryIcons";
 import { getCategoryDeleteBlockMessage } from "../features/categories/categoryUsage";
+import { CategoryFilter } from "../features/categories/CategoryFilter";
 
 type UnitType = "piece" | "box" | "kg" | "liter" | "pack";
 type CategoryColor = "amber" | "red" | "green" | "blue" | "purple" | "slate" | "pink" | "teal" | "indigo" | "yellow" | "orange" | "cyan";
@@ -412,17 +413,6 @@ export const ProductsManagePage = () => {
           placeholder="Search by name, SKU, or barcode..."
         />
         <Select
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value as ProductCategory | "all")}
-        >
-          <option value="all">All Categories</option>
-          {activeCategories.map((cat) => (
-            <option key={cat.id} value={cat.name}>
-              {cat.name.charAt(0).toUpperCase() + cat.name.slice(1)}
-            </option>
-          ))}
-        </Select>
-        <Select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value as "all" | "active" | "inactive")}
         >
@@ -447,6 +437,14 @@ export const ProductsManagePage = () => {
           </Select>
         </div>
       </div>
+
+      {/* Category filter — shared icon-chip filter (no native dropdown) */}
+      <CategoryFilter
+        className="mt-3"
+        categories={categories}
+        selectedCategory={filterCategory}
+        onChange={(value) => setFilterCategory(value as ProductCategory | "all")}
+      />
 
       {/* Products Table */}
       <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200/70">
