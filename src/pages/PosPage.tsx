@@ -40,6 +40,7 @@ export const PosPage = () => {
   const { currentShopId } = useAppStore();
   const shops = useDataStore((state) => state.shops);
   const products = useDataStore((state) => state.products);
+  const categories = useDataStore((state) => state.categories);
   const getInventoryQty = useDataStore((state) => state.getInventoryQty);
   const getProductByBarcode = useDataStore((state) => state.getProductByBarcode);
   const createSale = useDataStore((state) => state.createSale);
@@ -268,6 +269,7 @@ export const PosPage = () => {
         <Card className="flex-1 overflow-y-auto">
           <ProductFinder
             products={filteredProducts}
+            categories={categories.filter((c) => c.isActive)}
             search={search}
             category={category}
             onSearch={setSearch}

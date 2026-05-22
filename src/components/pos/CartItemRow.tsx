@@ -1,5 +1,6 @@
 import type { CartItem } from "../../types";
 import { formatMmk, toNumber } from "../../lib/utils";
+import { resolveCategoryIconSymbol } from "../../features/categories/categoryIcons";
 
 interface CartItemRowProps {
   item: CartItem;
@@ -17,7 +18,7 @@ export const CartItemRow = ({ item, onQtyChange, onRemove, onDiscountChange, onO
         <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
       ) : (
         <span className="material-symbols-rounded text-2xl text-slate-400">
-          {item.category === "beer" ? "sports_bar" : item.category === "alcohol" ? "liquor" : "local_cafe"}
+          {resolveCategoryIconSymbol(undefined, item.category)}
         </span>
       )}
     </div>

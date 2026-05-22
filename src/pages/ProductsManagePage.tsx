@@ -18,6 +18,8 @@ import { SearchInput } from "../components/forms/SearchInput";
 import { ProductImageInput } from "../components/forms/ProductImageInput";
 import { Pagination } from "../components/ui/Pagination";
 import { formatMmk } from "../lib/utils";
+import { CATEGORY_ICONS, resolveCategoryIcon } from "../features/categories/categoryIcons";
+import { getCategoryDeleteBlockMessage } from "../features/categories/categoryUsage";
 
 type UnitType = "piece" | "box" | "kg" | "liter" | "pack";
 type CategoryColor = "amber" | "red" | "green" | "blue" | "purple" | "slate" | "pink" | "teal" | "indigo" | "yellow" | "orange" | "cyan";
@@ -51,6 +53,7 @@ export const ProductsManagePage = () => {
   const updateProduct = useDataStore((state) => state.updateProduct);
   const addCategory = useDataStore((state) => state.addCategory);
   const updateCategory = useDataStore((state) => state.updateCategory);
+  const deleteCategory = useDataStore((state) => state.deleteCategory);
   const addAuditLog = useDataStore((state) => state.addAuditLog);
 
   // Product modal state
@@ -74,6 +77,7 @@ export const ProductsManagePage = () => {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryColor, setNewCategoryColor] = useState<CategoryColor>("blue");
+  const [newCategoryIconKey, setNewCategoryIconKey] = useState("");
 
   // Get active categories
   const activeCategories = useMemo(() => {
@@ -308,6 +312,7 @@ export const ProductsManagePage = () => {
         ...editingCategory,
         name: categoryName,
         color: newCategoryColor,
+        iconKey: newCategoryIconKey || undefined,
       });
       void addAuditLog({
         id: `audit-${Math.random().toString(36).slice(2, 9)}`,
@@ -323,6 +328,7 @@ export const ProductsManagePage = () => {
         id: `cat-${Math.random().toString(36).slice(2, 9)}`,
         name: categoryName,
         color: newCategoryColor,
+        iconKey: newCategoryIconKey || undefined,
         isActive: true,
         createdAt: new Date().toISOString(),
       };
@@ -342,34 +348,47 @@ export const ProductsManagePage = () => {
     setEditingCategory(null);
     setNewCategoryName("");
     setNewCategoryColor("blue");
+    setNewCategoryIconKey("");
   };
 
   const handleEditCategory = (category: Category) => {
     setEditingCategory(category);
     setNewCategoryName(category.name);
     setNewCategoryColor(category.color);
+    // Pre-select the explicit iconKey, or the icon resolved from the name so
+    // older (icon-less) categories show their sensible default already chosen.
+    setNewCategoryIconKey(category.iconKey ?? resolveCategoryIcon(null, category.name).key);
     setShowCategoryModal(true);
   };
 
   const handleDeleteCategory = (category: Category) => {
-    const productsUsingCategory = products.filter((p) => p.category === category.name);
-    if (productsUsingCategory.length > 0) {
-      alert(`Cannot delete category. ${productsUsingCategory.length} product(s) are using this category.`);
+    // Safe delete: block while products still use this category (matched by
+    // name). Products are never deleted or auto-reassigned.
+    const blockMessage = getCategoryDeleteBlockMessage(products, category.name);
+    if (blockMessage) {
+      alert(blockMessage);
       return;
     }
 
-    if (confirm(`Are you sure you want to delete "${category.name}"?`)) {
-      updateCategory({ ...category, isActive: false });
-      void addAuditLog({
-        id: `audit-${Math.random().toString(36).slice(2, 9)}`,
-        actorId: currentUserId ?? "system",
-        actionType: "CATEGORY_DELETE",
-        message: `Deleted category "${category.name}".`,
-        entityType: "Category",
-        entityId: category.id,
-        createdAt: new Date().toISOString(),
-      });
+    if (!confirm(`Are you sure you want to delete "${category.name}"?`)) return;
+
+    try {
+      // deleteCategory re-checks usage in the data layer and throws if unsafe.
+      deleteCategory(category.id);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Could not delete the category.");
+      return;
     }
+
+    void addAuditLog({
+      id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+      actorId: currentUserId ?? "system",
+      actionType: "CATEGORY_DELETE",
+      message: `Deleted category "${category.name}".`,
+      entityType: "Category",
+      entityId: category.id,
+      createdAt: new Date().toISOString(),
+    });
   };
 
   return (
@@ -561,6 +580,7 @@ export const ProductsManagePage = () => {
               setEditingCategory(null);
               setNewCategoryName("");
               setNewCategoryColor("blue");
+              setNewCategoryIconKey("");
               setShowCategoryModal(true);
             }}
           >
@@ -572,33 +592,44 @@ export const ProductsManagePage = () => {
         <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {activeCategories.map((category) => {
             const productCount = products.filter((p) => p.category === category.name).length;
-            const colorClasses: Record<CategoryColor, string> = {
-              amber: "bg-amber-50 border-amber-200 text-amber-700",
-              red: "bg-red-50 border-red-200 text-red-700",
-              green: "bg-green-50 border-green-200 text-green-700",
-              blue: "bg-blue-50 border-blue-200 text-blue-700",
-              purple: "bg-purple-50 border-purple-200 text-purple-700",
-              slate: "bg-slate-50 border-slate-200 text-slate-700",
-              pink: "bg-pink-50 border-pink-200 text-pink-700",
-              teal: "bg-teal-50 border-teal-200 text-teal-700",
-              indigo: "bg-indigo-50 border-indigo-200 text-indigo-700",
-              yellow: "bg-yellow-50 border-yellow-200 text-yellow-700",
-              orange: "bg-orange-50 border-orange-200 text-orange-700",
-              cyan: "bg-cyan-50 border-cyan-200 text-cyan-700",
+            const icon = resolveCategoryIcon(category.iconKey, category.name);
+            // Color is now only a small accent on the icon tile.
+            const accent: Record<CategoryColor, string> = {
+              amber: "bg-amber-100 text-amber-600",
+              red: "bg-red-100 text-red-600",
+              green: "bg-green-100 text-green-600",
+              blue: "bg-blue-100 text-blue-600",
+              purple: "bg-purple-100 text-purple-600",
+              slate: "bg-slate-100 text-slate-600",
+              pink: "bg-pink-100 text-pink-600",
+              teal: "bg-teal-100 text-teal-600",
+              indigo: "bg-indigo-100 text-indigo-600",
+              yellow: "bg-yellow-100 text-yellow-700",
+              orange: "bg-orange-100 text-orange-600",
+              cyan: "bg-cyan-100 text-cyan-600",
             };
 
             return (
-              <div key={category.id} className={`rounded-xl border p-4 ${colorClasses[category.color]}`}>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="font-semibold capitalize">{category.name}</span>
-                    <p className="text-xs opacity-75">{productCount} product(s)</p>
+              <div key={category.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div
+                      className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${accent[category.color]}`}
+                    >
+                      <span className="material-symbols-rounded">{icon.symbol}</span>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold capitalize text-slate-800">
+                        {category.name}
+                      </div>
+                      <p className="text-xs text-slate-500">{productCount} product(s)</p>
+                    </div>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex flex-shrink-0 gap-1">
                     <button
                       type="button"
                       onClick={() => handleEditCategory(category)}
-                      className="rounded p-1 hover:bg-white/50"
+                      className="rounded p-1 text-slate-500 hover:bg-slate-100"
                       title="Edit"
                     >
                       <span className="material-symbols-rounded text-sm">edit</span>
@@ -606,7 +637,7 @@ export const ProductsManagePage = () => {
                     <button
                       type="button"
                       onClick={() => handleDeleteCategory(category)}
-                      className="rounded p-1 hover:bg-white/50"
+                      className="rounded p-1 text-slate-500 hover:bg-slate-100"
                       title="Delete"
                     >
                       <span className="material-symbols-rounded text-sm">delete</span>
@@ -754,6 +785,7 @@ export const ProductsManagePage = () => {
           setEditingCategory(null);
           setNewCategoryName("");
           setNewCategoryColor("blue");
+          setNewCategoryIconKey("");
         }}
         title={editingCategory ? "Edit Category" : "Add New Category"}
       >
@@ -768,7 +800,33 @@ export const ProductsManagePage = () => {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Color Theme</label>
+            <label className="mb-2 block text-sm font-medium text-slate-700">Icon</label>
+            <div className="grid grid-cols-6 gap-2">
+              {CATEGORY_ICONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  title={opt.label}
+                  onClick={() => setNewCategoryIconKey(opt.key)}
+                  className={`flex items-center justify-center rounded-lg border p-2 transition-colors ${
+                    newCategoryIconKey === opt.key
+                      ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                      : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="material-symbols-rounded">{opt.symbol}</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              {newCategoryIconKey
+                ? `Selected: ${CATEGORY_ICONS.find((i) => i.key === newCategoryIconKey)?.label ?? newCategoryIconKey}`
+                : "Pick an icon (optional — otherwise resolved from the category name)."}
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-700">Color Accent</label>
             <div className="flex flex-wrap gap-2">
               {(["amber", "orange", "yellow", "red", "pink", "green", "teal", "cyan", "blue", "indigo", "purple", "slate"] as CategoryColor[]).map((color) => {
                 const colorStyles: Record<CategoryColor, string> = {
@@ -811,6 +869,7 @@ export const ProductsManagePage = () => {
                 setEditingCategory(null);
                 setNewCategoryName("");
                 setNewCategoryColor("blue");
+                setNewCategoryIconKey("");
               }}
             >
               Cancel

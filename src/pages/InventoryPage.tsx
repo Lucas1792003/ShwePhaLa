@@ -25,6 +25,7 @@ export const InventoryPage = () => {
   const { currentShopId } = useAppStore();
   const shops = useDataStore((state) => state.shops);
   const products = useDataStore((state) => state.products);
+  const categories = useDataStore((state) => state.categories);
   const inventory = useDataStore((state) => state.inventory);
   const movements = useDataStore((state) => state.movements);
   const adjustStock = useDataStore((state) => state.adjustStock);
@@ -120,10 +121,14 @@ export const InventoryPage = () => {
           <div className="flex flex-wrap items-center gap-3">
             <SearchInput value={search} onChange={setSearch} placeholder="Search product" />
             <Select value={category} onChange={(event) => setCategory(event.target.value)}>
-              <option value="all">All</option>
-              <option value="beer">Beer</option>
-              <option value="alcohol">Alcohol</option>
-              <option value="juice">Juice</option>
+              <option value="all">All Categories</option>
+              {categories
+                .filter((c) => c.isActive)
+                .map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.name.charAt(0).toUpperCase() + c.name.slice(1)}
+                  </option>
+                ))}
             </Select>
             <div className="ml-auto flex items-center gap-2">
               <span className="text-sm text-slate-500">Show:</span>

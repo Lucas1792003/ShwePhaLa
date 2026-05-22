@@ -7,6 +7,11 @@ export interface Category {
   id: string;
   name: string;
   color: "amber" | "red" | "green" | "blue" | "purple" | "slate" | "pink" | "teal" | "indigo" | "yellow" | "orange" | "cyan";
+  /**
+   * Category icon registry key (see src/features/categories/categoryIcons.ts).
+   * Optional — older categories without it fall back to a name-based match.
+   */
+  iconKey?: string;
   isActive: boolean;
   createdAt: string;
 }

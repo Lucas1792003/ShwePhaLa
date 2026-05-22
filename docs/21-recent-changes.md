@@ -1,5 +1,37 @@
 # Recent Changes
 
+## Shared categories everywhere + safe category delete
+- **Safe delete (Option A).** A category can no longer be deleted while
+  products use it. New shared helper `src/features/categories/categoryUsage.ts`
+  (`getCategoryDeleteBlockMessage`) is enforced both in the UI
+  (`handleDeleteCategory`) and in the data layer (`deleteCategory` store action
+  now throws). Blocked message: *"This category is used by X product(s). Move
+  or edit those products before deleting the category."* Products are never
+  deleted or auto-reassigned. Products reference a category **by name**
+  (`product.category`), so usage is counted by name.
+- **No more hardcoded category filters.** The Inventory stock filter, the
+  read-only Products catalog filter, and the POS cart-row icon all now derive
+  from the shared categories store / icon resolver — a category created in
+  Product Management appears in every filter with no reload. (POS filter
+  buttons and the Product-Management/product-form selectors were already
+  store-driven.)
+
+## Icon-based product categories
+- **Central icon registry.** Added `src/features/categories/categoryIcons.ts`
+  — 18 category icons (Material Symbols, the app's existing icon system; not
+  lucide-react, which is not a dependency). `resolveCategoryIcon(iconKey, name)`
+  resolves by explicit key → category-name alias → default.
+- **Category model.** `Category` gains optional `iconKey`; migration
+  `017_category_icon_key.sql` adds `categories.icon_key text`. `color` is kept
+  (now only a visual accent). Old rows with no `icon_key` resolve an icon from
+  their name, so nothing breaks.
+- **Category management UI.** Cards now lead with the category icon (color is a
+  small tile accent, no longer a full-card tint). The add/edit modal has an
+  icon picker grid; the chosen `iconKey` is persisted.
+- **POS.** Category buttons now render the real store categories through the
+  shared resolver (was a hardcoded 4-item list). "All" keeps its grid icon;
+  the product-card placeholder also uses the resolver.
+
 ## Product images moved to Supabase Storage
 - **No more base64 on product rows.** The product create/edit flow now uploads
   the compressed photo to the Supabase Storage bucket `product-images` and

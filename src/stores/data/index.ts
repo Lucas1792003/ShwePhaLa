@@ -44,7 +44,8 @@ const mapUser = (r: any): User => ({
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mapCategory = (r: any): Category => ({
-  id: r.id, name: r.name, color: r.color, isActive: r.is_active, createdAt: r.created_at,
+  id: r.id, name: r.name, color: r.color, iconKey: r.icon_key ?? undefined,
+  isActive: r.is_active, createdAt: r.created_at,
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

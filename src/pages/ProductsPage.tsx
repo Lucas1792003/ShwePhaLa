@@ -8,6 +8,7 @@ import { formatMmk } from "../lib/utils";
 
 export const ProductsPage = () => {
   const products = useDataStore((state) => state.products);
+  const categories = useDataStore((state) => state.categories);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
 
@@ -23,10 +24,14 @@ export const ProductsPage = () => {
       <div className="mt-6 flex flex-wrap gap-3">
         <SearchInput value={search} onChange={setSearch} />
         <Select value={category} onChange={(event) => setCategory(event.target.value)}>
-          <option value="all">All</option>
-          <option value="beer">Beer</option>
-          <option value="alcohol">Alcohol</option>
-          <option value="juice">Juice</option>
+          <option value="all">All Categories</option>
+          {categories
+            .filter((c) => c.isActive)
+            .map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.name.charAt(0).toUpperCase() + c.name.slice(1)}
+              </option>
+            ))}
         </Select>
       </div>
       <div className="mt-6 space-y-3">
