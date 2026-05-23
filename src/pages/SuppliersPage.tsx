@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useAuthStore } from "../stores/authStore";
 import { useAppStore } from "../stores/appStore";
 import { useDataStore } from "../stores/dataStore";
@@ -48,6 +49,55 @@ const paymentMethods: Array<{ value: SupplierPaymentMethod; label: string }> = [
 const getDebtStatus = (outstandingDebtMmk: number) => {
   if (outstandingDebtMmk <= 0) return { label: "No Debt", color: "green" as const };
   return { label: "Unpaid", color: "red" as const };
+};
+
+const getPaymentMethodLabel = (method: SupplierPaymentMethod) =>
+  paymentMethods.find((item) => item.value === method)?.label ?? method;
+
+const DetailMeta = ({ label, value }: { label: string; value: ReactNode }) => (
+  <div className="min-w-0 rounded-xl bg-slate-50 px-3 py-2">
+    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+    <div className="mt-1 min-w-0 break-words text-sm font-semibold text-slate-900">{value || "-"}</div>
+  </div>
+);
+
+const SummaryCard = ({
+  label,
+  value,
+  tone = "slate",
+  badge,
+}: {
+  label: string;
+  value: ReactNode;
+  tone?: "slate" | "green" | "red" | "amber";
+  badge?: ReactNode;
+}) => {
+  const toneClasses = {
+    slate: "border-slate-200/70 bg-white text-slate-900",
+    green: "border-emerald-200 bg-emerald-50/80 text-emerald-800",
+    red: "border-rose-200 bg-rose-50/80 text-rose-800",
+    amber: "border-amber-200 bg-amber-50/80 text-amber-800",
+  };
+
+  return (
+    <div className={`rounded-2xl border p-4 ${toneClasses[tone]}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+        {badge}
+      </div>
+      <div className="mt-2 text-lg font-bold tabular-nums">{value}</div>
+    </div>
+  );
+};
+
+const MoneyLine = ({ label, value, tone = "slate" }: { label: string; value: number; tone?: "slate" | "green" | "red" }) => {
+  const color = tone === "green" ? "text-emerald-700" : tone === "red" ? "text-rose-700" : "text-slate-900";
+  return (
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className={`mt-1 text-right text-sm font-bold tabular-nums ${color}`}>{formatMmk(value)}</div>
+    </div>
+  );
 };
 
 export const SuppliersPage = () => {
@@ -360,53 +410,63 @@ export const SuppliersPage = () => {
           setSelectedPoId(null);
         }}
         title={selectedSupplier?.name ?? "Supplier"}
+        panelClassName="sm:max-w-[620px] xl:max-w-[640px]"
+        bodyClassName="overflow-x-hidden bg-slate-50/50 px-4 py-4 sm:px-6"
         header={selectedSupplier && (
-          <div className="mt-1 text-xs text-slate-500">
-            {selectedSupplier.code} {selectedSupplier.phone ? `- ${selectedSupplier.phone}` : ""}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+            <Badge color={selectedSupplier.isActive ? "green" : "gray"}>
+              {selectedSupplier.isActive ? "Active" : "Inactive"}
+            </Badge>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-mono font-semibold text-slate-700">
+              {selectedSupplier.code}
+            </span>
+            {selectedSupplier.phone && <span>{selectedSupplier.phone}</span>}
+            {selectedSupplier.contactPerson && <span>{selectedSupplier.contactPerson}</span>}
           </div>
         )}
       >
         {selectedSupplier && selectedSupplierSummary && (
           <div className="space-y-5">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm">
-              <div className="font-semibold text-slate-900">Supplier info</div>
-              <dl className="mt-3 grid grid-cols-[auto,1fr] gap-x-3 gap-y-2">
-                <dt className="text-slate-500">Contact</dt>
-                <dd className="text-right font-medium">{selectedSupplier.contactPerson ?? "-"}</dd>
-                <dt className="text-slate-500">Phone</dt>
-                <dd className="text-right font-medium">{selectedSupplier.phone ?? "-"}</dd>
-                <dt className="text-slate-500">Email</dt>
-                <dd className="break-all text-right font-medium">{selectedSupplier.email ?? "-"}</dd>
-                <dt className="text-slate-500">Address</dt>
-                <dd className="text-right font-medium">{selectedSupplier.address ?? "-"}</dd>
-              </dl>
+            <div className="rounded-3xl border border-slate-200/70 bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Supplier profile</h3>
+                  <p className="mt-0.5 text-xs text-slate-500">Contact and account details</p>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DetailMeta label="Contact" value={selectedSupplier.contactPerson ?? "-"} />
+                <DetailMeta label="Phone" value={selectedSupplier.phone ?? "-"} />
+                <DetailMeta label="Email" value={selectedSupplier.email ?? "-"} />
+                <DetailMeta label="Address" value={selectedSupplier.address ?? "-"} />
+              </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Received purchases</div>
-                <div className="mt-1 text-lg font-bold text-slate-900">
-                  {formatMmk(selectedSupplierSummary.totalReceivedPurchasesMmk)}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Outstanding debt</div>
-                <div className="mt-1 text-lg font-bold text-rose-700">
-                  {formatMmk(selectedSupplierSummary.outstandingDebtMmk)}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Paid</div>
-                <div className="mt-1 text-lg font-bold text-emerald-700">
-                  {formatMmk(selectedSupplierSummary.totalPaidMmk)}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Unpaid / partial POs</div>
-                <div className="mt-1 text-lg font-bold text-slate-900">
-                  {selectedSupplierSummary.unpaidPoCount + selectedSupplierSummary.partialPoCount}
-                </div>
-              </div>
+              <SummaryCard
+                label="Received purchases"
+                value={formatMmk(selectedSupplierSummary.totalReceivedPurchasesMmk)}
+              />
+              <SummaryCard
+                label="Outstanding debt"
+                value={formatMmk(selectedSupplierSummary.outstandingDebtMmk)}
+                tone={selectedSupplierSummary.outstandingDebtMmk > 0 ? "red" : "green"}
+              />
+              <SummaryCard
+                label="Paid"
+                value={formatMmk(selectedSupplierSummary.totalPaidMmk)}
+                tone="green"
+              />
+              <SummaryCard
+                label="Unpaid / partial POs"
+                value={selectedSupplierSummary.unpaidPoCount + selectedSupplierSummary.partialPoCount}
+                tone={selectedSupplierSummary.unpaidPoCount + selectedSupplierSummary.partialPoCount > 0 ? "amber" : "slate"}
+                badge={
+                  <Badge color={selectedSupplierSummary.partialPoCount > 0 ? "yellow" : "gray"}>
+                    {selectedSupplierSummary.partialPoCount} partial
+                  </Badge>
+                }
+              />
             </div>
 
             <section>
@@ -414,174 +474,214 @@ export const SuppliersPage = () => {
                 <h3 className="text-sm font-semibold text-slate-900">Purchase records</h3>
                 <span className="text-xs text-slate-500">{selectedSupplierOrders.length} orders</span>
               </div>
-              <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                <table className="min-w-[980px] w-full text-xs">
-                  <thead className="bg-slate-50 text-left text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">PO</th>
-                      <th className="px-3 py-2 font-medium">Shop</th>
-                      <th className="px-3 py-2 font-medium">Status</th>
-                      <th className="px-3 py-2 font-medium">Received</th>
-                      <th className="px-3 py-2 font-medium">Received By</th>
-                      <th className="px-3 py-2 text-right font-medium">Total</th>
-                      <th className="px-3 py-2 text-right font-medium">Paid</th>
-                      <th className="px-3 py-2 text-right font-medium">Balance</th>
-                      <th className="px-3 py-2 font-medium">Payment</th>
-                      <th className="px-3 py-2 font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedSupplierOrders.length === 0 ? (
-                      <tr>
-                        <td colSpan={10} className="px-3 py-4 text-center text-slate-500">
-                          No purchase records for this supplier.
-                        </td>
-                      </tr>
-                    ) : (
-                      selectedSupplierOrders.map((po) => {
-                        const balance = getPurchaseOrderBalanceMmk(po);
-                        const paymentStatus = getComputedPaymentStatus(po);
-                        const receivedByUser = po.receivedBy ? users.find((user) => user.id === po.receivedBy) : undefined;
-                        const canPay = po.status === "RECEIVED" && balance > 0 && canRecordSupplierPayment(currentUser, po);
-                        return (
-                          <tr key={po.id} className="border-t">
-                            <td className="px-3 py-2 font-medium text-slate-900">{po.orderNo}</td>
-                            <td className="px-3 py-2">{shops.find((shop) => shop.id === po.shopId)?.name ?? po.shopId}</td>
-                            <td className="px-3 py-2"><Badge color={poStatusColors[po.status]}>{po.status}</Badge></td>
-                            <td className="px-3 py-2">{po.receivedAt ? formatDateTime(po.receivedAt) : "Not received"}</td>
-                            <td className="px-3 py-2">{receivedByUser?.name ?? "-"}</td>
-                            <td className="px-3 py-2 text-right">{formatMmk(po.totalMmk)}</td>
-                            <td className="px-3 py-2 text-right">{formatMmk(getPurchaseOrderPaidMmk(po))}</td>
-                            <td className="px-3 py-2 text-right font-semibold">{formatMmk(balance)}</td>
-                            <td className="px-3 py-2"><Badge color={paymentStatusColors[paymentStatus]}>{paymentStatus}</Badge></td>
-                            <td className="px-3 py-2">
-                              <div className="flex flex-wrap gap-2">
-                                <Button size="sm" variant="ghost" onClick={() => setSelectedPoId(po.id)}>
-                                  Items
-                                </Button>
-                                {canPay && (
-                                  <Button size="sm" onClick={() => openPaymentModal(po)}>
-                                    Record payment
-                                  </Button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              {selectedSupplierOrders.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+                  No purchase records for this supplier yet.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedSupplierOrders.map((po) => {
+                    const balance = getPurchaseOrderBalanceMmk(po);
+                    const paymentStatus = getComputedPaymentStatus(po);
+                    const receivedByUser = po.receivedBy ? users.find((user) => user.id === po.receivedBy) : undefined;
+                    const canPay = po.status === "RECEIVED" && balance > 0 && canRecordSupplierPayment(currentUser, po);
+                    const poItems = purchaseOrderItems.filter((item) => item.purchaseOrderId === po.id);
+                    const isSelected = detailPo?.id === po.id;
+                    const hasPartialReceiving =
+                      po.status === "RECEIVED" && poItems.some((item) => (item.receivedQty ?? 0) < item.orderedQty);
+                    const receivedStatus =
+                      po.status === "RECEIVED"
+                        ? { label: hasPartialReceiving ? "Partially received" : "Received", color: hasPartialReceiving ? "yellow" : "green" }
+                        : { label: "Not received", color: "gray" };
+
+                    return (
+                      <article
+                        key={po.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedPoId(po.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedPoId(po.id);
+                          }
+                        }}
+                        className={`rounded-3xl border bg-white p-4 shadow-sm transition hover:border-emerald-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+                          isSelected ? "border-emerald-300 ring-1 ring-emerald-200" : "border-slate-200/70"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-semibold text-slate-900">{po.orderNo}</div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {shops.find((shop) => shop.id === po.shopId)?.name ?? po.shopId}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <Badge color={poStatusColors[po.status]}>{po.status}</Badge>
+                            <Badge color={receivedStatus.color}>{receivedStatus.label}</Badge>
+                            <Badge color={paymentStatusColors[paymentStatus]}>{paymentStatus}</Badge>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-3 gap-3 rounded-2xl bg-slate-50/80 p-3">
+                          <MoneyLine label="Total" value={po.totalMmk} />
+                          <MoneyLine label="Paid" value={getPurchaseOrderPaidMmk(po)} tone="green" />
+                          <MoneyLine label="Balance" value={balance} tone={balance > 0 ? "red" : "slate"} />
+                        </div>
+
+                        <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                          <div>
+                            <span className="font-medium text-slate-500">Received date: </span>
+                            {po.receivedAt ? formatDateTime(po.receivedAt) : "Not received"}
+                          </div>
+                          <div>
+                            <span className="font-medium text-slate-500">Received by: </span>
+                            {receivedByUser?.name ?? "-"}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs text-slate-500">
+                            {isSelected ? "Showing receiving details below" : "Click to view receiving details"}
+                          </span>
+                          {canPay && (
+                            <Button
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openPaymentModal(po);
+                              }}
+                            >
+                              Record payment
+                            </Button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </section>
 
-            {detailPo && (
-              <section className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-900">Receiving confirmation</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">{detailPo.orderNo}</p>
-                  </div>
-                  <Badge color={poStatusColors[detailPo.status]}>{detailPo.status}</Badge>
+            <section className="rounded-3xl border border-slate-200/70 bg-white p-4 shadow-sm">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">Receiving confirmation</h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {detailPo ? detailPo.orderNo : "No purchase order selected"}
+                  </p>
                 </div>
-                <div className="grid gap-2 text-xs sm:grid-cols-2">
-                  <div className="rounded-xl bg-slate-50 p-3">
-                    <div className="text-slate-500">Received at</div>
-                    <div className="mt-1 font-medium text-slate-900">{detailPo.receivedAt ? formatDateTime(detailPo.receivedAt) : "-"}</div>
+                {detailPo && <Badge color={poStatusColors[detailPo.status]}>{detailPo.status}</Badge>}
+              </div>
+
+              {!detailPo ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
+                  Select a purchase order to view receiving confirmation.
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <DetailMeta label="Received at" value={detailPo.receivedAt ? formatDateTime(detailPo.receivedAt) : "-"} />
+                    <DetailMeta
+                      label="Received by"
+                      value={detailPo.receivedBy ? users.find((user) => user.id === detailPo.receivedBy)?.name ?? detailPo.receivedBy : "-"}
+                    />
+                    <DetailMeta label="Supplier invoice" value={detailPo.supplierInvoiceNo ?? "-"} />
+                    <DetailMeta label="Delivery note" value={detailPo.deliveryNoteNo ?? "-"} />
                   </div>
-                  <div className="rounded-xl bg-slate-50 p-3">
-                    <div className="text-slate-500">Received by</div>
-                    <div className="mt-1 font-medium text-slate-900">
-                      {detailPo.receivedBy ? users.find((user) => user.id === detailPo.receivedBy)?.name ?? detailPo.receivedBy : "-"}
+
+                  {detailPo.status !== "RECEIVED" ? (
+                    <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
+                      This purchase order has not been received yet.
                     </div>
-                  </div>
-                  <div className="rounded-xl bg-slate-50 p-3">
-                    <div className="text-slate-500">Supplier invoice</div>
-                    <div className="mt-1 font-medium text-slate-900">{detailPo.supplierInvoiceNo ?? "-"}</div>
-                  </div>
-                  <div className="rounded-xl bg-slate-50 p-3">
-                    <div className="text-slate-500">Delivery note</div>
-                    <div className="mt-1 font-medium text-slate-900">{detailPo.deliveryNoteNo ?? "-"}</div>
-                  </div>
-                </div>
-                <div className="mt-3 overflow-x-auto">
-                  <table className="min-w-[560px] w-full text-xs">
-                    <thead className="border-b text-left text-slate-500">
-                      <tr>
-                        <th className="pb-2 font-medium">Product</th>
-                        <th className="pb-2 text-right font-medium">Ordered</th>
-                        <th className="pb-2 text-right font-medium">Received</th>
-                        <th className="pb-2 text-right font-medium">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detailPoItems.map((item) => {
-                        const receivedQty = item.receivedQty ?? 0;
-                        const receivedStatus =
-                          detailPo.status !== "RECEIVED"
-                            ? "Pending"
-                            : receivedQty >= item.orderedQty
-                              ? "Received"
-                              : receivedQty > 0
-                                ? "Partial"
-                                : "Not received";
-                        return (
-                          <tr key={item.id} className="border-b last:border-0">
-                            <td className="py-2">{products.find((product) => product.id === item.productId)?.name ?? item.productId}</td>
-                            <td className="py-2 text-right">{item.orderedQty}</td>
-                            <td className="py-2 text-right">{detailPo.status === "RECEIVED" ? receivedQty : "-"}</td>
-                            <td className="py-2 text-right">{receivedStatus}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            )}
+                  ) : (
+                    <>
+                      <div className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+                        Received by{" "}
+                        {detailPo.receivedBy ? users.find((user) => user.id === detailPo.receivedBy)?.name ?? detailPo.receivedBy : "unknown user"}{" "}
+                        {detailPo.receivedAt ? `on ${formatDateTime(detailPo.receivedAt)}` : ""}
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        {detailPoItems.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-500">
+                            No received item rows found for this purchase order.
+                          </div>
+                        ) : (
+                          detailPoItems.map((item) => {
+                            const receivedQty = item.receivedQty ?? 0;
+                            const itemStatus =
+                              receivedQty >= item.orderedQty
+                                ? { label: "Received", color: "green" }
+                                : receivedQty > 0
+                                  ? { label: "Partial", color: "yellow" }
+                                  : { label: "Not received", color: "gray" };
+                            return (
+                              <div key={item.id} className="rounded-2xl border border-slate-200/70 bg-slate-50/70 p-3">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="min-w-0 font-medium text-slate-900">
+                                    {products.find((product) => product.id === item.productId)?.name ?? item.productId}
+                                  </div>
+                                  <Badge color={itemStatus.color}>{itemStatus.label}</Badge>
+                                </div>
+                                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                                  <div>
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Ordered</div>
+                                    <div className="mt-0.5 font-bold tabular-nums text-slate-900">{item.orderedQty}</div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Received</div>
+                                    <div className="mt-0.5 font-bold tabular-nums text-slate-900">{receivedQty}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </section>
 
             <section>
               <h3 className="mb-2 text-sm font-semibold text-slate-900">Payment history</h3>
-              <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                <table className="min-w-[760px] w-full text-xs">
-                  <thead className="bg-slate-50 text-left text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">Date</th>
-                      <th className="px-3 py-2 font-medium">PO</th>
-                      <th className="px-3 py-2 text-right font-medium">Amount</th>
-                      <th className="px-3 py-2 font-medium">Method</th>
-                      <th className="px-3 py-2 font-medium">Reference</th>
-                      <th className="px-3 py-2 font-medium">Recorded by</th>
-                      <th className="px-3 py-2 font-medium">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedSupplierPayments.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="px-3 py-4 text-center text-slate-500">
-                          No supplier payments recorded.
-                        </td>
-                      </tr>
-                    ) : (
-                      selectedSupplierPayments.map((payment) => {
-                        const po = visiblePurchaseOrders.find((order) => order.id === payment.purchaseOrderId);
-                        const createdByUser = users.find((user) => user.id === payment.createdBy);
-                        return (
-                          <tr key={payment.id} className="border-t">
-                            <td className="px-3 py-2">{formatDateTime(payment.paidAt)}</td>
-                            <td className="px-3 py-2">{po?.orderNo ?? payment.purchaseOrderId}</td>
-                            <td className="px-3 py-2 text-right font-semibold">{formatMmk(payment.amountMmk)}</td>
-                            <td className="px-3 py-2">{payment.paymentMethod}</td>
-                            <td className="px-3 py-2">{payment.referenceNo ?? "-"}</td>
-                            <td className="px-3 py-2">{createdByUser?.name ?? payment.createdBy}</td>
-                            <td className="px-3 py-2">{payment.notes ?? "-"}</td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              {selectedSupplierPayments.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+                  No supplier payments recorded yet.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedSupplierPayments.map((payment) => {
+                    const po = visiblePurchaseOrders.find((order) => order.id === payment.purchaseOrderId);
+                    const createdByUser = users.find((user) => user.id === payment.createdBy);
+                    return (
+                      <div key={payment.id} className="rounded-3xl border border-slate-200/70 bg-white p-4 shadow-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">{po?.orderNo ?? payment.purchaseOrderId}</div>
+                            <div className="mt-1 text-xs text-slate-500">{formatDateTime(payment.paidAt)}</div>
+                          </div>
+                          <div className="text-right text-base font-bold tabular-nums text-emerald-700">
+                            {formatMmk(payment.amountMmk)}
+                          </div>
+                        </div>
+                        <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+                          <DetailMeta label="Method" value={getPaymentMethodLabel(payment.paymentMethod)} />
+                          <DetailMeta label="Reference" value={payment.referenceNo ?? "-"} />
+                          <DetailMeta label="Recorded by" value={createdByUser?.name ?? payment.createdBy} />
+                        </div>
+                        {payment.notes && (
+                          <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                            {payment.notes}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           </div>
         )}

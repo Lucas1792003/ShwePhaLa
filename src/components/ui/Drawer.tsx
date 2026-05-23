@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { cn } from "../../lib/utils";
 
 interface DrawerProps {
   open: boolean;
@@ -8,9 +9,22 @@ interface DrawerProps {
   children: ReactNode;
   header?: ReactNode;
   footer?: ReactNode;
+  panelClassName?: string;
+  bodyClassName?: string;
+  headerClassName?: string;
 }
 
-export const Drawer = ({ open, title, onClose, children, header, footer }: DrawerProps) => {
+export const Drawer = ({
+  open,
+  title,
+  onClose,
+  children,
+  header,
+  footer,
+  panelClassName,
+  bodyClassName,
+  headerClassName,
+}: DrawerProps) => {
   useEffect(() => {
     if (!open) return;
     const handler = (event: KeyboardEvent) => {
@@ -24,8 +38,8 @@ export const Drawer = ({ open, title, onClose, children, header, footer }: Drawe
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40 backdrop-blur-sm">
-      <div className="flex h-full w-full flex-col border-l border-slate-200/70 bg-white shadow-2xl sm:max-w-lg">
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200/70 bg-white px-6 py-4">
+      <div className={cn("flex h-full w-full flex-col border-l border-slate-200/70 bg-white shadow-2xl", panelClassName ?? "sm:max-w-lg")}>
+        <div className={cn("sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200/70 bg-white px-6 py-4", headerClassName)}>
           <div className="min-w-0 flex-1">
             <div className="text-lg font-semibold text-slate-900">{title}</div>
             {header}
@@ -39,7 +53,7 @@ export const Drawer = ({ open, title, onClose, children, header, footer }: Drawe
             <span className="material-symbols-rounded text-xl">close</span>
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        <div className={cn("flex-1 overflow-y-auto px-6 py-5", bodyClassName)}>{children}</div>
         {footer && (
           <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200/70 bg-white px-6 py-3">
             {footer}

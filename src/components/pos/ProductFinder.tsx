@@ -75,8 +75,22 @@ export const ProductFinder = ({
             return (
               <div
                 key={product.id}
-                className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:shadow-md ${
-                  outOfStock ? "border-red-200 opacity-60" : "border-slate-200"
+                role="button"
+                tabIndex={outOfStock ? -1 : 0}
+                aria-label={`Add ${product.name}`}
+                aria-disabled={outOfStock}
+                onClick={() => {
+                  if (!outOfStock) onAdd(product, false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.currentTarget !== event.target || outOfStock) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onAdd(product, false);
+                  }
+                }}
+                className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
+                  outOfStock ? "cursor-not-allowed border-red-200 opacity-60" : "cursor-pointer border-slate-200"
                 }`}
               >
                 {/* Product Image */}
@@ -123,7 +137,10 @@ export const ProductFinder = ({
                     <span className="text-base font-bold text-emerald-600">{formatMmk(product.priceMmk)}</span>
                     <button
                       type="button"
-                      onClick={() => onAdd(product, false)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onAdd(product, false);
+                      }}
                       disabled={outOfStock}
                       className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
                     >
@@ -133,7 +150,10 @@ export const ProductFinder = ({
                   {product.packSize && (
                     <button
                       type="button"
-                      onClick={() => onAdd(product, true)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onAdd(product, true);
+                      }}
                       disabled={outOfStock}
                       className="mt-2 w-full rounded-lg border border-emerald-200 bg-emerald-50 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
                     >
