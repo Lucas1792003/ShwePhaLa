@@ -71,6 +71,14 @@ describe("RPC SQL keeps inventory writes shop-scoped", () => {
     expect(sql).toContain("WHERE shop_id = p_shop_id AND product_id = v_c->>'product_id'");
   });
 
+  it("complete_sale locks shop inventory and rejects unauthorized negative stock", () => {
+    const sql = migration("004_complete_sale_rpc.sql");
+    expect(sql).toContain("v_can_ovr_stock := app_has_perm('pos:override_stock')");
+    expect(sql).toContain("WHERE shop_id = p_shop_id AND product_id = v_product.id FOR UPDATE");
+    expect(sql).toContain("IF v_qty_after < 0 AND NOT v_can_ovr_stock THEN");
+    expect(sql).toContain("RAISE EXCEPTION 'Insufficient stock for %: have %, need %'");
+  });
+
   it("receive_purchase_order adds stock for the PO's shop only", () => {
     const sql = migration("006_receive_purchase_order_rpc.sql");
     expect(sql).toContain("ON CONFLICT (shop_id, product_id)");

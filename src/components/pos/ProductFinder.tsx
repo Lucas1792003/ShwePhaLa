@@ -13,6 +13,7 @@ interface ProductFinderProps {
   onSearch: (value: string) => void;
   onCategory: (value: string) => void;
   inventoryById: Record<string, number>;
+  cartUnitsByProductId?: Record<string, number>;
   onAdd: (product: Product, usePack: boolean) => void;
 }
 
@@ -24,6 +25,7 @@ export const ProductFinder = ({
   onSearch,
   onCategory,
   inventoryById,
+  cartUnitsByProductId = {},
   onAdd,
 }: ProductFinderProps) => {
   // "All" keeps its own grid icon; every category resolves its icon through
@@ -69,28 +71,33 @@ export const ProductFinder = ({
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-3 2xl:grid-cols-4">
           {products.map((product) => {
             const qty = inventoryById[product.id] ?? 0;
+            const requestedUnits = cartUnitsByProductId[product.id] ?? 0;
+            const remainingUnits = Math.max(0, qty - requestedUnits);
             const outOfStock = qty <= 0;
+            const fullyReserved = !outOfStock && remainingUnits <= 0;
             const lowStock = qty > 0 && qty <= product.lowStockThreshold;
+            const unitAddDisabled = outOfStock || remainingUnits < 1;
+            const packAddDisabled = outOfStock || !product.packSize || remainingUnits < product.packSize;
 
             return (
               <div
                 key={product.id}
                 role="button"
-                tabIndex={outOfStock ? -1 : 0}
+                tabIndex={unitAddDisabled ? -1 : 0}
                 aria-label={`Add ${product.name}`}
-                aria-disabled={outOfStock}
+                aria-disabled={unitAddDisabled}
                 onClick={() => {
-                  if (!outOfStock) onAdd(product, false);
+                  if (!unitAddDisabled) onAdd(product, false);
                 }}
                 onKeyDown={(event) => {
-                  if (event.currentTarget !== event.target || outOfStock) return;
+                  if (event.currentTarget !== event.target || unitAddDisabled) return;
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     onAdd(product, false);
                   }
                 }}
                 className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
-                  outOfStock ? "cursor-not-allowed border-red-200 opacity-60" : "cursor-pointer border-slate-200"
+                  unitAddDisabled ? "cursor-not-allowed border-red-200 opacity-70" : "cursor-pointer border-slate-200"
                 }`}
               >
                 {/* Product Image */}
@@ -116,6 +123,11 @@ export const ProductFinder = ({
                       <Badge tone="red">Out of stock</Badge>
                     </div>
                   )}
+                  {fullyReserved && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                      <Badge tone="amber">All in cart</Badge>
+                    </div>
+                  )}
                   {lowStock && !outOfStock && (
                     <div className="absolute right-2 top-2">
                       <Badge tone="amber">Low</Badge>
@@ -125,7 +137,7 @@ export const ProductFinder = ({
                   {/* Stock Count */}
                   <div className="absolute bottom-2 left-2">
                     <span className="rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white">
-                      {qty} in stock
+                      {requestedUnits > 0 ? `${remainingUnits} of ${qty} left` : `${qty} in stock`}
                     </span>
                   </div>
                 </div>
@@ -139,9 +151,10 @@ export const ProductFinder = ({
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        onAdd(product, false);
+                        if (!unitAddDisabled) onAdd(product, false);
                       }}
-                      disabled={outOfStock}
+                      disabled={unitAddDisabled}
+                      title={unitAddDisabled ? `Only ${qty} in stock for this shop.` : `Add ${product.name}`}
                       className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
                     >
                       <span className="material-symbols-rounded text-lg">add</span>
@@ -152,12 +165,13 @@ export const ProductFinder = ({
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        onAdd(product, true);
+                        if (!packAddDisabled) onAdd(product, true);
                       }}
-                      disabled={outOfStock}
+                      disabled={packAddDisabled}
+                      title={packAddDisabled ? "Not enough stock for pack." : `Add pack of ${product.packSize}`}
                       className="mt-2 w-full rounded-lg border border-emerald-200 bg-emerald-50 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
                     >
-                      Add Pack ({product.packSize})
+                      {packAddDisabled && !outOfStock ? "Not enough stock for pack" : `Add Pack (${product.packSize})`}
                     </button>
                   )}
                 </div>

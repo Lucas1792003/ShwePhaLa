@@ -9,11 +9,19 @@ interface PaymentModalProps {
   open: boolean;
   totalMmk: number;
   loading?: boolean;
+  validationError?: string;
   onClose: () => void;
   onConfirm: (method: "CASH" | "OTHER", paid: number) => void | Promise<void>;
 }
 
-export const PaymentModal = ({ open, totalMmk, loading = false, onClose, onConfirm }: PaymentModalProps) => {
+export const PaymentModal = ({
+  open,
+  totalMmk,
+  loading = false,
+  validationError,
+  onClose,
+  onConfirm,
+}: PaymentModalProps) => {
   const [method, setMethod] = useState<"CASH" | "OTHER">("CASH");
   // String-backed input so we can keep the field empty while editing and
   // never sit on a padded "02900". toNumber("") -> 0 for calculations.
@@ -21,7 +29,7 @@ export const PaymentModal = ({ open, totalMmk, loading = false, onClose, onConfi
   const paid = toNumber(paidInput);
   const change = Math.max(0, paid - totalMmk);
   const isUnderpaid = paid < totalMmk;
-  const canConfirm = !loading && paid >= totalMmk;
+  const canConfirm = !loading && paid >= totalMmk && !validationError;
 
   const handleClose = () => {
     if (!loading) onClose();
@@ -105,7 +113,11 @@ export const PaymentModal = ({ open, totalMmk, loading = false, onClose, onConfi
           </label>
         </div>
 
-        {isUnderpaid ? (
+        {validationError ? (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+            {validationError}
+          </div>
+        ) : isUnderpaid ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
             Amount received is less than total.
           </div>

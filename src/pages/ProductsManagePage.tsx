@@ -683,6 +683,7 @@ export const ProductsManagePage = () => {
             <label className="mb-1 block text-sm font-medium text-slate-700">Product Image</label>
             <ProductImageInput
               productId={formProductId}
+              shopId={currentShopId}
               value={form.watch("imageUrl")}
               onChange={(value) => form.setValue("imageUrl", value)}
             />

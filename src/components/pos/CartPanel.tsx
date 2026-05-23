@@ -3,6 +3,7 @@ import { CartItemRow } from "./CartItemRow";
 import { Input } from "../ui/Input";
 import { Button } from "../ui/Button";
 import { formatMmk, toNumber } from "../../lib/utils";
+import type { CartItemStockStatus } from "../../features/pos/cartStock";
 
 interface CartPanelProps {
   items: CartItem[];
@@ -13,10 +14,14 @@ interface CartPanelProps {
   cartDiscountPct: number;
   onDiscountChange: (id: string, value: number) => void;
   onQtyChange: (id: string, delta: number) => void;
+  onQtySet: (id: string, qty: number) => void;
   onRemove: (id: string) => void;
   onCartDiscountChange: (value: number) => void;
   onCheckout: () => void;
   onOverridePrice?: (item: CartItem) => void;
+  stockStatuses?: Record<string, CartItemStockStatus>;
+  checkoutDisabled?: boolean;
+  checkoutHelper?: string;
 }
 
 export const CartPanel = ({
@@ -28,10 +33,14 @@ export const CartPanel = ({
   cartDiscountPct,
   onDiscountChange,
   onQtyChange,
+  onQtySet,
   onRemove,
   onCartDiscountChange,
   onCheckout,
   onOverridePrice,
+  stockStatuses = {},
+  checkoutDisabled = items.length === 0,
+  checkoutHelper,
 }: CartPanelProps) => (
   <div className="flex h-full flex-col">
     {/* Header */}
@@ -56,9 +65,11 @@ export const CartPanel = ({
             key={item.id}
             item={item}
             onQtyChange={onQtyChange}
+            onQtySet={onQtySet}
             onRemove={onRemove}
             onDiscountChange={onDiscountChange}
             onOverridePrice={onOverridePrice}
+            stockStatus={stockStatuses[item.id]}
           />
         ))
       )}
@@ -127,10 +138,15 @@ export const CartPanel = ({
     <Button
       className="mt-4 w-full bg-emerald-600 py-3 text-base font-semibold hover:bg-emerald-700"
       onClick={onCheckout}
-      disabled={items.length === 0}
+      disabled={checkoutDisabled}
     >
       <span className="material-symbols-rounded mr-2">point_of_sale</span>
       Place Order (F2)
     </Button>
+    {checkoutHelper && (
+      <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-center text-xs font-medium text-slate-500">
+        {checkoutHelper}
+      </p>
+    )}
   </div>
 );

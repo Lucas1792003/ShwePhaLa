@@ -1,0 +1,204 @@
+import { useEffect, useMemo, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
+import { Button } from "../ui/Button";
+import { Modal } from "../ui/Modal";
+import { formatImageSize } from "../../lib/compressProductImage";
+import {
+  cancelProductImageUploadSession,
+  createSignedProductImageUploadSession,
+  getProductImageUploadSessionStatus,
+  type ProductImageUploadSessionStatus,
+  type ProductImageUploadSignedSession,
+} from "../../lib/productImagePhoneUpload";
+
+interface ProductImagePhoneUploadModalProps {
+  open: boolean;
+  productId: string;
+  shopId?: string | null;
+  onClose: () => void;
+  onUploaded: (publicUrl: string, bytes?: number) => void;
+}
+
+type ModalPhase = "creating" | ProductImageUploadSessionStatus | "FAILED";
+
+const statusLabel: Record<ModalPhase, string> = {
+  creating: "Creating upload link...",
+  PENDING: "Waiting for upload...",
+  COMPLETED: "Upload received",
+  EXPIRED: "Upload failed / expired",
+  CANCELED: "Upload canceled",
+  FAILED: "Upload failed / expired",
+};
+
+const getSecondsLeft = (expiresAt?: string) => {
+  if (!expiresAt) return 0;
+  return Math.max(0, Math.ceil((Date.parse(expiresAt) - Date.now()) / 1000));
+};
+
+export const ProductImagePhoneUploadModal = ({
+  open,
+  productId,
+  shopId,
+  onClose,
+  onUploaded,
+}: ProductImagePhoneUploadModalProps) => {
+  const [session, setSession] = useState<ProductImageUploadSignedSession | null>(null);
+  const [phase, setPhase] = useState<ModalPhase>("creating");
+  const [error, setError] = useState<string | null>(null);
+  const [uploadedBytes, setUploadedBytes] = useState<number | undefined>();
+  const [secondsLeft, setSecondsLeft] = useState(0);
+
+  const statusTone = useMemo(() => {
+    if (phase === "COMPLETED") return "text-emerald-700";
+    if (phase === "FAILED" || phase === "EXPIRED" || phase === "CANCELED") return "text-rose-600";
+    return "text-slate-600";
+  }, [phase]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let active = true;
+    setSession(null);
+    setPhase("creating");
+    setError(null);
+    setUploadedBytes(undefined);
+    setSecondsLeft(0);
+
+    createSignedProductImageUploadSession({ productId, shopId })
+      .then((nextSession) => {
+        if (!active) return;
+        setSession(nextSession);
+        setPhase("PENDING");
+        setSecondsLeft(getSecondsLeft(nextSession.expiresAt));
+      })
+      .catch((e) => {
+        if (!active) return;
+        setPhase("FAILED");
+        setError(e instanceof Error ? e.message : "Could not create the phone upload link.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [open, productId, shopId]);
+
+  useEffect(() => {
+    if (!open || !session || phase !== "PENDING") return;
+    const timer = window.setInterval(() => {
+      setSecondsLeft(getSecondsLeft(session.expiresAt));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [open, phase, session]);
+
+  useEffect(() => {
+    if (!open || !session || phase !== "PENDING") return;
+
+    let active = true;
+    const poll = async () => {
+      try {
+        const result = await getProductImageUploadSessionStatus(session.sessionId);
+        if (!active) return;
+        setPhase(result.status);
+        setSecondsLeft(getSecondsLeft(result.expiresAt));
+        if (result.status === "COMPLETED" && result.publicUrl) {
+          setUploadedBytes(result.bytes);
+          onUploaded(result.publicUrl, result.bytes);
+        }
+      } catch (e) {
+        if (!active) return;
+        setPhase("FAILED");
+        setError(e instanceof Error ? e.message : "Could not check the upload status.");
+      }
+    };
+
+    const timer = window.setInterval(() => void poll(), 2000);
+    void poll();
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [open, onUploaded, phase, session]);
+
+  const handleClose = () => {
+    if (session && phase === "PENDING") {
+      void cancelProductImageUploadSession(session.sessionId).catch(() => undefined);
+    }
+    onClose();
+  };
+
+  const countdown =
+    phase === "PENDING" && secondsLeft > 0
+      ? `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`
+      : null;
+
+  return (
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title="Upload from phone"
+      description="Scan with your phone to take or choose a product photo."
+      footer={
+        <Button type="button" onClick={handleClose} variant={phase === "COMPLETED" ? "primary" : "secondary"}>
+          {phase === "COMPLETED" ? "Use this image" : "Close"}
+        </Button>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-[220px_1fr] sm:items-center">
+        <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-slate-200 bg-white p-3">
+          {session?.qrUrl && phase !== "FAILED" ? (
+            <QRCodeSVG
+              value={session.qrUrl}
+              size={192}
+              marginSize={2}
+              level="M"
+              title="Product image phone upload QR code"
+            />
+          ) : (
+            <div className="flex h-48 w-48 items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">
+              Preparing QR...
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Status</div>
+            <div className={`mt-1 text-base font-semibold ${statusTone}`}>{statusLabel[phase]}</div>
+          </div>
+
+          {countdown && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+              Link expires in {countdown}.
+            </div>
+          )}
+
+          {phase === "PENDING" && (
+            <p className="text-sm text-slate-500">
+              Scan the QR code, then use your phone camera or photo library. Keep this window open
+              until the upload is received.
+            </p>
+          )}
+
+          {phase === "COMPLETED" && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+              The product image preview has been updated
+              {uploadedBytes ? ` (${formatImageSize(uploadedBytes)})` : ""}.
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {error}
+            </div>
+          )}
+
+          {session?.qrUrl && (
+            <p className="break-all rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              {session.qrUrl}
+            </p>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+};

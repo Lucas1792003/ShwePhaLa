@@ -1,10 +1,13 @@
-import { useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useRef, useState, type ChangeEvent } from "react";
 import { compressProductImage, formatImageSize } from "../../lib/compressProductImage";
 import { uploadProductImage } from "../../lib/productImageStorage";
+import { ProductImagePhoneUploadModal } from "./ProductImagePhoneUploadModal";
 
 interface ProductImageInputProps {
   /** Product id — used to build the Supabase Storage path for the image. */
   productId: string;
+  /** Current shop context, stored on temporary phone upload sessions when available. */
+  shopId?: string | null;
   /** Current image — a Supabase Storage public URL (or a legacy value). */
   value: string | undefined;
   /** Called with the new Storage public URL, or `undefined` when removed. */
@@ -20,11 +23,12 @@ type Phase = "compressing" | "uploading" | null;
  * (`uploadProductImage`), and only the resulting public URL is handed back via
  * `onChange`. No base64 data URL is ever stored on the product row.
  */
-export const ProductImageInput = ({ productId, value, onChange, disabled }: ProductImageInputProps) => {
+export const ProductImageInput = ({ productId, shopId, value, onChange, disabled }: ProductImageInputProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>(null);
   const [error, setError] = useState<string | null>(null);
   const [compressedBytes, setCompressedBytes] = useState<number | null>(null);
+  const [phoneUploadOpen, setPhoneUploadOpen] = useState(false);
 
   const busy = phase !== null;
 
@@ -58,6 +62,15 @@ export const ProductImageInput = ({ productId, value, onChange, disabled }: Prod
     setCompressedBytes(null);
     setError(null);
   };
+
+  const handlePhoneUploaded = useCallback(
+    (publicUrl: string, bytes?: number) => {
+      onChange(publicUrl);
+      setCompressedBytes(bytes ?? null);
+      setError(null);
+    },
+    [onChange],
+  );
 
   const buttonLabel =
     phase === "compressing"
@@ -111,6 +124,15 @@ export const ProductImageInput = ({ productId, value, onChange, disabled }: Prod
             <span className="material-symbols-rounded text-lg">upload</span>
             {buttonLabel}
           </button>
+          <button
+            type="button"
+            disabled={disabled || busy}
+            onClick={() => setPhoneUploadOpen(true)}
+            className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span className="material-symbols-rounded text-lg">photo_camera</span>
+            Use phone camera
+          </button>
           {value && !disabled && (
             <button
               type="button"
@@ -147,6 +169,13 @@ export const ProductImageInput = ({ productId, value, onChange, disabled }: Prod
         )}
         {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
       </div>
+      <ProductImagePhoneUploadModal
+        open={phoneUploadOpen}
+        productId={productId}
+        shopId={shopId}
+        onClose={() => setPhoneUploadOpen(false)}
+        onUploaded={handlePhoneUploaded}
+      />
     </div>
   );
 };

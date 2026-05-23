@@ -24,6 +24,7 @@ import { AuditLogPage } from "../../features/admin/pages/AuditLogPage";
 import { CatalogPage } from "../../features/catalog/pages/CatalogPage";
 import { DashboardPage } from "../../pages/DashboardPage";
 import { BarcodeLabelsPage } from "../../pages/BarcodeLabelsPage";
+import { PhoneProductImageUploadPage } from "../../pages/PhoneProductImageUploadPage";
 import { NotFoundPage } from "../../pages/NotFoundPage";
 import { useAuthStore } from "../../stores/authStore";
 import { useDataStore } from "../../stores/dataStore";
@@ -39,6 +40,7 @@ const DefaultAppRoute = () => {
 
 export const AppRouter = () => (
   <Routes>
+    <Route path="/phone-upload/product-image/:token" element={<PhoneProductImageUploadPage />} />
     <Route path="/login" element={<LoginPage />} />
     <Route
       path="/app"

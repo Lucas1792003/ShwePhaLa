@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { CartItem, Product } from "../types";
 import { useAuthStore } from "../stores/authStore";
@@ -14,6 +14,15 @@ import { ProductFinder } from "../components/pos/ProductFinder";
 import { CartPanel } from "../components/pos/CartPanel";
 import { PaymentModal } from "../components/pos/PaymentModal";
 import { calculateCartTotals } from "../features/pos/service";
+import {
+  STOCK_OVERRIDE_REQUIRED_MESSAGE,
+  STOCK_OVERRIDE_UI_REQUIRED_MESSAGE,
+  clampCartItemQuantity,
+  getCartAddStockStatus,
+  getOnlyInStockMessage,
+  getRequestedUnitsByProduct,
+  validatePosCart,
+} from "../features/pos/cartStock";
 import { hasShopPermission } from "../lib/permissions";
 import { getEffectiveShopId, toNumber } from "../lib/utils";
 
@@ -31,7 +40,6 @@ export const PosPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [overrideItem, setOverrideItem] = useState<CartItem | null>(null);
   const [overridePrice, setOverridePrice] = useState(0);
-  const [stockOverrideRequest, setStockOverrideRequest] = useState<{ product: Product; usePack: boolean } | null>(null);
   const [packMode, setPackMode] = useState(false);
   const [showBarcodeInput, setShowBarcodeInput] = useState(false);
 
@@ -44,7 +52,6 @@ export const PosPage = () => {
   const getInventoryQty = useDataStore((state) => state.getInventoryQty);
   const getProductByBarcode = useDataStore((state) => state.getProductByBarcode);
   const createSale = useDataStore((state) => state.createSale);
-  const startShift = useDataStore((state) => state.startShift);
   const shifts = useDataStore((state) => state.shifts);
 
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
@@ -52,28 +59,6 @@ export const PosPage = () => {
   const openShift = shifts.find((shift) => shift.shopId === shopId && shift.cashierId === currentUserId && !shift.endedAt);
   const canOverridePrice = hasShopPermission(currentUser, "pos:override_price", shopId);
   const canOverrideStock = hasShopPermission(currentUser, "pos:override_stock", shopId);
-
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "F2") {
-        event.preventDefault();
-        if (cartItems.length > 0) setPaymentOpen(true);
-      }
-      if (event.key === "Escape") {
-        setPaymentOpen(false);
-        setOverrideItem(null);
-        setStockOverrideRequest(null);
-        setShowBarcodeInput(false);
-      }
-      // F3 to toggle barcode input
-      if (event.key === "F3") {
-        event.preventDefault();
-        setShowBarcodeInput((prev) => !prev);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [cartItems.length]);
 
   const filteredProducts = useMemo(() => {
     return products
@@ -93,18 +78,48 @@ export const PosPage = () => {
     return map;
   }, [products, getInventoryQty, shopId]);
 
-  const { subtotal, itemDiscount, cartDiscount, total } = calculateCartTotals(cartItems, cartDiscountPct);
+  const cartUnitsByProductId = useMemo(() => getRequestedUnitsByProduct(cartItems), [cartItems]);
 
-  const handleAddToCart = (product: Product, usePack: boolean, overrideStock = false) => {
-    const qtyBase = getInventoryQty(shopId, product.id);
-    const unitsPerItem = usePack && product.packSize ? product.packSize : 1;
-    const requiresOverride = qtyBase < unitsPerItem;
-    if (requiresOverride && !overrideStock) {
-      if (canOverrideStock) {
-        setStockOverrideRequest({ product, usePack });
-      } else {
-        toast({ title: "Out of stock", description: "Insufficient stock for this item.", variant: "error" });
-      }
+  const cartValidation = useMemo(
+    () =>
+      validatePosCart(cartItems, inventoryById, {
+        hasOpenShift: Boolean(openShift),
+        canOverrideStock,
+      }),
+    [cartItems, canOverrideStock, inventoryById, openShift]
+  );
+
+  const { subtotal, itemDiscount, cartDiscount, total } = calculateCartTotals(cartItems, cartDiscountPct);
+  const firstCartError = cartValidation.errors[0];
+  const checkoutHelper = !openShift ? "Open a shift before checkout." : firstCartError;
+  const stockOverrideUnavailableMessage = `${STOCK_OVERRIDE_REQUIRED_MESSAGE} ${STOCK_OVERRIDE_UI_REQUIRED_MESSAGE}`;
+  const paymentValidationError = paymentOpen && !cartValidation.canCheckout ? firstCartError : undefined;
+
+  const getStockBlockDescription = useCallback(
+    (stockQty: number) => (canOverrideStock ? stockOverrideUnavailableMessage : getOnlyInStockMessage(stockQty)),
+    [canOverrideStock, stockOverrideUnavailableMessage]
+  );
+
+  const showCartValidationToast = useCallback(
+    (title = "Checkout blocked") => {
+      toast({
+        title,
+        description: firstCartError ?? "Review the cart before checkout.",
+        variant: "error",
+      });
+    },
+    [firstCartError, toast]
+  );
+
+  const handleAddToCart = (product: Product, usePack: boolean) => {
+    const addStatus = getCartAddStockStatus(product, usePack, cartItems, inventoryById);
+    const unitsPerItem = addStatus.unitsPerItem;
+    if (!addStatus.canAdd) {
+      toast({
+        title: usePack ? "Not enough stock for pack" : addStatus.stockQty <= 0 ? "Out of stock" : "Stock limit reached",
+        description: getStockBlockDescription(addStatus.stockQty),
+        variant: "error",
+      });
       return;
     }
     const unitLabel = usePack && product.packSize ? packLabel(product) : "unit";
@@ -123,7 +138,6 @@ export const PosPage = () => {
           unitPriceMmk: product.priceMmk,
           unitsPerItem,
           unitLabel,
-          stockOverrideBy: requiresOverride && overrideStock ? currentUserId || undefined : undefined,
           // Display fields
           imageUrl: product.imageUrl,
           category: product.category,
@@ -145,34 +159,78 @@ export const PosPage = () => {
     setBarcodeInput("");
   };
 
-  const handleQtyChange = (id: string, delta: number) => {
+  const applyCartQuantity = (id: string, requestedQty: number) => {
+    const currentItem = cartItems.find((item) => item.id === id);
+    if (!currentItem) return;
+    const result = clampCartItemQuantity(currentItem, cartItems, inventoryById, requestedQty);
+    if (result.blockedByStock && requestedQty > result.qty) {
+      toast({
+        title: "Stock limit reached",
+        description: getStockBlockDescription(inventoryById[currentItem.productId] ?? 0),
+        variant: "error",
+      });
+    }
     setCartItems((items) =>
-      items
-        .map((item) => (item.id === id ? { ...item, qty: Math.max(1, item.qty + delta) } : item))
-        .filter((item) => item.qty > 0)
+      items.map((item) => (item.id === id ? { ...item, qty: result.qty } : item))
     );
   };
 
-  const handleCheckout = () => {
+  const handleQtyChange = (id: string, delta: number) => {
+    const currentItem = cartItems.find((item) => item.id === id);
+    if (!currentItem) return;
+    applyCartQuantity(id, currentItem.qty + delta);
+  };
+
+  const handleQtySet = (id: string, qty: number) => {
+    applyCartQuantity(id, qty);
+  };
+
+  const handleCheckout = useCallback(() => {
     if (submitting) return;
-    if (!currentUser) return;
-    if (currentUser.role === "CASHIER" && !openShift) {
-      toast({ title: "Shift required", description: "Start a shift before checkout.", variant: "error" });
+    if (!currentUser) {
+      toast({ title: "Checkout blocked", description: "Sign in before checkout.", variant: "error" });
+      return;
+    }
+    if (!cartValidation.canCheckout) {
+      showCartValidationToast();
       return;
     }
     setPaymentOpen(true);
-  };
+  }, [cartValidation.canCheckout, currentUser, showCartValidationToast, submitting, toast]);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "F2") {
+        event.preventDefault();
+        handleCheckout();
+      }
+      if (event.key === "Escape") {
+        setPaymentOpen(false);
+        setOverrideItem(null);
+        setShowBarcodeInput(false);
+      }
+      // F3 to toggle barcode input
+      if (event.key === "F3") {
+        event.preventDefault();
+        setShowBarcodeInput((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleCheckout]);
 
   const handlePaymentConfirm = async (paymentMethod: "CASH" | "OTHER", paidMmk: number) => {
     if (!currentUser || submitting) return;
+    if (!cartValidation.canCheckout || !openShift) {
+      showCartValidationToast("Payment blocked");
+      return;
+    }
     setSubmitting(true);
     try {
-      const shiftId =
-        openShift?.id || (await startShift({ shopId, cashierId: currentUser.id, openingCashMmk: 0 }));
       const saleId = await createSale({
         shopId,
         cashierId: currentUser.id,
-        shiftId,
+        shiftId: openShift.id,
         cartItems,
         cartDiscountPct,
         paymentMethod,
@@ -275,6 +333,7 @@ export const PosPage = () => {
             onSearch={setSearch}
             onCategory={setCategory}
             inventoryById={inventoryById}
+            cartUnitsByProductId={cartUnitsByProductId}
             onAdd={(product, usePack) => handleAddToCart(product, usePack)}
           />
         </Card>
@@ -292,15 +351,26 @@ export const PosPage = () => {
               setCartItems((items) => items.map((item) => (item.id === id ? { ...item, itemDiscountPct: value } : item)))
             }
             onQtyChange={handleQtyChange}
+            onQtySet={handleQtySet}
             onRemove={(id) => setCartItems((items) => items.filter((item) => item.id !== id))}
             onCartDiscountChange={setCartDiscountPct}
             onCheckout={handleCheckout}
             onOverridePrice={canOverridePrice ? (item) => { setOverrideItem(item); setOverridePrice(item.unitPriceMmk); } : undefined}
+            stockStatuses={cartValidation.itemStatuses}
+            checkoutDisabled={!cartValidation.canCheckout || submitting}
+            checkoutHelper={checkoutHelper}
           />
         </Card>
       </div>
 
-      <PaymentModal open={paymentOpen} onClose={() => setPaymentOpen(false)} totalMmk={total} onConfirm={handlePaymentConfirm} loading={submitting} />
+      <PaymentModal
+        open={paymentOpen}
+        onClose={() => setPaymentOpen(false)}
+        totalMmk={total}
+        onConfirm={handlePaymentConfirm}
+        loading={submitting}
+        validationError={paymentValidationError}
+      />
 
       <Modal
         open={!!overrideItem}
@@ -324,31 +394,6 @@ export const PosPage = () => {
         />
       </Modal>
 
-      <Modal
-        open={!!stockOverrideRequest}
-        onClose={() => setStockOverrideRequest(null)}
-        title="Override out-of-stock"
-        description="This item is out of stock. Override requires manager/admin confirmation."
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setStockOverrideRequest(null)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (stockOverrideRequest) handleAddToCart(stockOverrideRequest.product, stockOverrideRequest.usePack, true);
-                setStockOverrideRequest(null);
-              }}
-            >
-              Override & add
-            </Button>
-          </>
-        }
-      >
-        <div className="text-sm text-slate-500">
-          Current stock: {stockOverrideRequest ? inventoryById[stockOverrideRequest.product.id] ?? 0 : 0} units
-        </div>
-      </Modal>
     </div>
   );
 };
