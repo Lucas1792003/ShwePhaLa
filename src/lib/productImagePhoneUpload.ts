@@ -24,6 +24,7 @@ export interface ProductImageUploadSessionStatusResult {
   publicUrl?: string;
   bytes?: number;
   mimeType?: string;
+  uploadToken?: string;
   expiresAt: string;
   status: ProductImageUploadSessionStatus;
 }
@@ -35,6 +36,7 @@ interface SessionRpcRow {
   publicUrl?: string;
   bytes?: number;
   mimeType?: string;
+  uploadToken?: string;
   expiresAt: string;
   status: ProductImageUploadSessionStatus;
 }
@@ -48,20 +50,12 @@ const assertStorageUrlIsSafe = (url: string): void => {
 export function buildProductImagePhoneUploadQrUrl(
   origin: string,
   sessionToken: string,
-  uploadToken: string,
 ): string {
   const normalizedOrigin = origin.replace(/\/$/, "");
   const url = new URL(
     `${normalizedOrigin}${PRODUCT_IMAGE_PHONE_UPLOAD_ROUTE}/${encodeURIComponent(sessionToken)}`,
   );
-  url.hash = `uploadToken=${encodeURIComponent(uploadToken)}`;
   return url.toString();
-}
-
-export function getSignedUploadTokenFromHash(hash: string): string | null {
-  const value = hash.startsWith("#") ? hash.slice(1) : hash;
-  const params = new URLSearchParams(value);
-  return params.get("uploadToken");
 }
 
 export function assertCompressedPhoneUpload(bytes: number, publicUrl: string): void {
@@ -108,11 +102,17 @@ export async function createSignedProductImageUploadSession(input: {
   if (error) throw new Error(`Could not create phone upload URL: ${error.message}`);
   if (!data?.token) throw new Error("Phone upload URL did not include an upload token.");
 
+  const { error: attachError } = await supabase.rpc("attach_product_image_upload_session_token", {
+    p_session_id: session.sessionId,
+    p_signed_upload_token: data.token,
+  });
+  if (attachError) throw new Error(`Could not activate phone upload URL: ${attachError.message}`);
+
   const origin = input.origin ?? window.location.origin;
   return {
     ...session,
     uploadToken: data.token,
-    qrUrl: buildProductImagePhoneUploadQrUrl(origin, session.token, data.token),
+    qrUrl: buildProductImagePhoneUploadQrUrl(origin, session.token),
   };
 }
 

@@ -12,6 +12,7 @@ describe("product image phone upload session migration", () => {
   it("stores only a token hash, not the raw QR token", () => {
     const sql = migration();
     expect(sql).toContain("token_hash text NOT NULL UNIQUE");
+    expect(sql).toContain("signed_upload_token text");
     expect(sql).toContain("product_image_upload_token_hash(v_token)");
     expect(sql).toContain("sha256(convert_to(COALESCE(p_token, ''), 'UTF8'))");
     expect(sql).not.toContain(" token text ");
@@ -34,9 +35,12 @@ describe("product image phone upload session migration", () => {
 
   it("lets phones complete only a valid token-scoped storage path", () => {
     const sql = migration();
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION attach_product_image_upload_session_token");
+    expect(sql).toContain("'uploadToken', CASE WHEN v_session.status = 'PENDING' THEN v_session.signed_upload_token ELSE NULL END");
     expect(sql).toContain("GRANT EXECUTE ON FUNCTION complete_product_image_upload_session");
     expect(sql).toContain("p_storage_path IS DISTINCT FROM v_session.storage_path");
     expect(sql).toContain("p_bytes IS NULL OR p_bytes <= 0 OR p_bytes > 102400");
     expect(sql).toContain("lower(p_public_url) LIKE 'data:%'");
+    expect(sql).toContain("signed_upload_token = NULL");
   });
 });

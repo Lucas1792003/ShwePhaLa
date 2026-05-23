@@ -143,21 +143,29 @@ export const ProductImagePhoneUploadModal = ({
         </Button>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-[220px_1fr] sm:items-center">
-        <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-slate-200 bg-white p-3">
+      <div className="grid gap-5 sm:grid-cols-[260px_1fr] sm:items-center">
+        <div className="rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-slate-50 p-4 shadow-sm">
+          <div className="flex min-h-[228px] items-center justify-center rounded-2xl border border-white bg-white p-3 shadow-inner">
           {session?.qrUrl && phase !== "FAILED" ? (
             <QRCodeSVG
               value={session.qrUrl}
-              size={192}
+              size={212}
               marginSize={2}
-              level="M"
+              level="Q"
+              bgColor="#ffffff"
+              fgColor="#0f172a"
               title="Product image phone upload QR code"
             />
           ) : (
-            <div className="flex h-48 w-48 items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">
+            <div className="flex h-52 w-52 items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">
               Preparing QR...
             </div>
           )}
+          </div>
+          <div className="mt-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+            <span className="material-symbols-rounded text-base">qr_code_scanner</span>
+            Scan to upload
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -192,11 +200,9 @@ export const ProductImagePhoneUploadModal = ({
             </div>
           )}
 
-          {session?.qrUrl && (
-            <p className="break-all rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
-              {session.qrUrl}
-            </p>
-          )}
+          <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            The QR code is temporary and works only for this image upload.
+          </p>
         </div>
       </div>
     </Modal>

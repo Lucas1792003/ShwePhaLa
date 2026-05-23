@@ -3,20 +3,20 @@ import { MAX_PRODUCT_IMAGE_BYTES } from "./compressProductImage";
 import {
   buildProductImagePhoneUploadQrUrl,
   assertCompressedPhoneUpload,
-  getSignedUploadTokenFromHash,
 } from "./productImagePhoneUpload";
 
 describe("product image phone upload helpers", () => {
   it("builds a phone upload QR URL with the session token in the route", () => {
-    const url = buildProductImagePhoneUploadQrUrl("https://retail.example", "session-token", "upload-token");
+    const url = buildProductImagePhoneUploadQrUrl("https://retail.example", "session-token");
     expect(url).toBe(
-      "https://retail.example/phone-upload/product-image/session-token#uploadToken=upload-token",
+      "https://retail.example/phone-upload/product-image/session-token",
     );
   });
 
-  it("keeps the signed upload token in the hash fragment", () => {
-    expect(getSignedUploadTokenFromHash("#uploadToken=abc123")).toBe("abc123");
-    expect(getSignedUploadTokenFromHash("uploadToken=abc123")).toBe("abc123");
+  it("does not expose the signed upload token in the QR URL", () => {
+    const url = buildProductImagePhoneUploadQrUrl("https://retail.example", "session-token");
+    expect(url).not.toContain("uploadToken");
+    expect(url).not.toContain("#");
   });
 
   it("rejects base64 public URLs", () => {

@@ -6,7 +6,6 @@ import { PRODUCT_IMAGE_BUCKET } from "../lib/productImageStorage";
 import {
   completeProductImageUploadSession,
   getProductImageUploadSessionByToken,
-  getSignedUploadTokenFromHash,
   type ProductImageUploadSessionStatusResult,
 } from "../lib/productImagePhoneUpload";
 import { supabase } from "../lib/supabase";
@@ -74,10 +73,10 @@ export const PhoneProductImageUploadPage = () => {
       return;
     }
 
-    const uploadToken = getSignedUploadTokenFromHash(window.location.hash);
+    const uploadToken = session.uploadToken;
     if (!uploadToken) {
       setPhase("error");
-      setError("This QR code is missing its upload token. Please create a new QR code on the computer.");
+      setError("This upload link is not ready. Please create a new QR code on the computer.");
       return;
     }
 

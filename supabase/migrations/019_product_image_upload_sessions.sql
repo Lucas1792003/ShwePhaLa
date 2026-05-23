@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS product_image_upload_sessions (
   shop_id text REFERENCES shops(id),
   product_id text REFERENCES products(id),
   storage_path text NOT NULL,
+  signed_upload_token text,
   public_url text,
   bytes integer,
   mime_type text,
@@ -27,6 +28,9 @@ CREATE TABLE IF NOT EXISTS product_image_upload_sessions (
   created_at timestamptz NOT NULL DEFAULT now(),
   completed_at timestamptz
 );
+
+ALTER TABLE product_image_upload_sessions
+  ADD COLUMN IF NOT EXISTS signed_upload_token text;
 
 CREATE INDEX IF NOT EXISTS product_image_upload_sessions_created_by_idx
   ON product_image_upload_sessions(created_by, created_at DESC);
@@ -144,7 +148,8 @@ BEGIN
 
   IF v_session.status = 'PENDING' AND v_session.expires_at <= now() THEN
     UPDATE product_image_upload_sessions
-       SET status = 'EXPIRED'
+       SET status = 'EXPIRED',
+           signed_upload_token = NULL
      WHERE id = v_session.id
      RETURNING * INTO v_session;
   END IF;
@@ -155,6 +160,65 @@ BEGIN
     'publicUrl', v_session.public_url,
     'bytes', v_session.bytes,
     'mimeType', v_session.mime_type,
+    'expiresAt', v_session.expires_at,
+    'status', v_session.status
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION attach_product_image_upload_session_token(
+  p_session_id text,
+  p_signed_upload_token text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_user users;
+  v_session product_image_upload_sessions;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  v_user := current_app_user();
+  IF v_user.id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF COALESCE(btrim(p_signed_upload_token), '') = '' THEN
+    RAISE EXCEPTION 'Signed upload token is required';
+  END IF;
+
+  SELECT * INTO v_session
+    FROM product_image_upload_sessions
+   WHERE id = p_session_id
+     AND created_by = v_user.id
+   FOR UPDATE;
+
+  IF v_session.id IS NULL THEN
+    RAISE EXCEPTION 'Upload session not found';
+  END IF;
+
+  IF v_session.status <> 'PENDING' OR v_session.expires_at <= now() THEN
+    UPDATE product_image_upload_sessions
+       SET status = CASE WHEN status = 'PENDING' THEN 'EXPIRED' ELSE status END,
+           signed_upload_token = NULL
+     WHERE id = v_session.id
+     RETURNING * INTO v_session;
+    RAISE EXCEPTION 'Upload link is no longer active';
+  END IF;
+
+  UPDATE product_image_upload_sessions
+     SET signed_upload_token = p_signed_upload_token
+   WHERE id = v_session.id
+   RETURNING * INTO v_session;
+
+  RETURN jsonb_build_object(
+    'sessionId', v_session.id,
+    'storagePath', v_session.storage_path,
     'expiresAt', v_session.expires_at,
     'status', v_session.status
   );
@@ -185,7 +249,8 @@ BEGIN
 
   IF v_session.status = 'PENDING' AND v_session.expires_at <= now() THEN
     UPDATE product_image_upload_sessions
-       SET status = 'EXPIRED'
+       SET status = 'EXPIRED',
+           signed_upload_token = NULL
      WHERE id = v_session.id
      RETURNING * INTO v_session;
   END IF;
@@ -196,6 +261,7 @@ BEGIN
     'publicUrl', v_session.public_url,
     'bytes', v_session.bytes,
     'mimeType', v_session.mime_type,
+    'uploadToken', CASE WHEN v_session.status = 'PENDING' THEN v_session.signed_upload_token ELSE NULL END,
     'expiresAt', v_session.expires_at,
     'status', v_session.status
   );
@@ -236,7 +302,8 @@ BEGIN
 
   IF v_session.expires_at <= now() THEN
     UPDATE product_image_upload_sessions
-       SET status = 'EXPIRED'
+       SET status = 'EXPIRED',
+           signed_upload_token = NULL
      WHERE id = v_session.id;
     RAISE EXCEPTION 'Upload link has expired';
   END IF;
@@ -267,6 +334,7 @@ BEGIN
          public_url = p_public_url,
          bytes = p_bytes,
          mime_type = p_mime_type,
+         signed_upload_token = NULL,
          completed_at = now()
    WHERE id = v_session.id
    RETURNING * INTO v_session;
@@ -302,7 +370,8 @@ BEGIN
   END IF;
 
   UPDATE product_image_upload_sessions
-     SET status = 'CANCELED'
+     SET status = 'CANCELED',
+         signed_upload_token = NULL
    WHERE id = p_session_id
      AND created_by = v_user.id
      AND status = 'PENDING';
@@ -311,12 +380,14 @@ $$;
 
 REVOKE ALL ON FUNCTION product_image_upload_token_hash(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION create_product_image_upload_session(text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION attach_product_image_upload_session_token(text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION get_product_image_upload_session_status(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION get_product_image_upload_session_by_token(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION complete_product_image_upload_session(text, text, text, integer, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION cancel_product_image_upload_session(text) FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION create_product_image_upload_session(text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION attach_product_image_upload_session_token(text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_product_image_upload_session_status(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION cancel_product_image_upload_session(text) TO authenticated;
 
