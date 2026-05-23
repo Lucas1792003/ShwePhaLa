@@ -50,7 +50,7 @@ CREATE OR REPLACE FUNCTION product_image_upload_token_hash(p_token text)
 RETURNS text
 LANGUAGE sql IMMUTABLE
 AS $$
-  SELECT encode(digest(COALESCE(p_token, ''), 'sha256'), 'hex');
+  SELECT encode(sha256(convert_to(COALESCE(p_token, ''), 'UTF8')), 'hex');
 $$;
 
 CREATE OR REPLACE FUNCTION create_product_image_upload_session(
@@ -65,7 +65,10 @@ AS $$
 DECLARE
   v_user users;
   v_session_id text := 'pimg-' || replace(gen_random_uuid()::text, '-', '');
-  v_token text := encode(gen_random_bytes(32), 'hex');
+  v_token text := replace(gen_random_uuid()::text, '-', '')
+                  || replace(gen_random_uuid()::text, '-', '')
+                  || replace(gen_random_uuid()::text, '-', '')
+                  || replace(gen_random_uuid()::text, '-', '');
   v_storage_path text := 'temp/' || v_session_id;
   v_product_id text;
   v_expires_at timestamptz := now() + interval '10 minutes';

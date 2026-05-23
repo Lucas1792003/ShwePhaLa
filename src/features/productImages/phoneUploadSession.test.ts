@@ -13,7 +13,10 @@ describe("product image phone upload session migration", () => {
     const sql = migration();
     expect(sql).toContain("token_hash text NOT NULL UNIQUE");
     expect(sql).toContain("product_image_upload_token_hash(v_token)");
+    expect(sql).toContain("sha256(convert_to(COALESCE(p_token, ''), 'UTF8'))");
     expect(sql).not.toContain(" token text ");
+    expect(sql).not.toContain("gen_random_bytes");
+    expect(sql).not.toContain("digest(");
   });
 
   it("expires sessions quickly and blocks completed/expired token reuse", () => {
