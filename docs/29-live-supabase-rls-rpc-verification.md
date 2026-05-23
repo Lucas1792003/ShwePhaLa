@@ -3,7 +3,7 @@
 This checklist verifies the locked-down Supabase implementation against a real
 database with real authenticated users and RLS enabled.
 
-Run this after migrations `001` through `013` are applied.
+Run this after migrations `001` through `018` are applied.
 
 ## Required Test Accounts
 
@@ -13,7 +13,7 @@ Create or confirm these Supabase Auth users and matching `public.users` rows:
 - `MANAGER`: active, `auth_id` set, assigned `shop_id`.
 - `CASHIER`: active, `auth_id` set, assigned to the same shop as the manager.
 - Optional wrong-shop `CASHIER`: active, `auth_id` set, assigned to another shop.
-- Optional `BUYER`: active, `auth_id` set, no operational shop access.
+- Optional `BUYER`: active, `auth_id` set, assigned `shop_id`.
 
 ## Pre-Flight SQL Checks
 
@@ -29,7 +29,7 @@ where is_active = true and auth_id is null;
 select id, email, role
 from users
 where is_active = true
-  and role in ('MANAGER', 'CASHIER')
+  and role in ('MANAGER', 'CASHIER', 'BUYER')
   and shop_id is null;
 
 -- Receipt numbers should be unique per shop.
@@ -65,6 +65,15 @@ from purchase_order_items i
 left join purchase_orders po on po.id = i.purchase_order_id
 left join products p on p.id = i.product_id
 where po.id is null or p.id is null;
+
+-- Orphan supplier payments.
+select p.*
+from supplier_payments p
+left join suppliers s on s.id = p.supplier_id
+left join purchase_orders po on po.id = p.purchase_order_id
+left join shops sh on sh.id = p.shop_id
+left join users u on u.id = p.created_by
+where s.id is null or po.id is null or sh.id is null or u.id is null;
 
 -- Orphan stock transfer items.
 select i.*
@@ -166,9 +175,31 @@ user access token.
 2. Approve purchase order.
    - Expected: `approve_purchase_order` changes status to `APPROVED`.
 3. Receive purchase order.
-   - Expected: `receive_purchase_order` updates received qty, stock, movement, audit.
+   - Expected: `receive_purchase_order` updates received qty, stock, movement,
+     audit, `received_by`, and `received_at`.
+   - Expected: payment status remains `UNPAID` and `paid_mmk` remains `0`
+     unless a future prepayment flow explicitly changes that rule.
 4. Cancel a draft/submitted PO.
    - Expected: `cancel_purchase_order` succeeds only for cancelable status.
+
+### Supplier Payments
+
+1. Open a received supplier PO with a positive balance.
+   - Expected: supplier detail shows received confirmation, outstanding balance,
+     and `Record payment` for authorized ADMIN/MANAGER users.
+2. Record a partial payment.
+   - Expected: `record_supplier_payment` inserts a payment row, updates
+     `paid_mmk`, changes payment status to `PARTIAL`, and writes an audit row.
+3. Record the remaining balance.
+   - Expected: payment status changes to `PAID` and outstanding balance becomes
+     zero.
+4. Try an overpayment.
+   - Expected: RPC rejects the payment and leaves PO/payment rows unchanged.
+5. Try payment against an unreceived or canceled PO.
+   - Expected: RPC rejects the payment.
+6. Try payment as a wrong-shop manager, buyer without explicit payment
+   permission, and cashier.
+   - Expected: RPC rejects permission or shop access.
 
 ### Transfers
 
@@ -191,7 +222,7 @@ user access token.
 ## Protected Direct Write Failure Tests
 
 Use an authenticated non-service-role Supabase client. These direct writes must
-fail after migration `013`.
+fail after migration `018`.
 
 ```ts
 await supabase.from("sales").insert({ ... });
@@ -201,6 +232,7 @@ await supabase.from("inventory_movements").insert({ ... });
 await supabase.from("shifts").insert({ ... });
 await supabase.from("audit_logs").insert({ ... });
 await supabase.from("purchase_orders").update({ status: "APPROVED" }).eq("id", poId);
+await supabase.from("supplier_payments").insert({ ... });
 await supabase.from("stock_transfers").update({ status: "APPROVED" }).eq("id", transferId);
 await supabase.from("refund_void_requests").update({ status: "APPROVED" }).eq("id", requestId);
 await supabase.from("reprint_logs").insert({ ... });
@@ -214,10 +246,12 @@ Log in as each role and reload the app.
 
 - `ADMIN`: can see all shops' operational data.
 - `MANAGER`: can see only assigned-shop sales, shifts, inventory, purchases,
-  refund/void requests, and movements.
-- `CASHIER`: can see only assigned-shop operational data.
-- `BUYER`: can read catalog/reference data only and should not see operational
-  shop data.
+  supplier payments, refund/void requests, and movements.
+- `CASHIER`: can see only assigned-shop POS operational data and should not see
+  supplier debt or supplier payment records.
+- `BUYER`: can read assigned-shop supplier purchase records and payment records
+  when supplier debt or purchase-view permission allows it, but cannot record
+  supplier payments by default.
 - Transfers: visible only to source-shop users, destination-shop users, and
   `ADMIN`.
 - Audit logs: `ADMIN` can see all; shop users can see only their shop logs when
@@ -252,6 +286,7 @@ RPC-only operational writes:
 - `audit_logs`
 - `purchase_orders`
 - `purchase_order_items`
+- `supplier_payments`
 - `stock_transfers`
 - `stock_transfer_items`
 - `refund_void_requests`

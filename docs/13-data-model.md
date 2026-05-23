@@ -188,6 +188,10 @@ interface PurchaseOrder {
   subtotalMmk: number;
   taxMmk?: number;
   totalMmk: number;
+  paidMmk?: number;
+  paymentStatus?: "UNPAID" | "PARTIAL" | "PAID";
+  supplierInvoiceNo?: string;
+  deliveryNoteNo?: string;
   notes?: string;
   createdBy: string;
   createdAt: string;
@@ -195,6 +199,23 @@ interface PurchaseOrder {
   approvedAt?: string;
   receivedBy?: string;
   receivedAt?: string;
+}
+
+interface SupplierPayment {
+  id: string;
+  supplierId: string;
+  purchaseOrderId: string;
+  shopId: string;
+  amountMmk: number;
+  paymentMethod: "CASH" | "BANK" | "MOBILE" | "OTHER";
+  referenceNo?: string;
+  notes?: string;
+  paidAt: string;
+  createdBy: string;
+  createdAt: string;
+  voidedAt?: string;
+  voidedBy?: string;
+  voidReason?: string;
 }
 
 interface StockTransfer {

@@ -65,6 +65,7 @@ See [12-supabase-setup.md](./12-supabase-setup.md).
 - [27-script-4a-rls-lockdown-tests.md](./27-script-4a-rls-lockdown-tests.md)
 - [28-script-4b-shop-scoped-reads-tests.md](./28-script-4b-shop-scoped-reads-tests.md)
 - [29-live-supabase-rls-rpc-verification.md](./29-live-supabase-rls-rpc-verification.md)
+- [33-supplier-debt-payment-rpc-tests.md](./33-supplier-debt-payment-rpc-tests.md)
 
 ## UI / Responsiveness
 

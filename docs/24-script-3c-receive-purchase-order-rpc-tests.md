@@ -10,6 +10,8 @@ SQL Editor or through the app while signed in as the relevant user.
 - [ ] Receiving an `APPROVED` PO succeeds and returns
       `purchaseOrder`, `purchaseOrderItems`, `inventory`, `movements`, `auditLogs`.
 - [ ] PO status becomes `RECEIVED`; `received_by` and `received_at` are set.
+- [ ] Supplier payment fields remain initialized: `paid_mmk = 0` and
+      `payment_status = 'UNPAID'`.
 - [ ] Each `purchase_order_items.received_qty` is recorded.
 - [ ] Inventory `qty_base_units` increases by the received quantity per product.
 - [ ] An inventory row is **created** for a product never stocked at that shop.
@@ -48,4 +50,6 @@ SQL Editor or through the app while signed in as the relevant user.
 - [ ] On RPC failure local state is **unchanged** and the receive modal stays
       open with an error alert.
 - [ ] No fire-and-forget receiving writes remain in `purchaseSlice`.
+- [ ] Supplier detail shows the receiving confirmation with ordered quantity,
+      received quantity, `received_at`, and `received_by`.
 
