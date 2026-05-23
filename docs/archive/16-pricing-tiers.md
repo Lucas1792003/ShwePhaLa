@@ -86,20 +86,47 @@ When quantity changes in the cart:
 
 ## Managing Price Tiers
 
-### Pricing Page (`/pricing`)
+### Pricing Page (`/app/admin/pricing`)
 
 - List all products with their tier configurations
 - Add/Edit tiers per product
 - Toggle tiers active/inactive
 - Filter by shop (for shop-specific tiers)
+- Product selection uses the shared `ProductPicker`, not a native browser
+  dropdown.
 
 ### Creating a Tier
 
-1. Select product
+1. Search and select a product
 2. Choose scope (Global or specific shop)
 3. Set quantity range (minQty, maxQty)
 4. Set tier price
 5. Save and activate
+
+### Product Picker
+
+The Add/Edit Price Tier modal uses
+`src/components/products/ProductPicker.tsx`.
+
+The picker shows:
+
+- Product image thumbnail when `products.image_url` exists.
+- Category icon fallback when the product has no image.
+- Product name.
+- SKU.
+- Category badge/icon using the shared category icon resolver.
+- Base selling price.
+- Current shop stock when a current shop is selected.
+
+Search supports:
+
+- Product name.
+- SKU.
+- Barcode values from `product_barcodes`.
+- Category name.
+
+Search normalizes punctuation, so a query like `lays` can match
+`Lay's Original`.
 
 ### Tier Validation
 
@@ -107,14 +134,18 @@ When quantity changes in the cart:
 - minQty must be >= 1
 - maxQty must be > minQty (or null for unlimited)
 - Price must be > 0
+- Product is required.
+- If the selected product is inactive or missing, the modal shows:
+  `Selected product is no longer available.`
+- Validation errors are shown inline and the modal stays open.
 
 ## Permissions
 
 | Action | Required Permission |
 |--------|---------------------|
-| View pricing tiers | `product:read` |
-| Create/Edit tiers | `product:edit_price` |
-| Delete tiers | `product:edit_price` |
+| View pricing tiers page | `pricing:manage` route access |
+| Create/Edit tiers | `pricing:manage` |
+| Delete tiers | `pricing:manage` |
 
 ## Reports
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { CartItem, Product } from "../types";
 import { useAuthStore } from "../stores/authStore";
@@ -42,6 +42,7 @@ export const PosPage = () => {
   const [overridePrice, setOverridePrice] = useState(0);
   const [packMode, setPackMode] = useState(false);
   const [showBarcodeInput, setShowBarcodeInput] = useState(false);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) => state.users.find((user) => user.id === currentUserId));
@@ -111,7 +112,7 @@ export const PosPage = () => {
     [firstCartError, toast]
   );
 
-  const handleAddToCart = (product: Product, usePack: boolean) => {
+  const handleAddToCart = (product: Product, usePack: boolean): boolean => {
     const addStatus = getCartAddStockStatus(product, usePack, cartItems, inventoryById);
     const unitsPerItem = addStatus.unitsPerItem;
     if (!addStatus.canAdd) {
@@ -120,7 +121,7 @@ export const PosPage = () => {
         description: getStockBlockDescription(addStatus.stockQty),
         variant: "error",
       });
-      return;
+      return false;
     }
     const unitLabel = usePack && product.packSize ? packLabel(product) : "unit";
     setCartItems((items) => {
@@ -144,6 +145,15 @@ export const PosPage = () => {
         },
       ];
     });
+    return true;
+  };
+
+  // Keep the scan input ready for the next scan: clear value and refocus so
+  // a scanner's next Enter-terminated burst still lands here even if a click
+  // (e.g. the "Add" button) briefly stole focus.
+  const resetBarcodeInputForNextScan = () => {
+    setBarcodeInput("");
+    barcodeInputRef.current?.focus();
   };
 
   const handleBarcodeSubmit = () => {
@@ -152,11 +162,14 @@ export const PosPage = () => {
     const product = getProductByBarcode(value);
     if (!product) {
       toast({ title: "Barcode not found", description: value, variant: "error" });
-      setBarcodeInput("");
+      resetBarcodeInputForNextScan();
       return;
     }
-    handleAddToCart(product, packMode);
-    setBarcodeInput("");
+    const added = handleAddToCart(product, packMode);
+    if (added) {
+      toast({ title: `Added ${product.name}`, variant: "success" });
+    }
+    resetBarcodeInputForNextScan();
   };
 
   const applyCartQuantity = (id: string, requestedQty: number) => {
@@ -301,9 +314,15 @@ export const PosPage = () => {
         <div className="flex items-center gap-3 rounded-2xl bg-white px-5 py-3 shadow-sm">
           <span className="material-symbols-rounded text-2xl text-slate-400">qr_code_scanner</span>
           <Input
+            ref={barcodeInputRef}
             value={barcodeInput}
             onChange={(e) => setBarcodeInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleBarcodeSubmit()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleBarcodeSubmit();
+              }
+            }}
             placeholder="Scan or enter barcode..."
             className="flex-1"
             autoFocus

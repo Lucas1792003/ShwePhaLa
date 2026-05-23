@@ -15,7 +15,10 @@ in `src/lib/permissions.ts`.
 - `/app/inventory` - Stock levels and movements (`inventory:view_stock`)
 - `/app/transfers` - Inter-shop transfers (`transfer:view`)
 - `/app/purchases` - Purchase orders (`purchase:view`)
-- `/app/suppliers` - Supplier records, received purchases, and debt (`supplier:read`)
+- `/app/suppliers` - Supplier list with debt totals (`supplier:read`)
+- `/app/suppliers/:supplierId` - Supplier detail workspace — profile, financial
+  summary, Overview / Purchase Orders / Payments tabs, and per-PO actions
+  (`supplier:read`). Replaces the old supplier-detail side drawer.
 - `/app/approvals` - Refund/void approvals (`approval:view`)
 - `/app/reports` - Shop sales reports (`report:shop_sales`)
 - `/app/reports/profit` - Profit & analytics, ADMIN-only (`report:shop_profit`)

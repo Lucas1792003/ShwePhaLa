@@ -2,13 +2,23 @@
 
 ## Barcode Scan
 
-1. Cashier opens the barcode input with F3 or the Barcode button.
-2. On Enter, POS looks up `product_barcodes.value`.
-3. If a mapping exists, the linked product is added to the cart.
-4. If no mapping exists, an error toast is shown.
+1. Cashier opens the barcode input with F3 or the Barcode button. The input
+   autofocuses and is refocused after every scan so a scanner's next
+   Enter-terminated burst always lands here.
+2. On Enter, POS resolves the scanned code via the shared
+   `findProductForScan(value, products, barcodes)` lookup
+   (`src/features/pos/barcodeLookup.ts`):
+   1. exact match against `product_barcodes.value`
+   2. fallback case-insensitive match against `products.sku`
+3. If a product is found, it is added to the cart and a success toast is
+   shown ("Added <name>"). Stock guards still apply — out of stock or at
+   max cart units shows "Only X in stock for this shop."
+4. If no product is found, an error toast "Barcode not found" is shown.
 
-Products also have `products.sku`, which is the primary catalog code in product
-admin. SKU is not currently the POS scan lookup table; `product_barcodes` is.
+The fallback to SKU intentionally mirrors `getPrintableBarcodeValue`
+(`src/features/barcodes/labels.ts`), which prints the first
+`product_barcodes.value` and falls back to SKU. Without the same fallback at
+scan time, labels printed from SKU would scan as "Barcode not found".
 
 ## Cart Rules
 

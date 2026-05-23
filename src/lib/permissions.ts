@@ -51,6 +51,7 @@ export const ROUTE_PERMISSIONS = {
   adminReports: "report:global",
   adminAudit: "audit:view_global",
   suppliers: "supplier:read",
+  supplierDetail: "supplier:read",
 } as const satisfies Record<string, Permission>;
 
 // ============================================================

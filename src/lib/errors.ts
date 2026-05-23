@@ -1,0 +1,240 @@
+// Central error utility.
+//
+// Goal: keep technical details in the console for developers, but surface
+// short, friendly messages to users. Every async business action should
+// route its catch through `getErrorMessage(err)` (or `mapSupabaseError`)
+// instead of dumping `err.message` straight into a toast.
+//
+// This file is intentionally framework-agnostic so it can be unit-tested
+// without React / Supabase test doubles.
+
+export const ERROR_MESSAGES = {
+  permission: "You do not have permission to perform this action.",
+  network: "Network error. Please check your connection and try again.",
+  duplicate: "This record already exists.",
+  storageBucketMissing: "Storage is not set up. Please run the required storage migration.",
+  storagePermission: "Upload was blocked by storage permissions.",
+  insufficientStock: "Not enough stock available for this product.",
+  noOpenShift: "Please open a shift before making sales.",
+  expiredSession: "Your session expired. Please log in again.",
+  unknown: "Something went wrong. Please try again.",
+} as const;
+
+// Postgres SQLSTATE codes we care about.
+// 42501 - insufficient_privilege (RLS / RBAC deny)
+// 23505 - unique_violation
+// 23503 - foreign_key_violation
+// PGRST301 - PostgREST RLS deny
+// 22P02 - invalid_text_representation
+const PERMISSION_PG_CODES = new Set(["42501", "PGRST301", "P0001-PERMISSION"]);
+const DUPLICATE_PG_CODES = new Set(["23505"]);
+
+const PERMISSION_PHRASES = [
+  "permission denied",
+  "not permitted",
+  "rls",
+  "row-level security",
+  "row level security",
+  "violates row-level security",
+  "not authorized",
+];
+
+const NETWORK_PHRASES = [
+  "failed to fetch",
+  "networkerror",
+  "network error",
+  "fetch failed",
+  "load failed",
+  "the network connection was lost",
+  "ecconnrefused",
+  "enetunreach",
+  "etimedout",
+  "request timeout",
+];
+
+const STORAGE_BUCKET_MISSING_PHRASES = [
+  "bucket not found",
+  "bucket does not exist",
+  "the resource was not found",
+];
+
+const STORAGE_PERMISSION_PHRASES = [
+  "new row violates row-level security policy",
+  "storage policy",
+  "object policy",
+];
+
+const EXPIRED_SESSION_PHRASES = [
+  "jwt expired",
+  "invalid jwt",
+  "token has expired",
+  "session_not_found",
+  "session has expired",
+];
+
+const INSUFFICIENT_STOCK_PHRASES = [
+  "insufficient stock",
+  "not enough stock",
+  "exceeds stock",
+  "out of stock",
+];
+
+const NO_OPEN_SHIFT_PHRASES = [
+  "open a shift",
+  "shift is required",
+  "no open shift",
+];
+
+// Loose, defensive shape — Supabase / PostgREST / fetch all wrap differently.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyError = any;
+
+const lower = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  return value.toLowerCase();
+};
+
+const errorBlob = (error: AnyError): string => {
+  if (!error) return "";
+  const parts: string[] = [];
+  if (typeof error === "string") parts.push(error);
+  if (typeof error?.message === "string") parts.push(error.message);
+  if (typeof error?.error_description === "string") parts.push(error.error_description);
+  if (typeof error?.hint === "string") parts.push(error.hint);
+  if (typeof error?.details === "string") parts.push(error.details);
+  if (typeof error?.code === "string") parts.push(error.code);
+  if (typeof error?.status === "number") parts.push(String(error.status));
+  if (typeof error?.statusText === "string") parts.push(error.statusText);
+  return lower(parts.join(" | "));
+};
+
+const errorCode = (error: AnyError): string | undefined => {
+  if (!error) return undefined;
+  if (typeof error.code === "string") return error.code;
+  if (typeof error.error === "string") return error.error;
+  return undefined;
+};
+
+const containsAny = (haystack: string, needles: readonly string[]): boolean =>
+  needles.some((needle) => haystack.includes(needle));
+
+export const isPermissionError = (error: AnyError): boolean => {
+  if (!error) return false;
+  const code = errorCode(error);
+  if (code && PERMISSION_PG_CODES.has(code)) return true;
+  if (typeof error?.status === "number" && (error.status === 401 || error.status === 403)) return true;
+  return containsAny(errorBlob(error), PERMISSION_PHRASES);
+};
+
+export const isNetworkError = (error: AnyError): boolean => {
+  if (!error) return false;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  if (error instanceof TypeError && lower(error.message).includes("fetch")) return true;
+  return containsAny(errorBlob(error), NETWORK_PHRASES);
+};
+
+export const isDuplicateError = (error: AnyError): boolean => {
+  if (!error) return false;
+  const code = errorCode(error);
+  if (code && DUPLICATE_PG_CODES.has(code)) return true;
+  const blob = errorBlob(error);
+  return (
+    blob.includes("duplicate key") ||
+    blob.includes("unique constraint") ||
+    blob.includes("already exists")
+  );
+};
+
+export const isStorageError = (error: AnyError): boolean => {
+  if (!error) return false;
+  const blob = errorBlob(error);
+  return (
+    containsAny(blob, STORAGE_BUCKET_MISSING_PHRASES) ||
+    containsAny(blob, STORAGE_PERMISSION_PHRASES) ||
+    blob.includes("storage")
+  );
+};
+
+export const isExpiredSessionError = (error: AnyError): boolean =>
+  containsAny(errorBlob(error), EXPIRED_SESSION_PHRASES);
+
+export const isInsufficientStockError = (error: AnyError): boolean =>
+  containsAny(errorBlob(error), INSUFFICIENT_STOCK_PHRASES);
+
+export const isNoOpenShiftError = (error: AnyError): boolean =>
+  containsAny(errorBlob(error), NO_OPEN_SHIFT_PHRASES);
+
+const isStorageBucketMissing = (error: AnyError): boolean =>
+  containsAny(errorBlob(error), STORAGE_BUCKET_MISSING_PHRASES);
+
+const isStoragePermission = (error: AnyError): boolean =>
+  containsAny(errorBlob(error), STORAGE_PERMISSION_PHRASES);
+
+// Map a Supabase / Postgres / fetch error to a friendly user-facing message.
+// Order matters: more specific cases (expired session, storage, stock, shift)
+// are checked before broader buckets (permission, duplicate, network).
+export const mapSupabaseError = (error: AnyError): string => {
+  if (!error) return ERROR_MESSAGES.unknown;
+
+  if (isExpiredSessionError(error)) return ERROR_MESSAGES.expiredSession;
+  if (isStorageBucketMissing(error)) return ERROR_MESSAGES.storageBucketMissing;
+  if (isStoragePermission(error)) return ERROR_MESSAGES.storagePermission;
+  if (isInsufficientStockError(error)) return ERROR_MESSAGES.insufficientStock;
+  if (isNoOpenShiftError(error)) return ERROR_MESSAGES.noOpenShift;
+  if (isDuplicateError(error)) return ERROR_MESSAGES.duplicate;
+  if (isPermissionError(error)) return ERROR_MESSAGES.permission;
+  if (isNetworkError(error)) return ERROR_MESSAGES.network;
+
+  return ERROR_MESSAGES.unknown;
+};
+
+// Best-effort to extract any human-readable text from arbitrary thrown values.
+// Used as the *raw* message — `getErrorMessage` decides whether to keep it or
+// fall back to a friendly mapping.
+const rawMessage = (error: AnyError): string | undefined => {
+  if (!error) return undefined;
+  if (typeof error === "string") return error;
+  if (typeof error.message === "string" && error.message.trim()) return error.message;
+  if (typeof error.error_description === "string" && error.error_description.trim()) {
+    return error.error_description;
+  }
+  return undefined;
+};
+
+const looksLikeFriendlyMessage = (message: string): boolean => {
+  // A "friendly" message is short, ends in punctuation, and does not look like
+  // a Postgres / fetch dump. We err on the side of showing the friendly map
+  // when in doubt — technical text always also goes to console.
+  if (message.length > 160) return false;
+  if (/^[A-Z0-9_]{2,}\d*:/.test(message)) return false; // e.g. "PGRST301: ..."
+  if (message.includes("\n")) return false;
+  if (/^\s*\{/.test(message)) return false; // JSON dump
+  return true;
+};
+
+// One-stop helper for catch blocks. Prefers a friendly mapped message; if the
+// raw thrown message is short and human, prefers that (so RPC-issued messages
+// like "Open a shift before checkout." still shine through).
+//
+// `fallback` is shown only when nothing else is available.
+export const getErrorMessage = (error: AnyError, fallback?: string): string => {
+  if (!error) return fallback ?? ERROR_MESSAGES.unknown;
+
+  const mapped = mapSupabaseError(error);
+  // If we got a *specific* mapping (anything other than the generic unknown),
+  // prefer it because it's both friendly and accurate.
+  if (mapped !== ERROR_MESSAGES.unknown) return mapped;
+
+  const raw = rawMessage(error);
+  if (raw && looksLikeFriendlyMessage(raw)) return raw;
+
+  return fallback ?? ERROR_MESSAGES.unknown;
+};
+
+// Lightweight console reporter — always logs the original error so devs can
+// debug, never throws. Returns the friendly message for convenience.
+export const reportError = (scope: string, error: AnyError, fallback?: string): string => {
+  // eslint-disable-next-line no-console
+  console.error(`[${scope}]`, error);
+  return getErrorMessage(error, fallback);
+};

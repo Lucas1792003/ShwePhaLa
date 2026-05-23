@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { SmallScreenGuard } from "./SmallScreenGuard";
+import { Button } from "../../components/ui/Button";
 import { useDataStore } from "../../stores/dataStore";
 import { useViewportWidth } from "../../hooks/useViewportWidth";
 
@@ -10,17 +11,35 @@ const MIN_SUPPORTED_WIDTH = 768;
 export const AppLayout = () => {
   const isLoaded = useDataStore((state) => state.isLoaded);
   const isLoading = useDataStore((state) => state.isLoading);
+  const loadError = useDataStore((state) => state.loadError);
   const loadData = useDataStore((state) => state.loadData);
+  const retryLoadData = useDataStore((state) => state.retryLoadData);
   const viewportWidth = useViewportWidth();
 
   useEffect(() => {
-    if (!isLoaded && !isLoading) {
+    if (!isLoaded && !isLoading && !loadError) {
       void loadData();
     }
-  }, [isLoaded, isLoading, loadData]);
+  }, [isLoaded, isLoading, loadError, loadData]);
 
   if (viewportWidth < MIN_SUPPORTED_WIDTH) {
     return <SmallScreenGuard />;
+  }
+
+  // Error must be checked before isLoaded so a failed initial load shows an
+  // actionable Retry instead of perpetual "Loading data…".
+  if (loadError && !isLoaded) {
+    return (
+      <div className="flex h-screen items-center justify-center px-4">
+        <div className="max-w-md text-center">
+          <div className="mb-2 text-base font-semibold text-slate-800">Couldn't load your data</div>
+          <p className="mb-4 text-sm text-slate-500">{loadError}</p>
+          <Button onClick={() => void retryLoadData()} disabled={isLoading}>
+            {isLoading ? "Retrying…" : "Retry"}
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   if (!isLoaded) {

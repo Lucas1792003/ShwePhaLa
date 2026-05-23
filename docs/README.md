@@ -1,79 +1,82 @@
 # Shwe Phala POS Documentation
 
-Shwe Phala POS is a React/TypeScript POS and inventory app backed by Supabase
-Auth and PostgreSQL.
+Shwe Phala POS is a multi-shop POS + inventory system. React 19 +
+TypeScript + Vite on top of **Supabase Auth + PostgreSQL**. RLS is on;
+critical operational writes go through `SECURITY DEFINER` RPCs;
+business data lives in Supabase, not localStorage.
 
-## Run Locally
+## Quick Start
 
 ```bash
 npm install
 npm run dev
 ```
 
-Requires `.env.local`:
+`.env.local`:
 
 ```bash
 VITE_SUPABASE_URL=<your-project-url>
 VITE_SUPABASE_ANON_KEY=<your-anon-key>
 ```
 
-See [12-supabase-setup.md](./12-supabase-setup.md).
+Full setup, env, Supabase, and deployment notes:
+[07-setup-deployment.md](./07-setup-deployment.md).
 
-## Current Data Model
+## Documentation Map
 
-- Business data persists in Supabase.
-- localStorage stores UI preferences and the Supabase Auth session only.
-- Critical operational writes use `SECURITY DEFINER` RPCs.
-- RLS blocks direct writes to protected operational/audit tables.
-- `inventory` is the current stock table.
-- `refund_void_requests` is the refund/void workflow table.
-- Products use `sku` as the catalog code; `product_barcodes` still exists for
-  optional scan-code lookup.
+| # | Doc | Read this when |
+| --- | --- | --- |
+| 01 | [Overview](./01-overview.md) | New to the project. |
+| 02 | [Architecture](./02-architecture.md) | Building / reviewing app code, stores, error handling, routing. |
+| 03 | [Database & Security](./03-database-security.md) | Touching SQL, RPCs, RLS, migrations, audit. |
+| 04 | [Features & Workflows](./04-features-workflows.md) | Working on POS, shifts, inventory, purchases, transfers, refunds, suppliers, catalog, pricing. |
+| 05 | [Roles & Permissions](./05-roles-permissions.md) | Adding gates, debugging "why can't role X do Y". |
+| 06 | [UI, Printing & Hardware](./06-ui-printing-hardware.md) | Responsive layout, receipt + label printing, scanners, image upload + storage. |
+| 07 | [Setup & Deployment](./07-setup-deployment.md) | Onboarding a new env / Vercel deploy / Supabase setup. |
+| 08 | [Testing & QA](./08-testing-qa.md) | Verifying a change end-to-end before shipping. |
+| 09 | [Roadmap & TODO](./09-roadmap-todo.md) | Picking up open work; tracking what's still outstanding. |
 
-## Core Docs
+## Code Layout (one-screen orientation)
 
-- [00-overview.md](./00-overview.md) - Product overview
-- [01-roles-permissions.md](./01-roles-permissions.md) - Granular permissions
-- [02-routing-navigation.md](./02-routing-navigation.md) - Routes and route permissions
-- [03-authentication.md](./03-authentication.md) - Supabase Auth and `users.auth_id`
-- [04-database-schema.md](./04-database-schema.md) - Tables, migrations, RPCs, RLS status
-- [10-localstorage-persistence.md](./10-localstorage-persistence.md) - Persistence model
-- [12-supabase-setup.md](./12-supabase-setup.md) - Supabase setup
-- [13-data-model.md](./13-data-model.md) - TypeScript domain model
-- [17-architecture.md](./17-architecture.md) - App architecture after RPC/RLS hardening
+- **`src/app/`** — layout, sidebar, routes, route guards.
+- **`src/components/`** — reusable UI (`ui/`, `pos/`, `receipt/`,
+  `sales/`, `shifts/`, `inventory/`, `products/`, `dashboard/`,
+  `purchases/`, `suppliers/`, `barcodes/`).
+- **`src/features/`** — domain helpers (e.g. `pos/barcodeLookup.ts`,
+  `suppliers/debt.ts`, `suppliers/actions.ts`,
+  `barcodes/labelTemplates.ts`).
+- **`src/pages/`** — page compositions, incl. `SupplierDetailPage` at
+  `/app/suppliers/:supplierId`.
+- **`src/hooks/`** — `useAsyncAction`, `useViewportWidth`, …
+- **`src/stores/`** — Zustand stores; domain slices in `stores/data/`.
+- **`src/lib/`** — Supabase client (`supabase.ts`), permission registry
+  (`permissions.ts`), central error utility (`errors.ts`), formatting
+  helpers.
+- **`supabase/`** — `schema.sql` + ordered `migrations/`.
 
-## Flow Docs
+## Where Did The Old Docs Go?
 
-- [05-pos-flow.md](./05-pos-flow.md)
-- [06-inventory-flow.md](./06-inventory-flow.md)
-- [07-shift-flow.md](./07-shift-flow.md)
-- [08-refund-void-flow.md](./08-refund-void-flow.md)
-- [09-audit-logging.md](./09-audit-logging.md)
-- [14-stock-transfers.md](./14-stock-transfers.md)
-- [15-suppliers-purchasing.md](./15-suppliers-purchasing.md)
-- [16-pricing-tiers.md](./16-pricing-tiers.md)
-- [18-printing.md](./18-printing.md)
+The previous root contained 37+ markdown files including per-migration
+test scripts and several overlapping flow docs. They have been moved
+unchanged into [`archive/`](./archive/). The compact `01`–`09` docs
+above summarize them.
 
-## Verification Docs
+If you need to look up a specific historical detail — a migration test
+script, the old phase checklists, the long changelog — see the index:
+[`archive/ARCHIVE_MAP.md`](./archive/ARCHIVE_MAP.md).
 
-- [22-script-3a-checkout-rpc-tests.md](./22-script-3a-checkout-rpc-tests.md)
-- [23-script-3b-refund-void-rpc-tests.md](./23-script-3b-refund-void-rpc-tests.md)
-- [24-script-3c-receive-purchase-order-rpc-tests.md](./24-script-3c-receive-purchase-order-rpc-tests.md)
-- [24-script-3f-shift-rpc-tests.md](./24-script-3f-shift-rpc-tests.md)
-- [25-script-3d-complete-stock-transfer-rpc-tests.md](./25-script-3d-complete-stock-transfer-rpc-tests.md)
-- [26-script-3e-adjust-stock-rpc-tests.md](./26-script-3e-adjust-stock-rpc-tests.md)
-- [27-script-4a-rls-lockdown-tests.md](./27-script-4a-rls-lockdown-tests.md)
-- [28-script-4b-shop-scoped-reads-tests.md](./28-script-4b-shop-scoped-reads-tests.md)
-- [29-live-supabase-rls-rpc-verification.md](./29-live-supabase-rls-rpc-verification.md)
-- [33-supplier-debt-payment-rpc-tests.md](./33-supplier-debt-payment-rpc-tests.md)
+## Contributing Notes
 
-## UI / Responsiveness
-
-- [32-responsive-testing-checklist.md](./32-responsive-testing-checklist.md) - Tablet/laptop/desktop responsive targets and per-page checklist
-
-## Status
-
-- [20-todo-next.md](./20-todo-next.md) - Current project status and next steps
-- [21-recent-changes.md](./21-recent-changes.md) - Changelog
-- [19-contributing.md](./19-contributing.md) - Contribution notes
-
+- Pages stay thin; reusable UI in `src/components`, domain logic in
+  `src/features/<feature>/`.
+- Use `import type` for type-only imports; avoid re-export shims.
+- Permissions come from `src/lib/permissions.ts`; never role-check by
+  hand.
+- Critical operational writes must go through RPCs and reconcile local
+  state only after RPC success.
+- Friendly user errors route through `src/lib/errors.ts` —
+  `getErrorMessage(err)`. Never put raw Postgres text in a toast.
+- For protected operational changes, add the migration first, document
+  it in [03-database-security.md](./03-database-security.md), and add /
+  refresh the relevant verification section in
+  [08-testing-qa.md](./08-testing-qa.md).

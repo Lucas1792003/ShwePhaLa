@@ -17,6 +17,8 @@ longer the source of truth.
 - `product_barcodes` - optional scan-code mappings for products
 - `price_tiers`
 - `suppliers`
+- `product_image_upload_sessions` - temporary QR phone upload sessions for
+  product images
 
 ### Inventory
 - `inventory` - current stock per `shop_id + product_id`
@@ -80,7 +82,9 @@ Apply migrations in numeric order. Current security-relevant migrations:
 | `011_rls_shop_scoped_reads.sql` | Shop-scoped operational reads |
 | `012_operational_status_rpcs.sql` | PO/transfer/request/reprint status RPCs |
 | `013_audit_write_lockdown.sql` | Final audit/status direct-write lockdown |
+| `016_product_images_storage.sql` | `product-images` Storage bucket and policies |
 | `018_supplier_debt_payments.sql` | Supplier payment table, PO payment status, supplier debt RPC |
+| `019_product_image_upload_sessions.sql` | Temporary QR upload sessions for phone product photos |
 
 ## Transactional RPC Source Of Truth
 
@@ -106,6 +110,12 @@ Critical business writes go through `SECURITY DEFINER` RPCs:
 - `create_refund_void_request(...)`
 - `log_receipt_reprint(p_sale_id text)`
 - `log_audit_event(...)`
+- `create_product_image_upload_session(...)`
+- `attach_product_image_upload_session_token(...)`
+- `get_product_image_upload_session_status(...)`
+- `get_product_image_upload_session_by_token(...)`
+- `complete_product_image_upload_session(...)`
+- `cancel_product_image_upload_session(...)`
 
 These functions use Supabase Auth identity and the SQL helper functions from
 migration `003`. They keep related status, inventory, ledger, and audit writes

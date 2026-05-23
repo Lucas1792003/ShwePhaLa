@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { DataState } from "./types";
 import { supabase } from "../../lib/supabase";
+import { reportError } from "../../lib/errors";
 import { useAppStore } from "../appStore";
 import type {
   AuditLog, Category, Inventory, InventoryMovement, PriceTier,
@@ -202,10 +203,16 @@ export const useDataStore = create<DataState>()((...args) => {
 
     isLoading: false,
     isLoaded: false,
+    loadError: null,
 
-    loadData: async () => {
-      if (get().isLoaded) return;
-      set({ isLoading: true });
+    retryLoadData: async () => {
+      await get().loadData({ force: true });
+    },
+
+    loadData: async (options) => {
+      if (get().isLoading) return;
+      if (get().isLoaded && !options?.force) return;
+      set({ isLoading: true, loadError: null });
       try {
         const [
           shops, users, categories, products, barcodes, priceTiers,
@@ -234,6 +241,18 @@ export const useDataStore = create<DataState>()((...args) => {
           supabase.from("refund_void_requests").select("*"),
           supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(500),
         ]);
+
+        // Surface RLS / network failures from any of the parallel reads.
+        // The arrays default to [] otherwise — that would render an empty
+        // shop with no error indication, hiding the real cause.
+        const failedRead = [
+          shops, users, categories, products, barcodes, priceTiers, inventory, movements,
+          suppliers, purchaseOrders, purchaseOrderItems, supplierPayments,
+          stockTransfers, stockTransferItems, shifts, sales, saleItems,
+          reprintLogs, refunds, auditLogs,
+        ].find((result) => result.error);
+        if (failedRead?.error) throw failedRead.error;
+
         // Ensure currentShopId always points to a valid shop in the list
         let shopsList = (shops.data ?? []).map(mapShop);
 
@@ -270,8 +289,8 @@ export const useDataStore = create<DataState>()((...args) => {
           isLoaded: true,
         });
       } catch (err) {
-        console.error("loadData failed:", err);
-        set({ isLoading: false });
+        const message = reportError("loadData", err, "Failed to load data. Please try again.");
+        set({ isLoading: false, loadError: message });
       }
     },
   };

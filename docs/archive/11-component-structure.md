@@ -8,7 +8,8 @@ src/
     layout/          AppLayout, Sidebar, Topbar, ShopSwitcher
     routes/          AppRouter and route guards
   components/
-    ui/              Button, Card, Modal, Drawer, Badge, Select, Toast
+    ui/              Button, Card, Modal, Drawer, Badge, Select, Toast,
+                     ErrorBoundary
     pos/             POS-specific components (ProductFinder, CartPanel,
                      PaymentModal, ReceiptPreview)
     receipt/         ReceiptDetail — shared between /app/sales/:saleId
@@ -17,23 +18,42 @@ src/
                      drawer variant), refund/void modals
     shifts/          Shift cards and detail views
     inventory/       Inventory UI components
+    products/        Reusable product picker and picker search helpers
     dashboard/       Dashboard charts and summaries
+    purchases/       PurchaseOrderCreateModal, PurchaseOrderReceiveModal —
+                     shared by Purchases page and Supplier detail page
+    suppliers/       SupplierFormModal, SupplierPaymentModal — shared by
+                     Suppliers list and Supplier detail page
   features/
     auth/            Login route
     admin/           Admin route wrappers
     catalog/         Catalog and barcode helpers
-    pos/             POS route wrapper and service helpers
+    pricing/         Price tier form validation helpers
+    pos/             POS route wrapper, service helpers, and barcode lookup
+                     (findProductForScan; SKU fallback parity with labels)
     reports/         Report route wrappers
+    suppliers/       Supplier debt math, getPurchaseOrderActionState
+                     (workflow-state matrix), and shared UI primitives
+                     (DetailMeta/SummaryCard/MoneyLine + uiConstants)
   pages/             Main page compositions used by routes
+                     (incl. SupplierDetailPage at /app/suppliers/:supplierId)
+  hooks/
+    useAsyncAction.ts  Standardized async-action helper with loading state,
+                       double-submit guard, friendly error mapping
   stores/
     authStore.ts     Supabase Auth session and app user id
     appStore.ts      selected shop UI state
     languageStore.ts language preference
     toastStore.ts    toast queue
     data/            Zustand domain slices and Supabase row mappers
+                     (loadData now exposes loadError + retryLoadData)
   lib/
     permissions.ts   central permission registry
-    supabase.ts      Supabase client and write helpers
+    supabase.ts      Supabase client and write helpers (dbWrite/dbExec
+                     now route through getErrorMessage)
+    errors.ts        Central error utility — classifiers + friendly mapper
+                     for permission/network/duplicate/storage/stock/shift
+                     errors. See docs/34-error-handling-qa-checklist.md
     utils.ts         formatting and shared helpers
   types/
     domain.ts        TypeScript domain model

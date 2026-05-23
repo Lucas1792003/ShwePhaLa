@@ -1,5 +1,155 @@
 # Recent Changes
 
+## Supplier detail page (`/app/suppliers/:supplierId`)
+
+- **Drawer → page.** The supplier workspace moved out of a 620–640 px side
+  drawer into a full route at `/app/suppliers/:supplierId`. Row click and the
+  new explicit **View details** button both navigate; row Action buttons
+  (Edit, Activate / Deactivate) stop propagation so they don't trigger the row
+  click.
+- **Layout.** Page header with breadcrumbs, status / code / contact badges,
+  Back / Edit supplier / Create purchase order actions. Five summary cards
+  (Outstanding debt, Received purchases, Paid, Unpaid/partial POs, Last
+  purchase). Three tabs: **Overview**, **Purchase Orders**, **Payments**.
+- **Purchase Orders tab.** One card per PO with status + received + payment
+  + workflow-hint badges, Total / Paid / Balance money grid, and per-PO
+  actions (Approve / Receive / Record payment / Cancel PO) gated through
+  `getPurchaseOrderActionState`. Inline **View details** toggle shows
+  ordered/received qty, unit cost, line total, supplier invoice no, delivery
+  note no, approved at/by, and the receiving-confirmation banner.
+- **Payments tab.** Full-width table of date, PO no, amount, method,
+  reference, notes, recorded by — replaces the cramped drawer card list.
+- **Not-found state.** Unknown supplier id (or RLS-hidden row) renders
+  "Supplier not found or you do not have access." with a Back button — no
+  crash.
+- **Reused modals.** Extracted `SupplierFormModal` and `SupplierPaymentModal`
+  (in `src/components/suppliers/`) so the list page, the detail page, and the
+  Purchases page all share the same add/edit and payment surfaces.
+  `PurchaseOrderCreateModal` and `PurchaseOrderReceiveModal` (in
+  `src/components/purchases/`) are likewise shared.
+- **New route key.** `ROUTE_PERMISSIONS.supplierDetail = "supplier:read"` —
+  CASHIER still cannot reach the route; MANAGER / BUYER scope unchanged.
+- **No backend change.** Same store actions, same RPCs, same RLS, same debt
+  rules.
+
+## Supplier workspace completeness + permission-correct PO gates
+
+- **Supplier drawer became an action workspace** (subsequently superseded by
+  the full detail page above). Added **Create PO** header button (gated by
+  `purchase:create` for the current shop) and per-PO **Approve / Receive /
+  Cancel** buttons in addition to the existing **Record payment**. Buttons
+  fall back to amber **"Needs approval / receiving / payment"** hint badges
+  when the user lacks the relevant permission so the workflow is legible
+  even when the user can't act.
+- **Purchases page gates fixed.** Approve was gated on `isAdmin` and Receive
+  on `isManager`; both now use `canApprovePurchaseOrder` /
+  `canReceivePurchaseOrder` so per-user grants/revokes work as intended.
+  Cancel is gated on `hasShopPermission(user, "purchase:create", po.shopId)`.
+- **Next-step matrix.** Added pure helper
+  [`src/features/suppliers/actions.ts`](../src/features/suppliers/actions.ts) →
+  `getPurchaseOrderActionState(po, user)` returning
+  `{ nextAction, canActor, hint, isTerminal, canCancel }`. Unit-tested across
+  the role × PO-status matrix (`actions.test.ts`, 13 cases).
+- **Payment modal UX.** "Pay outstanding" quick-fill button defaults the
+  amount to the PO balance; inline outstanding-balance helper line. Modal
+  refuses to close mid-submit; inline rose error banner on failure.
+- **No `alert()` in supplier or purchases pages.** All catches route through
+  `getErrorMessage` and show friendly toasts.
+- **No backend change.** Same `create_purchase_order`,
+  `approve_purchase_order`, `receive_purchase_order`,
+  `cancel_purchase_order`, `record_supplier_payment` RPCs. Same supplier
+  debt rule: debt starts only on RECEIVED PO.
+- **Manual QA:** [`docs/35-supplier-workflow-qa-checklist.md`](./35-supplier-workflow-qa-checklist.md).
+
+## System-wide error handling + retry surface
+
+- **Central error utility.** Added
+  [`src/lib/errors.ts`](../src/lib/errors.ts) with classifiers
+  (`isPermissionError`, `isNetworkError`, `isDuplicateError`,
+  `isStorageError`, `isExpiredSessionError`, `isInsufficientStockError`,
+  `isNoOpenShiftError`) and `getErrorMessage(err, fallback?)` /
+  `mapSupabaseError(err)` / `reportError(scope, err)`. Maps Postgres
+  SQLSTATE codes (`42501`, `23505`, `PGRST301`), Supabase storage phrasing,
+  JWT expiry, and common business-domain phrases to the canonical
+  friendly strings ("You do not have permission to perform this action.",
+  "This record already exists.", "Network error…", etc.). 19 unit tests.
+- **`dbWrite` / `dbExec` use the mapper.** Friendly toasts and friendly
+  thrown errors instead of raw Postgres dumps. Audit-only `dbAudit`
+  unchanged (lost-audit must not roll back an already-persisted op).
+- **Async-action hook.** Added
+  [`src/hooks/useAsyncAction.ts`](../src/hooks/useAsyncAction.ts) — manages
+  `loading`, `error`, `clearError`, blocks double-submit via ref, logs
+  through `reportError`, returns `undefined` on failure so callers naturally
+  keep modals open. `runAsyncAction` is the non-React variant returning a
+  discriminated `{ ok, value | message }`.
+- **Top-level Error Boundary.** Added
+  [`src/components/ui/ErrorBoundary.tsx`](../src/components/ui/ErrorBoundary.tsx)
+  wrapping the router in `App.tsx`. "Something went wrong" + Try again /
+  Reload. Stack traces only in dev.
+- **`loadData` exposes failures.** Checks `.error` on each of the 20
+  parallel reads in `stores/data/index.ts`; sets `loadError` and adds
+  `retryLoadData({ force: true })`. `AppLayout` renders a "Couldn't load
+  your data" Retry surface before the generic "Loading data…" spinner so a
+  failed bootstrap is actionable instead of stuck.
+- **Manual QA:** [`docs/34-error-handling-qa-checklist.md`](./34-error-handling-qa-checklist.md).
+
+## POS barcode scan — SKU fallback + scan UX
+
+- **Bug fix: label/POS parity.** `getProductByBarcode` only checked
+  `product_barcodes.value`, but the label printer
+  (`getPrintableBarcodeValue`) falls back to `products.sku`. A product
+  printed with a SKU-source label used to scan as **"Barcode not found"**.
+  New pure helper
+  [`src/features/pos/barcodeLookup.ts`](../src/features/pos/barcodeLookup.ts) →
+  `findProductForScan(scan, products, barcodes)` mirrors the printer's
+  selection rule:
+  1. Exact (verbatim, case-sensitive) match against `product_barcodes.value`.
+  2. Trimmed, case-insensitive fallback match against `products.sku`.
+  Explicit barcode mappings still win over SKU collisions on a different
+  product. 9 unit tests, including printer↔scanner parity for both
+  `source: "barcode"` and `source: "sku"`.
+- **POS UX.** Success toast "Added <product name>" on every scan; explicit
+  clear + refocus of the barcode input after every scan so the next
+  Enter-terminated burst always lands there even if a click stole focus.
+  Enter `preventDefault`'d to suppress accidental form-level submits.
+- **No business-rule change.** Stock guards, pack-mode handling, and the
+  open-shift checkout gate are untouched.
+
+## Price tier product picker
+
+- **Native select replaced.** The Add/Edit Price Tier modal now uses
+  `src/components/products/ProductPicker.tsx` instead of a browser product
+  `<select>`.
+- **Richer product rows.** The picker shows product image thumbnails, category
+  icon fallback, product name, SKU, category badge/icon, base selling price,
+  and current-shop stock when available.
+- **Search coverage.** Product picker search matches product name, SKU,
+  `product_barcodes.value`, and category. Search ignores punctuation, so
+  `lays` matches `Lay's Original`.
+- **Validation.** Product selection remains required. Missing or inactive
+  selected products show `Selected product is no longer available.` inline and
+  keep the modal open.
+- **Scope.** Pricing business logic, Supabase, RLS, RPCs, and schema were not
+  changed.
+
+## Product image phone QR upload
+
+- **Phone upload route.** Added `/phone-upload/product-image/:token` for
+  taking a product photo or choosing from a phone library.
+- **Temporary sessions.** Migration `019_product_image_upload_sessions.sql`
+  adds one-time upload sessions with hashed raw tokens, 10-minute expiry,
+  status tracking, signed upload token attachment, completion, polling, and
+  cancellation RPCs.
+- **Storage remains source.** Phone images are still compressed to `<= 100 KB`
+  and uploaded to Supabase Storage. Product rows still store only Storage URLs,
+  never base64 images.
+- **QR modal.** The desktop product form shows a QR code and status, not the
+  long signed upload URL. Desktop polling updates the image preview after the
+  phone upload completes.
+- **Security model.** The phone user does not need normal app login; access is
+  limited by the unguessable temporary token and the pre-scoped signed upload
+  token for `product-images/temp/<sessionId>`.
+
 ## Supplier debt + received purchase records
 
 - **Supplier payables.** Added `supplier_payments`, PO `paid_mmk` /

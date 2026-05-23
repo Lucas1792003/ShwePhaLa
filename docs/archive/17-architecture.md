@@ -76,6 +76,31 @@ The product domain has both:
 The central permission registry and route mapping live in
 `src/lib/permissions.ts`.
 
+## Error Handling
+
+Friendly user-facing messages route through a single utility:
+
+- `src/lib/errors.ts` — `getErrorMessage(err, fallback?)` and classifiers
+  (`isPermissionError`, `isNetworkError`, `isDuplicateError`,
+  `isStorageError`, `isExpiredSessionError`, `isInsufficientStockError`,
+  `isNoOpenShiftError`). The mapper covers Postgres SQLSTATE codes
+  (`42501`, `23505`, `PGRST301`), Supabase storage phrasing, JWT expiry,
+  and common business-domain phrases.
+- `src/lib/supabase.ts` — `dbWrite` toasts and `dbExec` throws use the
+  mapper, so RLS / duplicate / network errors never leak raw Postgres
+  text into the UI.
+- `src/hooks/useAsyncAction.ts` — standardized save/submit pattern:
+  loading state, double-submit guard, friendly toast on failure, returns
+  `undefined` so callers naturally keep modals open. `runAsyncAction` is
+  the non-React variant.
+- `src/components/ui/ErrorBoundary.tsx` — top-level boundary wraps the
+  router in `App.tsx`. Stack traces render only in dev.
+- `loadData` in `stores/data/index.ts` checks each parallel query's
+  `.error` and exposes `loadError` + `retryLoadData`. `AppLayout` renders
+  a "Couldn't load your data" Retry surface instead of a stuck spinner.
+
+Manual QA checklist: `docs/34-error-handling-qa-checklist.md`.
+
 ## Adding New Features
 
 1. Add route and sidebar entries using granular permission strings from

@@ -179,7 +179,9 @@ export interface AuditState {
 export interface LoadingState {
   isLoading: boolean;
   isLoaded: boolean;
-  loadData: () => Promise<void>;
+  loadError: string | null;
+  loadData: (options?: { force?: boolean }) => Promise<void>;
+  retryLoadData: () => Promise<void>;
 }
 
 // ============================================

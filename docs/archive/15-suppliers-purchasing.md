@@ -200,19 +200,78 @@ When a PO is received, the system:
 
 ### Suppliers Page (`/app/suppliers`)
 
-- List all suppliers with search/filter
-- Show order count, received purchase total, paid amount, outstanding debt, and
-  debt status
-- Add/Edit supplier modal when permitted
-- Detail drawer with supplier info, financial summary, purchase records,
-  receiving confirmation, and payment history
-- Record payment modal for received POs with outstanding balance
+- List all suppliers with search.
+- Per row: order count, received purchase total, paid amount, outstanding debt,
+  debt status, active status.
+- Row click or **View details** navigates to the supplier detail page; row
+  Action buttons (Edit, Activate / Deactivate) do not navigate.
+- Add Supplier modal (gated by `supplier:create`).
 
-### Purchases Page (`/purchases`)
+### Supplier Detail Page (`/app/suppliers/:supplierId`)
 
-- List all purchase orders with status filters
-- Create new PO flow
-- Approve/Receive actions based on status and permissions
+The supplier detail workspace. Replaces the old side drawer because the
+account view now covers profile, summary, PO actions, receiving
+confirmation, and payment history — all of which used to compete for one
+narrow drawer panel.
+
+Layout:
+
+- **Header.** Back link, breadcrumb (`Suppliers / <name>`), supplier name,
+  status / code / contact badges, and the action cluster: **Back**, **Edit
+  supplier** (gated by `supplier:update`), and **Create purchase order**
+  (gated by `purchase:create` for the current shop, hidden for inactive
+  suppliers).
+- **Summary cards (5).** Outstanding debt, Received purchases, Paid,
+  Unpaid / partial PO count, Last purchase. Money cards hide their value
+  ("—") when the caller lacks `supplier:debt_view` / `purchase:view`.
+- **Tabs.**
+  1. **Overview** — profile card (contact, phone, email, address, code,
+     added date) plus notes block.
+  2. **Purchase Orders** — one card per PO with PO number, shop, created
+     date, status / received / payment badges, the next-step hint badge
+     ("Needs approval / receiving / payment") when the user lacks the
+     relevant permission, Total / Paid / Balance money grid, received-by/at,
+     and an Action row. **View details** toggles an inline expanded panel
+     with supplier invoice no, delivery note no, approved at/by, the
+     receiving-confirmation banner for RECEIVED POs, and the line-items
+     table (ordered / received / unit cost / line total).
+  3. **Payments** — a full-width table of date, PO no, amount, method,
+     reference, notes, and recorded by. Empty state reads "No supplier
+     payments recorded yet."
+
+Per-PO action buttons follow `getPurchaseOrderActionState(po, user)` in
+`src/features/suppliers/actions.ts`:
+
+| PO state | Next action | When user lacks permission |
+| --- | --- | --- |
+| DRAFT / SUBMITTED | **Approve** | "Needs approval" badge |
+| APPROVED | **Receive** | "Needs receiving" badge |
+| RECEIVED + balance > 0 | **Record payment** | "Needs payment" badge |
+| RECEIVED + paid | — terminal | — |
+| CANCELED | — terminal | — |
+| Non-terminal + has `purchase:create` | **Cancel PO** | hidden |
+
+Buttons disable while their request is in flight (`busyPoId`) so a
+double-click can't double-submit. Modals (`SupplierFormModal`,
+`SupplierPaymentModal`, `PurchaseOrderCreateModal`,
+`PurchaseOrderReceiveModal`) keep open on failure with form values
+preserved, show an inline rose-tinted error banner, and refuse to close
+mid-submit.
+
+If the supplier id is unknown or hidden by RLS, the page renders a friendly
+"Supplier not found or you do not have access." card with a Back to
+Suppliers button — no crash.
+
+### Purchases Page (`/app/purchases`)
+
+- List all purchase orders with status filters and search.
+- Create new PO flow uses the shared `PurchaseOrderCreateModal`.
+- **Approve** gated by `canApprovePurchaseOrder(user, po)`, **Receive** by
+  `canReceivePurchaseOrder(user, po)`, **Cancel** by `hasShopPermission(user,
+  "purchase:create", po.shopId)` (was role-only — drifted from the
+  permission model; now consistent with the Supplier detail page).
+- Errors route through `getErrorMessage` from `src/lib/errors.ts` — no more
+  raw Postgres messages in toasts.
 
 ## Reports
 

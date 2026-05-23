@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import type { DataState, ProductState } from "../types";
 import type { Product, ProductBarcode } from "../../../types";
 import { supabase, dbWrite } from "../../../lib/supabase";
+import { findProductForScan } from "../../../features/pos/barcodeLookup";
 
 export const createProductSlice: StateCreator<DataState, [], [], ProductState> = (set, get) => ({
   products: [],
@@ -47,7 +48,6 @@ export const createProductSlice: StateCreator<DataState, [], [], ProductState> =
 
   getProductByBarcode: (value: string) => {
     const state = get();
-    const barcode = state.barcodes.find((item) => item.value === value.trim());
-    return state.products.find((item) => item.id === barcode?.productId);
+    return findProductForScan(value, state.products, state.barcodes);
   },
 });

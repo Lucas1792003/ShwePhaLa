@@ -19,6 +19,7 @@ import { UsersAdminPage } from "../../features/admin/pages/UsersAdminPage";
 import { ProductsAdminPage } from "../../features/admin/pages/ProductsAdminPage";
 import { BarcodesAdminPage } from "../../features/admin/pages/BarcodesAdminPage";
 import { SuppliersPage } from "../../features/admin/pages/SuppliersPage";
+import { SupplierDetailPage } from "../../pages/SupplierDetailPage";
 import { PricingPage } from "../../features/admin/pages/PricingPage";
 import { AuditLogPage } from "../../features/admin/pages/AuditLogPage";
 import { CatalogPage } from "../../features/catalog/pages/CatalogPage";
@@ -160,6 +161,14 @@ export const AppRouter = () => (
         element={
           <RequireRole permission={ROUTE_PERMISSIONS.suppliers}>
             <SuppliersPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path="suppliers/:supplierId"
+        element={
+          <RequireRole permission={ROUTE_PERMISSIONS.supplierDetail}>
+            <SupplierDetailPage />
           </RequireRole>
         }
       />

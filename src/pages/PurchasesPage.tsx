@@ -9,9 +9,18 @@ import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Modal } from "../components/ui/Modal";
 import { Select } from "../components/ui/Select";
+import { useToast } from "../components/ui/Toast";
 import { SearchInput } from "../components/forms/SearchInput";
+import { PurchaseOrderCreateModal } from "../components/purchases/PurchaseOrderCreateModal";
+import { PurchaseOrderReceiveModal } from "../components/purchases/PurchaseOrderReceiveModal";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
-import { hasPermission } from "../lib/permissions";
+import { getErrorMessage } from "../lib/errors";
+import {
+  canApprovePurchaseOrder,
+  canReceivePurchaseOrder,
+  hasPermission,
+  hasShopPermission,
+} from "../lib/permissions";
 import type { PurchaseOrderStatus } from "../types";
 
 const statusColors: Record<PurchaseOrderStatus, "gray" | "yellow" | "green" | "blue" | "red"> = {
@@ -33,10 +42,9 @@ export const PurchasesPage = () => {
   const purchaseOrderItems = useDataStore((state) => state.purchaseOrderItems);
   const users = useDataStore((state) => state.users);
 
-  const createPurchaseOrder = useDataStore((state) => state.createPurchaseOrder);
   const approvePurchaseOrder = useDataStore((state) => state.approvePurchaseOrder);
-  const receivePurchaseOrder = useDataStore((state) => state.receivePurchaseOrder);
   const cancelPurchaseOrder = useDataStore((state) => state.cancelPurchaseOrder);
+  const toast = useToast();
 
   const [activeTab, setActiveTab] = useState("all");
   const [search, setSearch] = useState("");
@@ -45,19 +53,8 @@ export const PurchasesPage = () => {
   const [showDetailModal, setShowDetailModal] = useState<string | null>(null);
   const [showReceiveModal, setShowReceiveModal] = useState<string | null>(null);
 
-  // Create PO form state
-  const [newPO, setNewPO] = useState({
-    supplierId: "",
-    items: [] as { productId: string; orderedQty: number; unitCostMmk: number }[],
-    notes: "",
-  });
-
-  // Receive PO form state
-  const [receiveItems, setReceiveItems] = useState<{ productId: string; receivedQty: number }[]>([]);
-
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
   const isAdmin = currentUser?.role === "ADMIN";
-  const isManager = currentUser?.role === "MANAGER" || isAdmin;
   // Creating a PO is permission-gated (managers, admins and buyers) rather
   // than role-gated, so the limited BUYER role can raise purchase orders.
   const canCreatePO = hasPermission(currentUser, "purchase:create");
@@ -75,29 +72,17 @@ export const PurchasesPage = () => {
       .filter((po) => po.orderNo.toLowerCase().includes(search.toLowerCase()));
   }, [purchaseOrders, activeTab, statusFilter, search, shopId, isAdmin]);
 
-  const handleCreatePO = async () => {
-    if (!currentUserId || !newPO.supplierId || newPO.items.length === 0) return;
-    try {
-      await createPurchaseOrder({
-        shopId,
-        supplierId: newPO.supplierId,
-        items: newPO.items,
-        notes: newPO.notes,
-        createdBy: currentUserId,
-      });
-      setShowCreateModal(false);
-      setNewPO({ supplierId: "", items: [], notes: "" });
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to create purchase order");
-    }
-  };
-
   const handleApprovePO = async (poId: string) => {
     if (!currentUserId) return;
     try {
       await approvePurchaseOrder({ purchaseOrderId: poId, approverId: currentUserId });
+      toast({ title: "Purchase order approved", variant: "success" });
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to approve purchase order");
+      toast({
+        title: "Approval failed",
+        description: getErrorMessage(error, "Could not approve this purchase order."),
+        variant: "error",
+      });
     }
   };
 
@@ -106,66 +91,20 @@ export const PurchasesPage = () => {
     if (!confirm("Are you sure you want to cancel this purchase order?")) return;
     try {
       await cancelPurchaseOrder({ purchaseOrderId: poId, actorId: currentUserId });
+      toast({ title: "Purchase order canceled", variant: "success" });
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to cancel purchase order");
-    }
-  };
-
-  const openReceiveModal = (poId: string) => {
-    const items = purchaseOrderItems.filter((i) => i.purchaseOrderId === poId);
-    setReceiveItems(items.map((i) => ({ productId: i.productId, receivedQty: i.orderedQty })));
-    setShowReceiveModal(poId);
-  };
-
-  const handleReceivePO = async () => {
-    if (!currentUserId || !showReceiveModal) return;
-    try {
-      await receivePurchaseOrder({
-        purchaseOrderId: showReceiveModal,
-        receiverId: currentUserId,
-        receivedItems: receiveItems,
+      toast({
+        title: "Cancel failed",
+        description: getErrorMessage(error, "Could not cancel this purchase order."),
+        variant: "error",
       });
-      setShowReceiveModal(null);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to receive purchase order");
     }
-  };
-
-  const addItemToPO = (productId: string) => {
-    if (newPO.items.some((i) => i.productId === productId)) return;
-    const product = products.find((p) => p.id === productId);
-    setNewPO((prev) => ({
-      ...prev,
-      items: [...prev.items, { productId, orderedQty: 1, unitCostMmk: product?.costMmk ?? 0 }],
-    }));
-  };
-
-  const updatePOItem = (productId: string, field: "orderedQty" | "unitCostMmk", value: number) => {
-    setNewPO((prev) => ({
-      ...prev,
-      items: prev.items.map((i) =>
-        i.productId === productId ? { ...i, [field]: Math.max(field === "orderedQty" ? 1 : 0, value) } : i
-      ),
-    }));
-  };
-
-  const removeItemFromPO = (productId: string) => {
-    setNewPO((prev) => ({
-      ...prev,
-      items: prev.items.filter((i) => i.productId !== productId),
-    }));
-  };
-
-  const calculateTotal = () => {
-    return newPO.items.reduce((sum, i) => sum + i.orderedQty * i.unitCostMmk, 0);
   };
 
   const selectedPO = showDetailModal ? purchaseOrders.find((po) => po.id === showDetailModal) : null;
   const selectedPOItems = showDetailModal
     ? purchaseOrderItems.filter((i) => i.purchaseOrderId === showDetailModal)
     : [];
-
-  const activeSuppliers = suppliers.filter((s) => s.isActive);
 
   return (
     <Card>
@@ -250,21 +189,24 @@ export const PurchasesPage = () => {
                           <Button size="sm" variant="ghost" onClick={() => setShowDetailModal(po.id)}>
                             View
                           </Button>
-                          {(po.status === "DRAFT" || po.status === "SUBMITTED") && isAdmin && (
-                            <Button size="sm" variant="primary" onClick={() => handleApprovePO(po.id)}>
-                              Approve
-                            </Button>
-                          )}
-                          {po.status === "APPROVED" && isManager && (
-                            <Button size="sm" variant="primary" onClick={() => openReceiveModal(po.id)}>
+                          {(po.status === "DRAFT" || po.status === "SUBMITTED") &&
+                            canApprovePurchaseOrder(currentUser, po) && (
+                              <Button size="sm" variant="primary" onClick={() => handleApprovePO(po.id)}>
+                                Approve
+                              </Button>
+                            )}
+                          {po.status === "APPROVED" && canReceivePurchaseOrder(currentUser, po) && (
+                            <Button size="sm" variant="primary" onClick={() => setShowReceiveModal(po.id)}>
                               Receive
                             </Button>
                           )}
-                          {po.status !== "RECEIVED" && po.status !== "CANCELED" && (
-                            <Button size="sm" variant="ghost" onClick={() => handleCancelPO(po.id)}>
-                              Cancel
-                            </Button>
-                          )}
+                          {po.status !== "RECEIVED" &&
+                            po.status !== "CANCELED" &&
+                            hasShopPermission(currentUser, "purchase:create", po.shopId) && (
+                              <Button size="sm" variant="ghost" onClick={() => handleCancelPO(po.id)}>
+                                Cancel
+                              </Button>
+                            )}
                         </div>
                       </td>
                     </tr>
@@ -276,112 +218,14 @@ export const PurchasesPage = () => {
         )}
       </div>
 
-      {/* Create PO Modal */}
-      <Modal open={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create Purchase Order">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Supplier</label>
-            <Select
-              value={newPO.supplierId}
-              onChange={(e) => setNewPO((prev) => ({ ...prev, supplierId: e.target.value }))}
-            >
-              <option value="">Select supplier...</option>
-              {activeSuppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
-              ))}
-            </Select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Add Products</label>
-            <Select onChange={(e) => { if (e.target.value) addItemToPO(e.target.value); e.target.value = ""; }}>
-              <option value="">Select product to add...</option>
-              {products
-                .filter((p) => p.isActive && !newPO.items.some((i) => i.productId === p.id))
-                .map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} (Cost: MMK {product.costMmk?.toLocaleString() ?? 0})
-                  </option>
-                ))}
-            </Select>
-          </div>
-
-          {newPO.items.length > 0 && (
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Product</th>
-                    <th className="px-3 py-2 text-left">Qty</th>
-                    <th className="px-3 py-2 text-left">Unit Cost</th>
-                    <th className="px-3 py-2 text-right">Line Total</th>
-                    <th className="px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {newPO.items.map((item) => {
-                    const product = products.find((p) => p.id === item.productId);
-                    return (
-                      <tr key={item.productId} className="border-t">
-                        <td className="px-3 py-2">{product?.name}</td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.orderedQty}
-                            onChange={(e) => updatePOItem(item.productId, "orderedQty", parseInt(e.target.value) || 1)}
-                            className="w-20 rounded border px-2 py-1"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.unitCostMmk}
-                            onChange={(e) => updatePOItem(item.productId, "unitCostMmk", parseInt(e.target.value) || 0)}
-                            className="w-24 rounded border px-2 py-1"
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-right font-medium">
-                          MMK {(item.orderedQty * item.unitCostMmk).toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2">
-                          <Button size="sm" variant="ghost" onClick={() => removeItemFromPO(item.productId)}>
-                            Remove
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  <tr className="border-t bg-slate-50">
-                    <td colSpan={3} className="px-3 py-2 text-right font-medium">Total:</td>
-                    <td className="px-3 py-2 text-right font-bold">MMK {calculateTotal().toLocaleString()}</td>
-                    <td></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Notes (optional)</label>
-            <textarea
-              value={newPO.notes}
-              onChange={(e) => setNewPO((prev) => ({ ...prev, notes: e.target.value }))}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
-              rows={2}
-              placeholder="Additional notes..."
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="secondary" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button onClick={handleCreatePO} disabled={!newPO.supplierId || newPO.items.length === 0}>
-              Create Order
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      <PurchaseOrderCreateModal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        shopId={shopId}
+        currentUserId={currentUserId}
+        suppliers={suppliers}
+        products={products}
+      />
 
       {/* PO Detail Modal */}
       <Modal
@@ -446,66 +290,11 @@ export const PurchasesPage = () => {
         )}
       </Modal>
 
-      {/* Receive PO Modal */}
-      <Modal
-        open={!!showReceiveModal}
+      <PurchaseOrderReceiveModal
+        purchaseOrderId={showReceiveModal}
         onClose={() => setShowReceiveModal(null)}
-        title="Receive Purchase Order"
-      >
-        {showReceiveModal && (
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">
-              Confirm the quantities received for each item. This will add stock to your inventory.
-            </p>
-
-            <table className="w-full text-sm border rounded-lg overflow-hidden">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-3 py-2 text-left">Product</th>
-                  <th className="px-3 py-2 text-right">Ordered</th>
-                  <th className="px-3 py-2 text-right">Received Qty</th>
-                </tr>
-              </thead>
-              <tbody>
-                {receiveItems.map((item, idx) => {
-                  const product = products.find((p) => p.id === item.productId);
-                  const poItem = purchaseOrderItems.find(
-                    (i) => i.purchaseOrderId === showReceiveModal && i.productId === item.productId
-                  );
-                  return (
-                    <tr key={item.productId} className="border-t">
-                      <td className="px-3 py-2">{product?.name}</td>
-                      <td className="px-3 py-2 text-right">{poItem?.orderedQty}</td>
-                      <td className="px-3 py-2 text-right">
-                        <input
-                          type="number"
-                          min="0"
-                          max={poItem?.orderedQty}
-                          value={item.receivedQty}
-                          onChange={(e) => {
-                            const qty = parseInt(e.target.value) || 0;
-                            setReceiveItems((prev) =>
-                              prev.map((i, iIdx) =>
-                                iIdx === idx ? { ...i, receivedQty: Math.min(qty, poItem?.orderedQty ?? qty) } : i
-                              )
-                            );
-                          }}
-                          className="w-20 rounded border px-2 py-1 text-right"
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="secondary" onClick={() => setShowReceiveModal(null)}>Cancel</Button>
-              <Button onClick={handleReceivePO}>Confirm Receipt</Button>
-            </div>
-          </div>
-        )}
-      </Modal>
+        currentUserId={currentUserId}
+      />
     </Card>
   );
 };

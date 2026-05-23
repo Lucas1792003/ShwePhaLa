@@ -9,7 +9,9 @@ import { Badge } from "../components/ui/Badge";
 import { Modal } from "../components/ui/Modal";
 import { Select } from "../components/ui/Select";
 import { SearchInput } from "../components/forms/SearchInput";
-import { getEffectiveShopId } from "../lib/utils";
+import { ProductPicker } from "../components/products/ProductPicker";
+import { getPriceTierProductError } from "../features/pricing/priceTierForm";
+import { formatMmk, getEffectiveShopId } from "../lib/utils";
 import type { PriceTier } from "../types";
 
 export const PricingPage = () => {
@@ -17,7 +19,10 @@ export const PricingPage = () => {
   const currentUser = useDataStore((state) => state.users.find((u) => u.id === currentUserId));
   const { currentShopId } = useAppStore();
   const shops = useDataStore((state) => state.shops);
+  const categories = useDataStore((state) => state.categories);
   const products = useDataStore((state) => state.products);
+  const barcodes = useDataStore((state) => state.barcodes);
+  const inventory = useDataStore((state) => state.inventory);
   const priceTiers = useDataStore((state) => state.priceTiers);
 
   const addPriceTier = useDataStore((state) => state.addPriceTier);
@@ -28,6 +33,7 @@ export const PricingPage = () => {
   const [productFilter, setProductFilter] = useState("all");
   const [showModal, setShowModal] = useState(false);
   const [editingTier, setEditingTier] = useState<PriceTier | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState({
     productId: "",
     shopId: "",
@@ -38,6 +44,16 @@ export const PricingPage = () => {
 
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
   const isAdmin = currentUser?.role === "ADMIN";
+
+  const shopStockByProductId = useMemo(() => {
+    const stockByProductId: Record<string, number> = {};
+    inventory
+      .filter((item) => item.shopId === shopId)
+      .forEach((item) => {
+        stockByProductId[item.productId] = item.qtyBaseUnits;
+      });
+    return stockByProductId;
+  }, [inventory, shopId]);
 
   // Group tiers by product
   const tiersByProduct = useMemo(() => {
@@ -60,6 +76,7 @@ export const PricingPage = () => {
 
   const openCreateModal = (productId?: string) => {
     setEditingTier(null);
+    setFormError(null);
     const product = productId ? products.find((p) => p.id === productId) : null;
     setForm({
       productId: productId ?? "",
@@ -73,6 +90,7 @@ export const PricingPage = () => {
 
   const openEditModal = (tier: PriceTier) => {
     setEditingTier(tier);
+    setFormError(null);
     setForm({
       productId: tier.productId,
       shopId: tier.shopId ?? "",
@@ -84,8 +102,14 @@ export const PricingPage = () => {
   };
 
   const handleSave = async () => {
-    if (!form.productId || form.minQty < 1 || form.priceMmk < 0) {
-      alert("Please fill all required fields");
+    const productError = getPriceTierProductError(form.productId, products);
+    if (productError) {
+      setFormError(productError);
+      return;
+    }
+
+    if (form.minQty < 1 || form.priceMmk < 0) {
+      setFormError("Please fill all required fields");
       return;
     }
     if (!currentUserId) return;
@@ -108,11 +132,35 @@ export const PricingPage = () => {
       } else {
         await addPriceTier(tierData);
       }
+      setFormError(null);
       setShowModal(false);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to save price tier");
+      setFormError(error instanceof Error ? error.message : "Failed to save price tier");
     }
   };
+
+  const pickerProducts = useMemo(() => {
+    const activeProducts = products.filter((product) => product.isActive);
+    const selectedProduct = form.productId
+      ? products.find((product) => product.id === form.productId)
+      : undefined;
+
+    if (selectedProduct && !activeProducts.some((product) => product.id === selectedProduct.id)) {
+      return [selectedProduct, ...activeProducts];
+    }
+
+    return activeProducts;
+  }, [products, form.productId]);
+
+  const selectedProduct = products.find((product) => product.id === form.productId);
+  const productFormError =
+    formError && (formError.includes("Product") || formError.includes("product"))
+      ? formError
+      : null;
+  const selectedProductAvailabilityError = form.productId
+    ? getPriceTierProductError(form.productId, products)
+    : null;
+  const productFieldError = productFormError ?? selectedProductAvailabilityError;
 
   const handleDelete = async (tierId: string) => {
     if (!confirm("Are you sure you want to delete this price tier?")) return;
@@ -269,28 +317,32 @@ export const PricingPage = () => {
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Product <span className="text-red-500">*</span>
             </label>
-            <Select
+            <ProductPicker
+              products={pickerProducts}
+              categories={categories}
+              barcodes={barcodes}
               value={form.productId}
-              onChange={(e) => {
-                const product = products.find((p) => p.id === e.target.value);
-                setForm({ ...form, productId: e.target.value, priceMmk: product?.priceMmk ?? 0 });
+              onSelect={(productId) => {
+                const product = products.find((p) => p.id === productId);
+                setForm({ ...form, productId, priceMmk: product?.priceMmk ?? 0 });
+                setFormError(null);
               }}
+              placeholder="Search and select a product..."
               disabled={!!editingTier}
-            >
-              <option value="">Select product...</option>
-              {products.filter((p) => p.isActive).map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name} (Base: MMK {product.priceMmk.toLocaleString()})
-                </option>
-              ))}
-            </Select>
+              error={productFieldError ?? undefined}
+              shopStockByProductId={shopStockByProductId}
+              showStock={!!shopId}
+            />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Shop (optional)</label>
             <Select
               value={form.shopId}
-              onChange={(e) => setForm({ ...form, shopId: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, shopId: e.target.value });
+                setFormError(null);
+              }}
             >
               <option value="">All Shops (Global)</option>
               {shops.map((shop) => (
@@ -309,7 +361,10 @@ export const PricingPage = () => {
                 type="number"
                 min="1"
                 value={form.minQty}
-                onChange={(e) => setForm({ ...form, minQty: parseInt(e.target.value) || 1 })}
+                onChange={(e) => {
+                  setForm({ ...form, minQty: parseInt(e.target.value) || 1 });
+                  setFormError(null);
+                }}
                 className="w-full rounded-lg border px-3 py-2 text-sm"
               />
             </div>
@@ -319,7 +374,10 @@ export const PricingPage = () => {
                 type="number"
                 min={form.minQty}
                 value={form.maxQty}
-                onChange={(e) => setForm({ ...form, maxQty: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, maxQty: e.target.value });
+                  setFormError(null);
+                }}
                 className="w-full rounded-lg border px-3 py-2 text-sm"
                 placeholder="Unlimited"
               />
@@ -334,15 +392,24 @@ export const PricingPage = () => {
               type="number"
               min="0"
               value={form.priceMmk}
-              onChange={(e) => setForm({ ...form, priceMmk: parseInt(e.target.value) || 0 })}
+              onChange={(e) => {
+                setForm({ ...form, priceMmk: parseInt(e.target.value) || 0 });
+                setFormError(null);
+              }}
               className="w-full rounded-lg border px-3 py-2 text-sm"
             />
-            {form.productId && (
+            {selectedProduct && (
               <p className="mt-1 text-xs text-slate-500">
-                Base price: MMK {products.find((p) => p.id === form.productId)?.priceMmk.toLocaleString()}
+                Base price: {formatMmk(selectedProduct.priceMmk)}
               </p>
             )}
           </div>
+
+          {formError && !productFormError && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+              {formError}
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
