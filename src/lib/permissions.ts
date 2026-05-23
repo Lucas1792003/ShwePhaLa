@@ -50,6 +50,7 @@ export const ROUTE_PERMISSIONS = {
   adminPricing: "pricing:manage",
   adminReports: "report:global",
   adminAudit: "audit:view_global",
+  suppliers: "supplier:read",
 } as const satisfies Record<string, Permission>;
 
 // ============================================================
@@ -155,6 +156,10 @@ export function canReceivePurchaseOrder(user: User | null | undefined, po: Purch
 
 export function canApprovePurchaseOrder(user: User | null | undefined, po: PurchaseOrder): boolean {
   return hasShopPermission(user, "purchase:approve", po.shopId);
+}
+
+export function canRecordSupplierPayment(user: User | null | undefined, po: PurchaseOrder): boolean {
+  return hasShopPermission(user, "supplier:payment_create", po.shopId);
 }
 
 /**

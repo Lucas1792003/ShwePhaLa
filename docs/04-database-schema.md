@@ -37,6 +37,7 @@ reflected on `sales`.
 ### Purchasing
 - `purchase_orders`
 - `purchase_order_items`
+- `supplier_payments`
 
 ### Transfers
 - `stock_transfers`
@@ -79,6 +80,7 @@ Apply migrations in numeric order. Current security-relevant migrations:
 | `011_rls_shop_scoped_reads.sql` | Shop-scoped operational reads |
 | `012_operational_status_rpcs.sql` | PO/transfer/request/reprint status RPCs |
 | `013_audit_write_lockdown.sql` | Final audit/status direct-write lockdown |
+| `018_supplier_debt_payments.sql` | Supplier payment table, PO payment status, supplier debt RPC |
 
 ## Transactional RPC Source Of Truth
 
@@ -96,6 +98,7 @@ Critical business writes go through `SECURITY DEFINER` RPCs:
 - `create_purchase_order(...)`
 - `approve_purchase_order(p_purchase_order_id text)`
 - `cancel_purchase_order(p_purchase_order_id text, p_reason text default null)`
+- `record_supplier_payment(p_purchase_order_id text, p_amount_mmk integer, p_payment_method text, p_reference_no text default null, p_notes text default null)`
 - `create_stock_transfer(...)`
 - `approve_stock_transfer(p_transfer_id text)`
 - `reject_stock_transfer(p_transfer_id text, p_reason text default null)`

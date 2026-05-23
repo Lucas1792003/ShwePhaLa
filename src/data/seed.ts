@@ -16,6 +16,7 @@ import type {
   StockTransfer,
   StockTransferItem,
   Supplier,
+  SupplierPayment,
   User,
 } from "../types";
 
@@ -290,6 +291,10 @@ export const seedPurchaseOrders: PurchaseOrder[] = [
     status: "RECEIVED",
     subtotalMmk: 192000,
     totalMmk: 192000,
+    paidMmk: 100000,
+    paymentStatus: "PARTIAL",
+    supplierInvoiceNo: "INV-MBC-20260106",
+    deliveryNoteNo: "DN-MBC-0001",
     notes: "Weekly beer restock",
     createdBy: "user-manager-a",
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
@@ -304,6 +309,22 @@ export const seedPurchaseOrderItems: PurchaseOrderItem[] = [
   { id: "poitem-01", purchaseOrderId: "po-01", productId: "prod-beer-01", orderedQty: 48, receivedQty: 48, unitCostMmk: 1600, lineTotalMmk: 76800 },
   { id: "poitem-02", purchaseOrderId: "po-01", productId: "prod-beer-02", orderedQty: 36, receivedQty: 36, unitCostMmk: 1500, lineTotalMmk: 54000 },
   { id: "poitem-03", purchaseOrderId: "po-01", productId: "prod-beer-03", orderedQty: 36, receivedQty: 36, unitCostMmk: 1700, lineTotalMmk: 61200 },
+];
+
+export const seedSupplierPayments: SupplierPayment[] = [
+  {
+    id: "suppay-01",
+    supplierId: "supplier-01",
+    purchaseOrderId: "po-01",
+    shopId: "shop-a",
+    amountMmk: 100000,
+    paymentMethod: "CASH",
+    referenceNo: "VOUCHER-001",
+    notes: "Initial partial payment",
+    paidAt: new Date(Date.now() - 1000 * 60 * 60 * 22).toISOString(),
+    createdBy: "user-manager-a",
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 22).toISOString(),
+  },
 ];
 
 export const seedShifts: Shift[] = [
@@ -485,6 +506,7 @@ export const seedData = {
   suppliers: seedSuppliers,
   purchaseOrders: seedPurchaseOrders,
   purchaseOrderItems: seedPurchaseOrderItems,
+  supplierPayments: seedSupplierPayments,
   stockTransfers: seedStockTransfers,
   stockTransferItems: seedStockTransferItems,
   priceTiers: seedPriceTiers,

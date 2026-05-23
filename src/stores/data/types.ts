@@ -18,6 +18,8 @@ import type {
   StockTransferItem,
   StockMovementType,
   Supplier,
+  SupplierPayment,
+  SupplierPaymentMethod,
   User,
 } from "../../types";
 
@@ -139,12 +141,20 @@ export interface PurchaseState {
   suppliers: Supplier[];
   purchaseOrders: PurchaseOrder[];
   purchaseOrderItems: PurchaseOrderItem[];
+  supplierPayments: SupplierPayment[];
   addSupplier: (supplier: Supplier) => Promise<void>;
   updateSupplier: (supplier: Supplier) => Promise<void>;
   createPurchaseOrder: (input: CreatePurchaseOrderInput) => Promise<string>;
   approvePurchaseOrder: (input: { purchaseOrderId: string; approverId: string }) => Promise<void>;
   receivePurchaseOrder: (input: { purchaseOrderId: string; receiverId: string; receivedItems: { productId: string; receivedQty: number }[] }) => Promise<void>;
   cancelPurchaseOrder: (input: { purchaseOrderId: string; actorId: string }) => Promise<void>;
+  recordSupplierPayment: (input: {
+    purchaseOrderId: string;
+    amountMmk: number;
+    paymentMethod: SupplierPaymentMethod;
+    referenceNo?: string;
+    notes?: string;
+  }) => Promise<void>;
 }
 
 export interface PricingState {

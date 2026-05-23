@@ -1,5 +1,21 @@
 # Recent Changes
 
+## Supplier debt + received purchase records
+
+- **Supplier payables.** Added `supplier_payments`, PO `paid_mmk` /
+  `payment_status`, and `record_supplier_payment(...)` in migration
+  `018_supplier_debt_payments.sql`. Supplier debt now starts when a PO is
+  `RECEIVED`; draft/approved/canceled orders do not add debt.
+- **Permissions.** Added `supplier:debt_view` and
+  `supplier:payment_create`. ADMIN/MANAGER can view and record payments;
+  BUYER can view supplier purchase/debt records for their assigned shop but
+  cannot record payments by default; CASHIER has no supplier debt access.
+- **Supplier UI.** `/app/suppliers` shows received purchase totals, paid amount,
+  outstanding debt, debt status, supplier detail drawer, purchase records,
+  receiving confirmation, payment history, and a received-PO payment modal.
+- **No POS impact.** Supplier payments do not affect cashier shift cash, POS,
+  sales, inventory movement, or shift flows.
+
 ## Barcode label preview + layout templates
 
 - **Preview-before-print flow.** `/app/barcode-labels` now opens a preview

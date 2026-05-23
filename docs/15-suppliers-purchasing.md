@@ -62,6 +62,10 @@ interface PurchaseOrder {
   subtotalMmk: number;
   taxMmk: number;
   totalMmk: number;
+  paidMmk?: number;
+  paymentStatus?: "UNPAID" | "PARTIAL" | "PAID";
+  supplierInvoiceNo?: string;
+  deliveryNoteNo?: string;
   notes?: string;
   expectedDate?: string;     // Expected delivery date
   createdBy: string;
@@ -119,6 +123,44 @@ interface PurchaseOrderItem {
   the audit row, and marks the PO `RECEIVED` — all committed together.
 - Status: `RECEIVED`
 
+## Supplier Debt / Payables
+
+Supplier debt starts only when goods are received.
+
+- Creating, submitting, or approving a PO does **not** create debt.
+- `RECEIVED` POs create supplier payable balance.
+- Canceled POs never count as debt.
+- Outstanding balance = `purchase_orders.total_mmk - purchase_orders.paid_mmk`.
+- Supplier debt = sum of outstanding balances for received POs for that
+  supplier and shop.
+- Receiving goods and paying the supplier are separate actions.
+- Supplier payments do not affect cashier shifts yet.
+
+PO payment status:
+
+| Status | Rule |
+| --- | --- |
+| `UNPAID` | Received PO has no payments |
+| `PARTIAL` | Received PO has some payment but still has balance |
+| `PAID` | Received PO is fully paid |
+
+Supplier payments are stored in `supplier_payments` and written only through
+the `record_supplier_payment(...)` SECURITY DEFINER RPC:
+
+```sql
+record_supplier_payment(
+  p_purchase_order_id text,
+  p_amount_mmk integer,
+  p_payment_method text,
+  p_reference_no text default null,
+  p_notes text default null
+) returns jsonb
+```
+
+The RPC validates authentication, `supplier:payment_create`, shop scope, PO
+status `RECEIVED`, positive amount, and no overpayment. It inserts the payment,
+updates `purchase_orders.paid_mmk` / `payment_status`, and writes an audit row.
+
 ## Inventory Integration
 
 When a PO is received, the system:
@@ -147,6 +189,8 @@ When a PO is received, the system:
 | View suppliers | `supplier:read` |
 | Create/Edit suppliers | `supplier:create`, `supplier:update` |
 | Delete suppliers | `supplier:delete` |
+| View supplier debt/payment records | `supplier:debt_view` |
+| Record supplier payment | `supplier:payment_create` |
 | View purchase orders | `purchase:create` (implied) |
 | Create/Edit POs | `purchase:create` |
 | Approve POs | `purchase:approve` |
@@ -154,11 +198,15 @@ When a PO is received, the system:
 
 ## UI Pages
 
-### Suppliers Page (`/suppliers`)
+### Suppliers Page (`/app/suppliers`)
 
 - List all suppliers with search/filter
-- Add/Edit supplier modal
-- View supplier's PO history
+- Show order count, received purchase total, paid amount, outstanding debt, and
+  debt status
+- Add/Edit supplier modal when permitted
+- Detail drawer with supplier info, financial summary, purchase records,
+  receiving confirmation, and payment history
+- Record payment modal for received POs with outstanding balance
 
 ### Purchases Page (`/purchases`)
 
@@ -181,4 +229,6 @@ Purchase data available in:
 3. **Partial Receipts**: Record actual quantities even if less than ordered
 4. **Supplier Tracking**: Use notes field for delivery issues or quality concerns
 5. **Approval Controls**: Require approval for POs above certain amounts
+6. **Payment Discipline**: Record supplier payments against the received PO so
+   outstanding debt remains traceable.
 

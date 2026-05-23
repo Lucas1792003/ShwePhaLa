@@ -154,6 +154,14 @@ export const AppRouter = () => (
         }
       />
       <Route
+        path="suppliers"
+        element={
+          <RequireRole permission={ROUTE_PERMISSIONS.suppliers}>
+            <SuppliersPage />
+          </RequireRole>
+        }
+      />
+      <Route
         path="admin/shops"
         element={
           <RequireRole permission={ROUTE_PERMISSIONS.adminShops}>

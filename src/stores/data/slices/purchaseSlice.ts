@@ -2,7 +2,7 @@ import type { StateCreator } from "zustand";
 import type { DataState, PurchaseState, CreatePurchaseOrderInput } from "../types";
 import type {
   AuditLog, Inventory, InventoryMovement, PurchaseOrder, PurchaseOrderItem,
-  Supplier,
+  Supplier, SupplierPayment,
 } from "../../../types";
 import { supabase, dbExec } from "../../../lib/supabase";
 
@@ -23,6 +23,12 @@ interface CreatePurchaseOrderResult {
 
 interface PurchaseOrderStatusResult {
   purchaseOrder: PurchaseOrder;
+  auditLogs: AuditLog[];
+}
+
+interface RecordSupplierPaymentResult {
+  purchaseOrder: PurchaseOrder;
+  supplierPayment: SupplierPayment;
   auditLogs: AuditLog[];
 }
 
@@ -48,6 +54,7 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
   suppliers: [],
   purchaseOrders: [],
   purchaseOrderItems: [],
+  supplierPayments: [],
 
   addSupplier: async (supplier: Supplier) => {
     await dbExec(supabase.from("suppliers").insert(supplierRow(supplier)), "Add supplier");
@@ -150,6 +157,27 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
       purchaseOrders: s.purchaseOrders.map((p) =>
         p.id === result.purchaseOrder.id ? result.purchaseOrder : p
       ),
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+  },
+
+  recordSupplierPayment: async ({ purchaseOrderId, amountMmk, paymentMethod, referenceNo, notes }) => {
+    const { data, error } = await supabase.rpc("record_supplier_payment", {
+      p_purchase_order_id: purchaseOrderId,
+      p_amount_mmk: amountMmk,
+      p_payment_method: paymentMethod,
+      p_reference_no: referenceNo ?? null,
+      p_notes: notes ?? null,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Record supplier payment returned no data.");
+    const result = data as RecordSupplierPaymentResult;
+
+    set((s) => ({
+      purchaseOrders: s.purchaseOrders.map((p) =>
+        p.id === result.purchaseOrder.id ? result.purchaseOrder : p
+      ),
+      supplierPayments: [result.supplierPayment, ...s.supplierPayments],
       auditLogs: [...result.auditLogs, ...s.auditLogs],
     }));
   },

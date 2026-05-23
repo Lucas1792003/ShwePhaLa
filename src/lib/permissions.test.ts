@@ -18,6 +18,7 @@ import {
   canCompleteTransfer,
   canReceivePurchaseOrder,
   canApprovePurchaseOrder,
+  canRecordSupplierPayment,
   canManagePriceTier,
 } from "./permissions";
 
@@ -68,6 +69,8 @@ describe("role default permissions", () => {
     expect(hasPermission(manager, "report:global")).toBe(false);
     expect(hasPermission(manager, "pricing:manage")).toBe(false);
     expect(hasPermission(manager, "purchase:approve")).toBe(false);
+    expect(hasPermission(manager, "supplier:debt_view")).toBe(true);
+    expect(hasPermission(manager, "supplier:payment_create")).toBe(true);
   });
 
   it("CASHIER has POS permissions but not management ones", () => {
@@ -85,11 +88,13 @@ describe("role default permissions", () => {
     const buyer = makeUser({ role: "BUYER" });
     expect(hasPermission(buyer, "product:read")).toBe(true);
     expect(hasPermission(buyer, "supplier:read")).toBe(true);
+    expect(hasPermission(buyer, "supplier:debt_view")).toBe(true);
     expect(hasPermission(buyer, "purchase:view")).toBe(true);
     expect(hasPermission(buyer, "purchase:create")).toBe(true);
+    expect(hasPermission(buyer, "supplier:payment_create")).toBe(false);
     expect(hasPermission(buyer, "pos:create_sale")).toBe(false);
     expect(getRolePermissions("BUYER")).toEqual([
-      "product:read", "supplier:read", "purchase:view", "purchase:create",
+      "product:read", "supplier:read", "supplier:debt_view", "purchase:view", "purchase:create",
     ]);
   });
 });
@@ -256,6 +261,14 @@ describe("workflow helpers", () => {
     expect(canApprovePurchaseOrder(admin, makePO("shop-a"))).toBe(true);
   });
 
+  it("canRecordSupplierPayment checks permission and PO shop", () => {
+    const manager = makeUser({ role: "MANAGER", shopId: "shop-a" });
+    const buyer = makeUser({ role: "BUYER", shopId: "shop-a" });
+    expect(canRecordSupplierPayment(manager, makePO("shop-a"))).toBe(true);
+    expect(canRecordSupplierPayment(manager, makePO("shop-b"))).toBe(false);
+    expect(canRecordSupplierPayment(buyer, makePO("shop-a"))).toBe(false);
+  });
+
   it("canManagePriceTier: admin yes, manager no", () => {
     const admin = makeUser({ role: "ADMIN" });
     const manager = makeUser({ role: "MANAGER", shopId: "shop-a" });
@@ -356,6 +369,8 @@ describe("RBAC role tuning", () => {
     expect(hasShopPermission(m, "inventory:adjust", "shop-a")).toBe(true);
     expect(hasShopPermission(m, "transfer:approve", "shop-a")).toBe(true);
     expect(hasShopPermission(m, "purchase:create", "shop-a")).toBe(true);
+    expect(hasShopPermission(m, "supplier:payment_create", "shop-a")).toBe(true);
+    expect(hasShopPermission(m, "supplier:debt_view", "shop-a")).toBe(true);
     expect(hasShopPermission(m, "pos:refund", "shop-a")).toBe(true);
     // ...but only for the assigned shop
     expect(hasShopPermission(m, "inventory:adjust", "shop-b")).toBe(false);
@@ -387,12 +402,14 @@ describe("RBAC role tuning", () => {
     expect(hasPermission(b, "purchase:view")).toBe(true);
     expect(hasPermission(b, "product:read")).toBe(true);
     expect(hasPermission(b, "supplier:read")).toBe(true);
+    expect(hasPermission(b, "supplier:debt_view")).toBe(true);
   });
 
-  it("BUYER cannot receive/approve purchase orders or adjust stock", () => {
+  it("BUYER cannot receive/approve purchase orders, record payments, or adjust stock", () => {
     const b = buyer();
     expect(hasPermission(b, "purchase:receive")).toBe(false);
     expect(hasPermission(b, "purchase:approve")).toBe(false);
+    expect(hasPermission(b, "supplier:payment_create")).toBe(false);
     expect(hasPermission(b, "inventory:adjust")).toBe(false);
     expect(hasPermission(b, "inventory:override_negative")).toBe(false);
     expect(hasPermission(b, "user:create")).toBe(false);
@@ -427,17 +444,17 @@ describe("RBAC role tuning", () => {
 
 describe("SQL / TypeScript role-default sync", () => {
   // DEFAULT_ROLE_PERMISSIONS (src/types/domain.ts) and the SQL function
-  // role_default_permissions() in supabase/migrations/014_rbac_role_tuning.sql
+  // role_default_permissions() in the latest RBAC migration
   // are TWO HALVES OF ONE CONTRACT. This block is a tripwire: if a role's
-  // default set changes, migration 014's SQL must change in the same commit
+  // default set changes, SQL role defaults must change in the same commit
   // (and a follow-up migration shipped). The counts are the migration-014
-  // contract.
+  // contract after supplier-debt permissions were added.
   it("each role has the documented number of default permissions", () => {
     expect(getRolePermissions("ADMIN")).toHaveLength(ALL_PERMISSIONS.length);
-    expect(getRolePermissions("ADMIN").length).toBe(54);
-    expect(getRolePermissions("MANAGER")).toHaveLength(36);
+    expect(getRolePermissions("ADMIN").length).toBe(56);
+    expect(getRolePermissions("MANAGER")).toHaveLength(38);
     expect(getRolePermissions("CASHIER")).toHaveLength(10);
-    expect(getRolePermissions("BUYER")).toHaveLength(4);
+    expect(getRolePermissions("BUYER")).toHaveLength(5);
   });
 
   it("permissions removed by migration 014 are gone from the registry", () => {
@@ -514,6 +531,7 @@ describe("RBAC follow-up — permission-gated RLS read contract", () => {
     expect(b.shopId).toBeDefined(); // a shopless BUYER is a misconfiguration
     expect(hasPermission(b, "purchase:view")).toBe(true);
     expect(hasPermission(b, "purchase:create")).toBe(true);
+    expect(hasPermission(b, "supplier:debt_view")).toBe(true);
     expect(hasShopPermission(b, "purchase:create", "shop-a")).toBe(true);
     expect(hasShopPermission(b, "purchase:create", "shop-b")).toBe(false);
   });
@@ -585,5 +603,39 @@ describe("migration 015 — permission-gated SELECT RLS policies", () => {
     expect(sql).not.toContain("FOR INSERT");
     expect(sql).not.toContain("FOR UPDATE");
     expect(sql).not.toContain("FOR DELETE");
+  });
+});
+
+describe("migration 018 — supplier debt/payments security contract", () => {
+  const sql = readFileSync(
+    fileURLToPath(new URL("../../supabase/migrations/018_supplier_debt_payments.sql", import.meta.url)),
+    "utf8",
+  );
+
+  it("adds supplier debt/payment permissions to SQL role defaults", () => {
+    expect(sql).toContain("supplier:debt_view");
+    expect(sql).toContain("supplier:payment_create");
+  });
+
+  it("creates supplier_payments with RPC-only writes", () => {
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS supplier_payments");
+    expect(sql).toContain("REVOKE INSERT, UPDATE, DELETE ON supplier_payments FROM authenticated");
+    expect(sql).not.toContain('CREATE POLICY "supplier_payments_ins"');
+  });
+
+  it("supplier_payments SELECT is shop and permission scoped", () => {
+    const marker = 'CREATE POLICY "supplier_payments_sel"';
+    const start = sql.indexOf(marker);
+    expect(start).toBeGreaterThan(-1);
+    const body = sql.slice(start, sql.indexOf(";", start));
+    expect(body).toContain("shop_id = app_shop_id()");
+    expect(body).toContain("app_has_perm('supplier:debt_view')");
+    expect(body).toContain("app_has_perm('purchase:view')");
+  });
+
+  it("adds the record_supplier_payment RPC and grants execute only", () => {
+    expect(sql).toContain("FUNCTION record_supplier_payment");
+    expect(sql).toContain("SECURITY DEFINER");
+    expect(sql).toContain("GRANT EXECUTE ON FUNCTION record_supplier_payment");
   });
 });

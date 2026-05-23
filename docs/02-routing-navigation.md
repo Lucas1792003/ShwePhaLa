@@ -15,6 +15,7 @@ in `src/lib/permissions.ts`.
 - `/app/inventory` - Stock levels and movements (`inventory:view_stock`)
 - `/app/transfers` - Inter-shop transfers (`transfer:view`)
 - `/app/purchases` - Purchase orders (`purchase:view`)
+- `/app/suppliers` - Supplier records, received purchases, and debt (`supplier:read`)
 - `/app/approvals` - Refund/void approvals (`approval:view`)
 - `/app/reports` - Shop sales reports (`report:shop_sales`)
 - `/app/reports/profit` - Profit & analytics, ADMIN-only (`report:shop_profit`)
@@ -38,7 +39,7 @@ in `src/lib/permissions.ts`.
 - `/app/admin/users` - User management (`user:create`)
 - `/app/admin/products` - Product management (`product:create`)
 - `/app/admin/barcodes` - Barcode mappings (`barcode:manage`)
-- `/app/admin/suppliers` - Supplier management (`supplier:read`)
+- `/app/admin/suppliers` - Backward-compatible supplier route (`supplier:read`)
 - `/app/admin/pricing` - Pricing tiers (`pricing:manage`)
 - `/app/admin/reports` - Global reports (`report:global`)
 - `/app/admin/audit` - Audit logs (`audit:view_global`)
@@ -49,8 +50,8 @@ The sidebar is organized into collapsible sections:
 
 - Main: Dashboard, POS
 - Sales & Operations: Sales History, Shifts, Approvals
-- Inventory: Stock Levels, Transfers, Purchases
-- Settings: Shops, Users, Products, Barcodes, Suppliers, Pricing, Audit Logs
+- Inventory: Stock Levels, Transfers, Purchases, Suppliers
+- Settings: Shops, Users, Products, Barcodes, Pricing, Audit Logs
 
 Sidebar entries are hidden when the active user lacks the required granular
 permission.

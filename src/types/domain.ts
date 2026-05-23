@@ -35,6 +35,8 @@ export type TransferStatus = "PENDING" | "APPROVED" | "COMPLETED" | "CANCELED" |
 
 // Purchase Order Status
 export type PurchaseOrderStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "RECEIVED" | "CANCELED";
+export type PurchasePaymentStatus = "UNPAID" | "PARTIAL" | "PAID";
+export type SupplierPaymentMethod = "CASH" | "BANK" | "MOBILE" | "OTHER";
 
 // ============================================
 // Granular Permissions — single central registry.
@@ -68,6 +70,7 @@ export const ALL_PERMISSIONS = [
   "sale:view", "sales:view_own_shift", "receipt:reprint",
   // Suppliers & Purchasing
   "supplier:create", "supplier:read", "supplier:update", "supplier:delete",
+  "supplier:debt_view", "supplier:payment_create",
   "purchase:create", "purchase:approve", "purchase:receive", "purchase:view",
   // Pricing
   "pricing:manage",
@@ -170,6 +173,10 @@ export interface PurchaseOrder {
   subtotalMmk: number;
   taxMmk?: number;
   totalMmk: number;
+  paidMmk?: number;
+  paymentStatus?: PurchasePaymentStatus;
+  supplierInvoiceNo?: string;
+  deliveryNoteNo?: string;
   notes?: string;
   createdBy: string;
   createdAt: string;
@@ -187,6 +194,23 @@ export interface PurchaseOrderItem {
   receivedQty?: number;
   unitCostMmk: number;
   lineTotalMmk: number;
+}
+
+export interface SupplierPayment {
+  id: string;
+  supplierId: string;
+  purchaseOrderId: string;
+  shopId: string;
+  amountMmk: number;
+  paymentMethod: SupplierPaymentMethod;
+  referenceNo?: string;
+  notes?: string;
+  paidAt: string;
+  createdBy: string;
+  createdAt: string;
+  voidedAt?: string;
+  voidedBy?: string;
+  voidReason?: string;
 }
 
 // Stock Transfer Between Shops
@@ -363,6 +387,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "pos:void_sale", "pos:refund", "pos:request_refund", "pos:request_void",
     "sale:view", "sales:view_own_shift", "receipt:reprint",
     "supplier:read",
+    "supplier:debt_view", "supplier:payment_create",
     "purchase:create", "purchase:receive", "purchase:view",
     "approval:view",
     "shift:manage_own", "shift:manage_all", "shift:verify",
@@ -383,7 +408,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     // Limited catalog + purchasing role: browse catalog/suppliers and
     // create/view purchase orders. No approving, receiving or stock writes.
     "product:read",
-    "supplier:read",
+    "supplier:read", "supplier:debt_view",
     "purchase:view", "purchase:create",
   ],
 };

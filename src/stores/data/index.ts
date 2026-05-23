@@ -6,7 +6,7 @@ import type {
   AuditLog, Category, Inventory, InventoryMovement, PriceTier,
   Product, ProductBarcode, PurchaseOrder, PurchaseOrderItem,
   Refund, Sale, SaleItem, Shift, Shop, StockTransfer, StockTransferItem,
-  Supplier, User,
+  Supplier, SupplierPayment, User,
 } from "../../types";
 
 // Import all slices
@@ -94,7 +94,11 @@ const mapSupplier = (r: any): Supplier => ({
 const mapPurchaseOrder = (r: any): PurchaseOrder => ({
   id: r.id, orderNo: r.order_no, shopId: r.shop_id, supplierId: r.supplier_id,
   status: r.status, subtotalMmk: r.subtotal_mmk, taxMmk: r.tax_mmk ?? undefined,
-  totalMmk: r.total_mmk, notes: r.notes ?? undefined, createdBy: r.created_by,
+  totalMmk: r.total_mmk, paidMmk: r.paid_mmk ?? undefined,
+  paymentStatus: r.payment_status ?? undefined,
+  supplierInvoiceNo: r.supplier_invoice_no ?? undefined,
+  deliveryNoteNo: r.delivery_note_no ?? undefined,
+  notes: r.notes ?? undefined, createdBy: r.created_by,
   createdAt: r.created_at, approvedBy: r.approved_by ?? undefined,
   approvedAt: r.approved_at ?? undefined, receivedBy: r.received_by ?? undefined,
   receivedAt: r.received_at ?? undefined,
@@ -105,6 +109,16 @@ const mapPurchaseOrderItem = (r: any): PurchaseOrderItem => ({
   id: r.id, purchaseOrderId: r.purchase_order_id, productId: r.product_id,
   orderedQty: r.ordered_qty, receivedQty: r.received_qty ?? undefined,
   unitCostMmk: r.unit_cost_mmk, lineTotalMmk: r.line_total_mmk,
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapSupplierPayment = (r: any): SupplierPayment => ({
+  id: r.id, supplierId: r.supplier_id, purchaseOrderId: r.purchase_order_id,
+  shopId: r.shop_id, amountMmk: r.amount_mmk, paymentMethod: r.payment_method,
+  referenceNo: r.reference_no ?? undefined, notes: r.notes ?? undefined,
+  paidAt: r.paid_at, createdBy: r.created_by, createdAt: r.created_at,
+  voidedAt: r.voided_at ?? undefined, voidedBy: r.voided_by ?? undefined,
+  voidReason: r.void_reason ?? undefined,
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -195,7 +209,7 @@ export const useDataStore = create<DataState>()((...args) => {
       try {
         const [
           shops, users, categories, products, barcodes, priceTiers,
-          inventory, movements, suppliers, purchaseOrders, purchaseOrderItems,
+          inventory, movements, suppliers, purchaseOrders, purchaseOrderItems, supplierPayments,
           stockTransfers, stockTransferItems, shifts, sales, saleItems,
           reprintLogs, refunds, auditLogs,
         ] = await Promise.all([
@@ -210,6 +224,7 @@ export const useDataStore = create<DataState>()((...args) => {
           supabase.from("suppliers").select("*"),
           supabase.from("purchase_orders").select("*"),
           supabase.from("purchase_order_items").select("*"),
+          supabase.from("supplier_payments").select("*").order("paid_at", { ascending: false }),
           supabase.from("stock_transfers").select("*"),
           supabase.from("stock_transfer_items").select("*"),
           supabase.from("shifts").select("*"),
@@ -241,6 +256,7 @@ export const useDataStore = create<DataState>()((...args) => {
           suppliers: (suppliers.data ?? []).map(mapSupplier),
           purchaseOrders: (purchaseOrders.data ?? []).map(mapPurchaseOrder),
           purchaseOrderItems: (purchaseOrderItems.data ?? []).map(mapPurchaseOrderItem),
+          supplierPayments: (supplierPayments.data ?? []).map(mapSupplierPayment),
           stockTransfers: (stockTransfers.data ?? []).map(mapStockTransfer),
           stockTransferItems: (stockTransferItems.data ?? []).map(mapStockTransferItem),
           shifts: (shifts.data ?? []).map(mapShift),

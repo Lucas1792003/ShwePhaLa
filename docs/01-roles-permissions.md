@@ -10,8 +10,8 @@ The granular permissions (e.g. `pos:create_sale`) are the **single source of
 truth**. The old coarse permission system has been removed. The central
 registry lives in `src/lib/permissions.ts`, and the permission list + role
 defaults in `src/types/domain.ts`. The SQL half of the contract is
-`role_default_permissions()` in `migrations/014_rbac_role_tuning.sql` — it MUST
-be kept in sync with `DEFAULT_ROLE_PERMISSIONS`.
+`role_default_permissions()` in the latest RBAC migration — it MUST be kept in
+sync with `DEFAULT_ROLE_PERMISSIONS`.
 
 ## Roles
 
@@ -103,6 +103,8 @@ enough for the receipt page and shift summary).
 | `supplier:read` | View supplier list | ✅ | ✅ | ❌ | ✅ |
 | `supplier:update` | Edit supplier details | ✅ | ❌ | ❌ | ❌ |
 | `supplier:delete` | Delete suppliers | ✅ | ❌ | ❌ | ❌ |
+| `supplier:debt_view` | View supplier debt, payments, and received-purchase records | ✅ | ✅ | ❌ | ✅ |
+| `supplier:payment_create` | Record supplier payments | ✅ | ✅ | ❌ | ❌ |
 | `purchase:create` | Create purchase orders | ✅ | ✅ | ❌ | ✅ |
 | `purchase:approve` | Approve purchase orders | ✅ | ❌ | ❌ | ❌ |
 | `purchase:receive` | Receive stock from PO | ✅ | ✅ | ❌ | ❌ |
@@ -152,8 +154,9 @@ inventory reports but not profit unless explicitly granted `report:shop_profit`.
 - **MANAGER — no profit by default.** Operational sales/inventory reports only;
   `report:shop_profit` and the Profit & Analytics page are ADMIN-only unless a
   manager is explicitly granted `report:shop_profit`.
-- **BUYER — per-shop purchasing role.** Gains `supplier:read`, `purchase:view`,
-  `purchase:create`. Must be assigned a shop.
+- **BUYER — per-shop purchasing role.** Gains `supplier:read`,
+  `supplier:debt_view`, `purchase:view`, `purchase:create`. Must be assigned a
+  shop. Cannot record supplier payments by default.
 - **`inventory:view_stock` vs `inventory:view_movements`.** Current stock vs
   movement history are now separate grants.
 - **`report:shop_sales` vs `report:shop_profit`.** Operational sales vs
@@ -247,6 +250,7 @@ A same-shop user can no longer read rows the UI hides:
 | `shifts` | ADMIN; `shift:manage_all`/`report:shop_sales` + shop; or own shifts |
 | `purchase_orders` | ADMIN; `purchase:view` + shop |
 | `purchase_order_items` | iff parent PO is readable |
+| `supplier_payments` | ADMIN; `supplier:debt_view` or `purchase:view` + shop |
 | `stock_transfers` | ADMIN; `transfer:view` + source/destination shop |
 | `stock_transfer_items` | iff parent transfer is readable |
 | `refund_void_requests` | ADMIN; `pos:refund`/`pos:void_sale` + shop; or own (`created_by`) |
@@ -262,7 +266,7 @@ remain blocked; those workflows use SECURITY DEFINER RPCs.
 
 | Role | Total Permissions |
 |------|-------------------|
-| Admin | 54 (full access) |
-| Manager | 36 |
+| Admin | 56 (full access) |
+| Manager | 38 |
 | Cashier | 10 |
-| Buyer | 4 |
+| Buyer | 5 |

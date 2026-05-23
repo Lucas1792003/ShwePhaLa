@@ -104,7 +104,9 @@ export async function seedSupabase() {
     seedPurchaseOrders.map((o) => ({
       id: o.id, order_no: o.orderNo, shop_id: o.shopId, supplier_id: o.supplierId,
       status: o.status, subtotal_mmk: o.subtotalMmk, tax_mmk: o.taxMmk,
-      total_mmk: o.totalMmk, notes: o.notes, created_by: o.createdBy,
+      total_mmk: o.totalMmk, paid_mmk: o.paidMmk, payment_status: o.paymentStatus,
+      supplier_invoice_no: o.supplierInvoiceNo, delivery_note_no: o.deliveryNoteNo,
+      notes: o.notes, created_by: o.createdBy,
       created_at: o.createdAt, approved_by: o.approvedBy, approved_at: o.approvedAt,
       received_by: o.receivedBy, received_at: o.receivedAt,
     }))

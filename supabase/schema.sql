@@ -129,6 +129,10 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   subtotal_mmk integer NOT NULL,
   tax_mmk integer,
   total_mmk integer NOT NULL,
+  paid_mmk integer NOT NULL DEFAULT 0,
+  payment_status text NOT NULL DEFAULT 'UNPAID',
+  supplier_invoice_no text,
+  delivery_note_no text,
   notes text,
   created_by text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -147,6 +151,24 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
   received_qty integer,
   unit_cost_mmk integer NOT NULL,
   line_total_mmk integer NOT NULL
+);
+
+-- supplier_payments
+CREATE TABLE IF NOT EXISTS supplier_payments (
+  id text PRIMARY KEY,
+  supplier_id text NOT NULL REFERENCES suppliers(id),
+  purchase_order_id text NOT NULL REFERENCES purchase_orders(id),
+  shop_id text NOT NULL REFERENCES shops(id),
+  amount_mmk integer NOT NULL CHECK (amount_mmk > 0),
+  payment_method text NOT NULL,
+  reference_no text,
+  notes text,
+  paid_at timestamptz NOT NULL DEFAULT now(),
+  created_by text NOT NULL REFERENCES users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  voided_at timestamptz,
+  voided_by text REFERENCES users(id),
+  void_reason text
 );
 
 -- stock_transfers
@@ -276,6 +298,7 @@ ALTER TABLE inventory_movements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE suppliers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplier_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_transfers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_transfer_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shifts ENABLE ROW LEVEL SECURITY;
@@ -297,6 +320,7 @@ CREATE POLICY "authenticated_all" ON inventory_movements FOR ALL TO authenticate
 CREATE POLICY "authenticated_all" ON suppliers FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "authenticated_all" ON purchase_orders FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "authenticated_all" ON purchase_order_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_all" ON supplier_payments FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "authenticated_all" ON stock_transfers FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "authenticated_all" ON stock_transfer_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "authenticated_all" ON shifts FOR ALL TO authenticated USING (true) WITH CHECK (true);
