@@ -66,6 +66,10 @@ See [12-supabase-setup.md](./12-supabase-setup.md).
 - [28-script-4b-shop-scoped-reads-tests.md](./28-script-4b-shop-scoped-reads-tests.md)
 - [29-live-supabase-rls-rpc-verification.md](./29-live-supabase-rls-rpc-verification.md)
 
+## UI / Responsiveness
+
+- [32-responsive-testing-checklist.md](./32-responsive-testing-checklist.md) - Tablet/laptop/desktop responsive targets and per-page checklist
+
 ## Status
 
 - [20-todo-next.md](./20-todo-next.md) - Current project status and next steps

@@ -15,7 +15,7 @@ interface PaymentModalProps {
 
 export const PaymentModal = ({ open, totalMmk, loading = false, onClose, onConfirm }: PaymentModalProps) => {
   const [method, setMethod] = useState<"CASH" | "OTHER">("CASH");
-  const [paid, setPaid] = useState(totalMmk);
+  const [paid, setPaid] = useState(0);
   const change = Math.max(0, paid - totalMmk);
   const isUnderpaid = paid < totalMmk;
   const canConfirm = !loading && paid >= totalMmk;
@@ -25,8 +25,8 @@ export const PaymentModal = ({ open, totalMmk, loading = false, onClose, onConfi
   };
 
   useEffect(() => {
-    setPaid(totalMmk);
-  }, [totalMmk]);
+    if (open) setPaid(0);
+  }, [open, totalMmk]);
 
   return (
     <Modal

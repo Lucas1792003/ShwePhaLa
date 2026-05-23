@@ -17,8 +17,8 @@ interface InventoryTableProps {
 }
 
 export const InventoryTable = ({ rows, onAdjust }: InventoryTableProps) => (
-  <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white">
-    <Table>
+  <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
+    <Table className="min-w-[640px]">
       <THead>
         <TR>
           <TH>Product</TH>

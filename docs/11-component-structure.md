@@ -8,9 +8,13 @@ src/
     layout/          AppLayout, Sidebar, Topbar, ShopSwitcher
     routes/          AppRouter and route guards
   components/
-    ui/              Button, Card, Modal, Badge, Select, Toast
-    pos/             POS-specific components
-    sales/           Sales drawer, refund/void modals
+    ui/              Button, Card, Modal, Drawer, Badge, Select, Toast
+    pos/             POS-specific components (ProductFinder, CartPanel,
+                     PaymentModal, ReceiptPreview)
+    receipt/         ReceiptDetail — shared between /app/sales/:saleId
+                     and Sales History drawer
+    sales/           SalesTable, SaleDetailDrawer (wraps ReceiptDetail in
+                     drawer variant), refund/void modals
     shifts/          Shift cards and detail views
     inventory/       Inventory UI components
     dashboard/       Dashboard charts and summaries

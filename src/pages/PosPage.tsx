@@ -280,7 +280,7 @@ export const PosPage = () => {
         </Card>
 
         {/* Cart Section */}
-        <Card className="w-[380px] flex-shrink-0">
+        <Card className="w-[320px] flex-shrink-0 xl:w-[380px]">
           <CartPanel
             items={cartItems}
             subtotal={subtotal}

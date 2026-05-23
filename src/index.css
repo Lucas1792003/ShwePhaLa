@@ -55,7 +55,7 @@ body {
 .sidebar {
   top: 0;
   background: var(--color-bg-sidebar);
-  width: 270px;
+  width: 220px;
   height: 100vh;
   position: sticky;
   border-right: 1px solid var(--color-border-hr);
@@ -68,6 +68,12 @@ body {
   flex-shrink: 0;
 }
 
+@media (min-width: 1280px) {
+  .sidebar {
+    width: 270px;
+  }
+}
+
 .sidebar .sidebar-header {
   display: flex;
   align-items: center;
@@ -77,12 +83,19 @@ body {
 }
 
 .sidebar-header .header-logo {
-  width: 68px;
-  height: 68px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   object-fit: cover;
   display: block;
-  transition: opacity 0.4s ease;
+  transition: opacity 0.4s ease, width 0.3s ease, height 0.3s ease;
+}
+
+@media (min-width: 1280px) {
+  .sidebar-header .header-logo {
+    width: 68px;
+    height: 68px;
+  }
 }
 
 .sidebar-header .shopName {
@@ -234,9 +247,16 @@ body {
 .main {
   flex: 1;
   display: flex;
-  padding: 1.5rem;
-  gap: 1.5rem;
+  padding: 1rem;
+  gap: 1rem;
   min-width: 0;
+}
+
+@media (min-width: 1280px) {
+  .main {
+    padding: 1.5rem;
+    gap: 1.5rem;
+  }
 }
 
 .app-content {
@@ -267,7 +287,10 @@ body {
   margin-top: 6px;
 }
 
-@media (max-width: 1024px) {
+/* Below 768px the AppLayout renders the SmallScreenGuard instead of the
+   real chrome, but stack the sidebar above the content just in case the
+   guard is bypassed (e.g. printing). */
+@media (max-width: 767px) {
   .buyer-container {
     flex-direction: column;
   }
@@ -280,6 +303,6 @@ body {
   }
 
   .main {
-    padding: 1rem;
+    padding: 0.75rem;
   }
 }

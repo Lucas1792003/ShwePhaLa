@@ -21,17 +21,31 @@ admin. SKU is not currently the POS scan lookup table; `product_barcodes` is.
 ## Checkout
 
 - Cashier must have an open shift.
-- Payment modal captures payment method and paid amount.
+- Payment modal captures payment method and paid amount. The "Amount
+  received" input opens at `0` every time the modal opens; the shared
+  `Input` selects-on-focus so typing replaces the 0 immediately. The
+  Confirm button stays disabled until paid ≥ total.
 - Checkout calls `complete_sale`, a single atomic, permission-checked RPC.
 - The RPC validates auth, shop access, shift, products, inventory, stock, and
   override permissions.
 - The RPC inserts sale rows, sale item rows, inventory updates, movement rows,
   and audit rows in one database transaction.
-- The cart clears and receipt printing starts only after RPC success.
+- The cart clears and the receipt page opens only after RPC success.
+
+## Receipt detail
+
+The post-payment receipt page and the Sales History drawer share a single
+`ReceiptDetail` component (`src/components/receipt/ReceiptDetail.tsx`).
+The `variant="page"` form keeps the existing centered 80 mm receipt with a
+`PageHeader` + Print/Reprint actions; the `variant="drawer"` form omits
+the page header so the same body fits inside the responsive `Drawer`
+primitive used by Sales History.
 
 ## Reprints
 
 Receipt reprint logging uses `log_receipt_reprint`, not a direct table insert.
+The Reprint button is gated on `receipt:reprint`. Print (no log) and Reprint
+(logged) coexist so a normal first print does not double-log.
 
 ## Refunds And Voids
 

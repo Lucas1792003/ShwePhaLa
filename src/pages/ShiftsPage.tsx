@@ -8,6 +8,7 @@ import { ShiftTable } from "../components/shifts/ShiftTable";
 import { ShiftDetail } from "../components/shifts/ShiftDetail";
 import { Modal } from "../components/ui/Modal";
 import { Button } from "../components/ui/Button";
+import { buildShiftBreakdown } from "../features/shifts/service";
 import { downloadCsv } from "../lib/csv";
 import { getEffectiveShopId } from "../lib/utils";
 
@@ -19,6 +20,7 @@ export const ShiftsPage = () => {
   const shifts = useDataStore((state) => state.shifts);
   const users = useDataStore((state) => state.users);
   const sales = useDataStore((state) => state.sales);
+  const refundVoidRequests = useDataStore((state) => state.refundVoidRequests);
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null);
 
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
@@ -56,7 +58,11 @@ export const ShiftsPage = () => {
           <ShiftDetail
             shift={selectedShift}
             cashierName={users.find((user) => user.id === selectedShift.cashierId)?.name}
-            saleCount={sales.filter((sale) => sale.shiftId === selectedShift.id).length}
+            breakdown={buildShiftBreakdown(
+              selectedShift,
+              sales.filter((sale) => sale.shiftId === selectedShift.id),
+              refundVoidRequests
+            )}
           />
         )}
       </Modal>

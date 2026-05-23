@@ -9,7 +9,7 @@ in `src/lib/permissions.ts`.
 - `/login` - Login page
 - `/app/dashboard` - Analytics dashboard (`report:shop_sales`)
 - `/app/pos` - Point of Sale (`pos:create_sale`)
-- `/app/sales` - Full sales history (`sale:view`)
+- `/app/sales` - Sales history (`sales:view_own_shift`)
 - `/app/sales/:saleId` - Sale / receipt details (`sales:view_own_shift`)
 - `/app/shifts` - Shift management (`shift:manage_own`)
 - `/app/inventory` - Stock levels and movements (`inventory:view_stock`)
@@ -20,12 +20,17 @@ in `src/lib/permissions.ts`.
 - `/app/reports/profit` - Profit & analytics, ADMIN-only (`report:shop_profit`)
 - `/app/catalog` - Product catalog for buyers (`product:read`)
 
-> The `/app/sales` **list** still needs `sale:view` (managers/admins), while
-> `/app/sales/:saleId` **receipt detail** uses `sales:view_own_shift` so a
-> cashier can open the receipt of a sale they just rang up. Inside
-> `/app/inventory`, the Movements tab and the Adjust action are additionally
-> gated by `inventory:view_movements` / `inventory:adjust`. On `/app/dashboard`
-> the profit/cost cards require `report:shop_profit`.
+> The `/app/sales` **list** is gated by `sales:view_own_shift`, which a cashier
+> already holds. Row scope is still enforced by the `sales_sel` RLS
+> (migration `015`): a caller without `sale:view` only sees sales they rang
+> up or sales in shifts they own. `SalesPage` mirrors that on the client —
+> when the caller lacks `sale:view` it narrows the rows to
+> `cashierId === currentUserId`, hides the cashier filter, swaps "Void sale"
+> for "Request void", and hides approve buttons (those are gated on
+> `pos:refund` / `pos:void_sale`). Managers/admins keep the full shop history.
+> Inside `/app/inventory`, the Movements tab and the Adjust action are
+> additionally gated by `inventory:view_movements` / `inventory:adjust`. On
+> `/app/dashboard` the profit/cost cards require `report:shop_profit`.
 
 ## Admin Routes
 

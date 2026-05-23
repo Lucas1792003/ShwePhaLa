@@ -1,5 +1,103 @@
 # Recent Changes
 
+## Tablet / desktop responsiveness + small-screen guard
+
+- **Target sizes.** Layout is now intentionally designed for tablet
+  landscape and larger: 1024 × 768 (tightest), 1280 × 720, 1280 × 800,
+  1366 × 768, 1440 × 900, 1536 × 864, 1920 × 1080 (main target), and
+  2560 × 1440 (sanity). See
+  [`docs/32-responsive-testing-checklist.md`](./32-responsive-testing-checklist.md)
+  for the full matrix and per-page expectations.
+- **Small-screen guard.** Viewports below 768 px now render
+  `SmallScreenGuard` instead of the app chrome: *"This app is optimized for
+  tablet and desktop screens. Please use a wider screen for POS
+  operations."* New `useViewportWidth` hook drives it from `AppLayout`.
+- **Sidebar.** Default width dropped to **220 px**; widens to **270 px**
+  at `min-width: 1280px`. Sidebar header logo scales 48 → 68 at the same
+  breakpoint. The old `max-width: 1024px` stack rule was moved to
+  `max-width: 767px` so the 1024 tablet keeps the sidebar inline.
+- **POS.** Cart `w-[320px] xl:w-[380px]`. Product grid steps
+  `2 → 3 → 4` at `lg → xl → 2xl` (was crammed to `4` at `lg`).
+- **Dashboard.** Top stat row `sm:grid-cols-2 lg:grid-cols-3
+  xl:grid-cols-5` (was `lg:grid-cols-5`, too tight at 1024).
+- **Tables.** Sales, Inventory, Movements, Shifts, and Audit table
+  wrappers switched from `overflow-hidden` to `overflow-x-auto` with
+  meaningful `min-w-*` — columns scroll horizontally if needed instead of
+  clipping silently.
+- **No backend changes.** Frontend layout only; no RPC/RLS/permission
+  changes.
+
+## Receipt / sales detail unification + drawer redesign
+
+- **Single source of truth.** New
+  [`src/components/receipt/ReceiptDetail.tsx`](../src/components/receipt/ReceiptDetail.tsx)
+  is the only receipt-detail surface — used by the route
+  `/app/sales/:saleId` (POS post-payment + "Open full receipt") and by
+  the Sales History drawer. Includes the 80 mm `ReceiptPreview`, reprint
+  log, Request actions card (with *"Requests require manager approval"*
+  helper), and a Pending approvals card.
+- **`variant` prop.** `"page"` (default) renders the full `PageHeader`
+  with Print/Reprint as header actions plus a Back link; `"drawer"`
+  swaps to a compact inline toolbar so the same body lives cleanly
+  inside the redesigned drawer.
+- **Sales History drawer.** Restored as
+  [`src/components/sales/SaleDetailDrawer.tsx`](../src/components/sales/SaleDetailDrawer.tsx)
+  wrapping the shared `Drawer` primitive. Sticky header with
+  `Receipt {receiptNo}` + status badge + payment method, scrollable
+  body, sticky footer "Open full receipt →" link that routes to the
+  page version. Filter context is preserved (the list page no longer
+  navigates on row-click).
+- **Drawer primitive.** Upgraded with sticky header (real
+  `material-symbols-rounded close` icon, `aria-label="Close"`),
+  scrollable body, sticky footer, and responsive width
+  (`w-full sm:max-w-lg`).
+- **SalesTable.** Replaced the implicit clickable-row pattern with an
+  explicit **"View receipt"** action column; added a Payment column.
+- **Permission gating.** Request actions now gate on
+  `pos:request_void` / `pos:request_refund` (not on `role === CASHIER`),
+  so managers can also request through the same UI. Approve buttons
+  appear only with `pos:void_sale` / `pos:refund`. Cashiers can reprint
+  via `log_receipt_reprint` (gated on `receipt:reprint`). No RLS change.
+- **Payment modal default.** `Amount received` now opens at **0**
+  every time the modal opens (was pre-filled with the total). Confirm
+  stays disabled until ≥ total; the shared `Input` selects-on-focus so
+  typing replaces the 0 instantly.
+
+## Shift summary UI parity + cashier sales history
+
+- **Shift summary UI bug fixed.** The manager `ShiftDetail` modal used to
+  render `expected_cash_mmk ?? 0` straight from the row; for an **open** shift
+  those columns are still `NULL` (only `close_shift` writes them), so the
+  modal showed `Expected cash: MMK 0` next to `Sales count: 1` even when a
+  cash sale existed. No backend / RLS / RPC change — the fix is UI-only.
+- **Live expected cash for open shifts.** Both the cashier card
+  (`ShiftSummary`) and the manager modal (`ShiftDetail`) now compute
+  expected cash live from the shift's sales using the same formula as the
+  `close_shift` RPC:
+  `opening_cash + CASH sales (status<>VOID) − approved PARTIAL cash refunds`.
+- **Shared helper, single source of truth.** Added
+  `buildShiftBreakdown(shift, sales, refunds)` in
+  `features/shifts/service.ts`. Both components and the cashier-page close
+  handler consume it, so the live preview, the manager modal, and the local
+  variance prompt cannot drift from one another. `ShiftSummary` and
+  `ShiftDetail` take a precomputed `breakdown` prop; the parent pages call
+  the helper once per render.
+- **New summary layout.** Two cards on every shift summary:
+  *Payment breakdown* (cash / other counts + totals, approved cash refunds
+  if any, voided sales count if any, total sales count) and
+  *Cash reconciliation* (opening, expected, closing, variance). For an open
+  shift, closing and variance render as `—` and expected cash is labeled
+  `(live)`; once the shift is closed the server-stored values are shown.
+- **Cashier sales history.** `ROUTE_PERMISSIONS.sales` changed from
+  `sale:view` → `sales:view_own_shift` so a cashier can navigate to
+  `/app/sales`. Row scope is still enforced by the `sales_sel` RLS in
+  migration `015`; `SalesPage` mirrors it on the client (narrows to
+  `cashierId === currentUserId`, hides the cashier filter, switches
+  "Void sale" → "Request void", hides Approve buttons unless the caller has
+  `pos:refund` / `pos:void_sale`). Added a Payment column to `SalesTable`.
+  Reprint still goes through `log_receipt_reprint`; refund/void still go
+  through `create_refund_void_request`. No RLS change.
+
 ## Shared categories everywhere + safe category delete
 - **Safe delete (Option A).** A category can no longer be deleted while
   products use it. New shared helper `src/features/categories/categoryUsage.ts`

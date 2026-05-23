@@ -7,8 +7,8 @@ interface AuditTableProps {
 }
 
 export const AuditTable = ({ logs }: AuditTableProps) => (
-  <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white">
-    <Table>
+  <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
+    <Table className="min-w-[720px]">
       <THead>
         <TR>
           <TH>Action</TH>

@@ -8,6 +8,7 @@ import { useToast } from "../components/ui/Toast";
 import { StartShiftCard } from "../components/shifts/StartShiftCard";
 import { EndShiftCard } from "../components/shifts/EndShiftCard";
 import { ShiftSummary } from "../components/shifts/ShiftSummary";
+import { buildShiftBreakdown } from "../features/shifts/service";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
 
 export const ShiftPage = () => {
@@ -18,6 +19,7 @@ export const ShiftPage = () => {
   const shops = useDataStore((state) => state.shops);
   const shifts = useDataStore((state) => state.shifts);
   const sales = useDataStore((state) => state.sales);
+  const refundVoidRequests = useDataStore((state) => state.refundVoidRequests);
   const startShift = useDataStore((state) => state.startShift);
   const endShift = useDataStore((state) => state.endShift);
   const [openingCash, setOpeningCash] = useState(0);
@@ -39,15 +41,12 @@ export const ShiftPage = () => {
     }
   };
   const openShift = shifts.find((shift) => shift.shopId === shopId && shift.cashierId === currentUserId && !shift.endedAt);
-  const shiftSales = sales.filter((sale) => sale.shiftId === openShift?.id && sale.status !== "VOID");
-  const totalSales = shiftSales.reduce((sum, sale) => sum + sale.totalMmk, 0);
-  const cashSales = shiftSales.filter((sale) => sale.paymentMethod === "CASH").reduce((sum, sale) => sum + sale.totalMmk, 0);
-  const otherSales = totalSales - cashSales;
-  const localExpectedCash = (openShift?.openingCashMmk ?? 0) + cashSales;
+  const shiftSales = sales.filter((sale) => sale.shiftId === openShift?.id);
+  const breakdown = openShift ? buildShiftBreakdown(openShift, shiftSales, refundVoidRequests) : null;
 
   const handleEndShift = async () => {
-    if (!openShift) return;
-    const localVariance = closingCash - localExpectedCash;
+    if (!openShift || !breakdown) return;
+    const localVariance = closingCash - breakdown.expectedCash;
     const varianceReason =
       localVariance !== 0
         ? window.prompt("Closing cash does not match expected cash. Enter a variance reason.")?.trim()
@@ -81,7 +80,7 @@ export const ShiftPage = () => {
       ) : (
         <div className="mt-6 space-y-4">
           <div className="text-sm text-slate-500">Shift started {formatDateTime(openShift.startedAt)}</div>
-          <ShiftSummary saleCount={shiftSales.length} cashTotal={cashSales} otherTotal={otherSales} />
+          {breakdown && <ShiftSummary shift={openShift} breakdown={breakdown} />}
           <EndShiftCard closingCash={closingCash} onClosingCashChange={setClosingCash} onEnd={handleEndShift} />
         </div>
       )}

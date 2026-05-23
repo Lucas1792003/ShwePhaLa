@@ -260,7 +260,7 @@ export const DashboardPage = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card className="group cursor-pointer bg-gradient-to-br from-emerald-500 to-emerald-600 text-white transition-transform hover:scale-[1.02]">
           <div className="flex items-center justify-between">
             <div>

@@ -23,7 +23,11 @@ export { ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS };
 export const ROUTE_PERMISSIONS = {
   dashboard: "report:shop_sales",
   pos: "pos:create_sale",
-  sales: "sale:view",
+  // Sales list: any caller with own-shift visibility can enter; the page narrows
+  // to own-cashier rows for non-`sale:view` users, and the sales_sel RLS still
+  // enforces row scope server-side (own cashier_id / own shift, or shop-wide
+  // with `sale:view`, or all for ADMIN). See migration 015.
+  sales: "sales:view_own_shift",
   saleDetail: "sales:view_own_shift",
   shifts: "shift:manage_own",
   inventory: "inventory:view_stock",

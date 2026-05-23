@@ -10,8 +10,8 @@ interface ShiftTableProps {
 }
 
 export const ShiftTable = ({ shifts, users, onSelect }: ShiftTableProps) => (
-  <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white">
-    <Table>
+  <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
+    <Table className="min-w-[560px]">
       <THead>
         <TR>
           <TH>Cashier</TH>

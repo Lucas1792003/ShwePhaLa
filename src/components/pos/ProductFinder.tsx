@@ -66,7 +66,7 @@ export const ProductFinder = ({
 
       {/* Products Grid - Scrollable */}
       <div className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-3 2xl:grid-cols-4">
           {products.map((product) => {
             const qty = inventoryById[product.id] ?? 0;
             const outOfStock = qty <= 0;

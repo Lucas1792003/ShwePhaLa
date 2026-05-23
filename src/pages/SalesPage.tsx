@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
 import { useAuthStore } from "../stores/authStore";
 import { useAppStore } from "../stores/appStore";
 import { useDataStore } from "../stores/dataStore";
@@ -10,126 +9,55 @@ import { SearchInput } from "../components/forms/SearchInput";
 import { DateRangePicker } from "../components/forms/DateRangePicker";
 import { SalesTable } from "../components/sales/SalesTable";
 import { SaleDetailDrawer } from "../components/sales/SaleDetailDrawer";
-import { RefundModal } from "../components/sales/RefundModal";
-import { VoidModal } from "../components/sales/VoidModal";
-import { ReprintButton } from "../components/sales/ReprintButton";
 import { Button } from "../components/ui/Button";
-import { useToast } from "../components/ui/Toast";
-import { buildRefundItems } from "../features/sales/service";
 import { downloadCsv } from "../lib/csv";
 import { getEffectiveShopId } from "../lib/utils";
+import { hasPermission } from "../lib/permissions";
 
 export const SalesPage = () => {
-  const navigate = useNavigate();
-  const toast = useToast();
+  const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
   const [status, setStatus] = useState("all");
   const [cashier, setCashier] = useState("all");
   const [search, setSearch] = useState("");
   const [range, setRange] = useState({ start: "", end: "" });
-  const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
-  const [voidOpen, setVoidOpen] = useState(false);
-  const [voidReason, setVoidReason] = useState("");
-  const [refundOpen, setRefundOpen] = useState(false);
-  const [refundReason, setRefundReason] = useState("");
-  const [refundSelection, setRefundSelection] = useState<Record<string, number>>({});
 
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) => state.users.find((user) => user.id === currentUserId));
   const { currentShopId } = useAppStore();
   const shops = useDataStore((state) => state.shops);
   const users = useDataStore((state) => state.users);
-  const products = useDataStore((state) => state.products);
   const sales = useDataStore((state) => state.sales);
-  const saleItems = useDataStore((state) => state.saleItems);
-  const refunds = useDataStore((state) => state.refunds);
-  const reprintLogs = useDataStore((state) => state.reprintLogs);
-  const voidSale = useDataStore((state) => state.voidSale);
-  const requestRefund = useDataStore((state) => state.requestRefund);
-  const approveRefund = useDataStore((state) => state.approveRefund);
-  const addReprintLog = useDataStore((state) => state.addReprintLog);
 
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
+  // A cashier without the broad `sale:view` permission only sees their own
+  // sales — this matches the sales_sel RLS in migration 015 (defense in depth).
+  const canViewShopSales = hasPermission(currentUser, "sale:view");
+  const ownSalesOnly = !canViewShopSales;
 
   const filteredSales = useMemo(() => {
     return sales.filter((sale) => {
       const matchesShop = sale.shopId === shopId;
+      const matchesOwner = !ownSalesOnly || sale.cashierId === currentUserId;
       const matchesStatus = status === "all" || sale.status === status;
-      const matchesCashier = cashier === "all" || sale.cashierId === cashier;
+      const matchesCashier = ownSalesOnly || cashier === "all" || sale.cashierId === cashier;
       const matchesSearch = sale.receiptNo.toLowerCase().includes(search.toLowerCase());
       const saleDate = sale.createdAt.slice(0, 10);
       const afterStart = !range.start || saleDate >= range.start;
       const beforeEnd = !range.end || saleDate <= range.end;
-      return matchesShop && matchesStatus && matchesCashier && matchesSearch && afterStart && beforeEnd;
+      return matchesShop && matchesOwner && matchesStatus && matchesCashier && matchesSearch && afterStart && beforeEnd;
     });
-  }, [sales, shopId, status, cashier, search, range]);
+  }, [sales, shopId, ownSalesOnly, currentUserId, status, cashier, search, range]);
 
   const exportSales = () => {
     const rows = filteredSales.map((sale) => ({
       receiptNo: sale.receiptNo,
       createdAt: sale.createdAt,
       cashier: users.find((user) => user.id === sale.cashierId)?.name ?? "",
+      paymentMethod: sale.paymentMethod,
       totalMmk: sale.totalMmk,
       status: sale.status,
     }));
     downloadCsv("sales.csv", rows);
-  };
-
-  const selectedSale = sales.find((sale) => sale.id === selectedSaleId) ?? null;
-  const selectedItems = saleItems.filter((item) => item.saleId === selectedSaleId);
-  const selectedRefunds = refunds.filter((refund) => refund.saleId === selectedSaleId);
-  const selectedReprints = reprintLogs.filter((log) => log.saleId === selectedSaleId);
-  const productNames = useMemo(() => Object.fromEntries(products.map((product) => [product.id, product.name])), [products]);
-
-  useEffect(() => {
-    setRefundSelection({});
-    setRefundReason("");
-    setVoidReason("");
-  }, [selectedSaleId]);
-
-  const handleVoid = async () => {
-    if (!selectedSale || !currentUserId) return;
-    try {
-      await voidSale({ saleId: selectedSale.id, reason: voidReason || "No reason", actorId: currentUserId });
-      setVoidOpen(false);
-      toast({ title: "Void request submitted", variant: "success" });
-    } catch (error) {
-      toast({
-        title: "Void request failed",
-        description: error instanceof Error ? error.message : "Could not submit the void request.",
-        variant: "error",
-      });
-    }
-  };
-
-  const handleRefund = async () => {
-    if (!selectedSale || !currentUserId) return;
-    const items = buildRefundItems(selectedItems, refundSelection);
-    if (items.length === 0) return;
-    try {
-      await requestRefund({ saleId: selectedSale.id, items, reason: refundReason || "No reason", actorId: currentUserId });
-      setRefundOpen(false);
-      toast({ title: "Refund request submitted", variant: "success" });
-    } catch (error) {
-      toast({
-        title: "Refund request failed",
-        description: error instanceof Error ? error.message : "Could not submit the refund request.",
-        variant: "error",
-      });
-    }
-  };
-
-  const handleApprove = async (refundId: string) => {
-    if (!currentUserId) return;
-    try {
-      await approveRefund({ refundId, approverId: currentUserId });
-      toast({ title: "Approval completed", variant: "success" });
-    } catch (error) {
-      toast({
-        title: "Approval failed",
-        description: error instanceof Error ? error.message : "Could not approve the request.",
-        variant: "error",
-      });
-    }
   };
 
   return (
@@ -150,12 +78,14 @@ export const SalesPage = () => {
             <option value="VOID">Void</option>
             <option value="REFUNDED">Refunded</option>
           </Select>
-          <Select value={cashier} onChange={(event) => setCashier(event.target.value)}>
-            <option value="all">All cashiers</option>
-            {users.filter((user) => user.role === "CASHIER").map((user) => (
-              <option key={user.id} value={user.id}>{user.name}</option>
-            ))}
-          </Select>
+          {!ownSalesOnly && (
+            <Select value={cashier} onChange={(event) => setCashier(event.target.value)}>
+              <option value="all">All cashiers</option>
+              {users.filter((user) => user.role === "CASHIER").map((user) => (
+                <option key={user.id} value={user.id}>{user.name}</option>
+              ))}
+            </Select>
+          )}
         </div>
         <div className="mt-6">
           {filteredSales.length === 0 ? (
@@ -163,72 +93,19 @@ export const SalesPage = () => {
               No sales found.
             </div>
           ) : (
-            <SalesTable sales={filteredSales} users={users} onSelect={setSelectedSaleId} />
+            <SalesTable
+              sales={filteredSales}
+              users={users}
+              onView={(saleId) => setSelectedSaleId(saleId)}
+            />
           )}
         </div>
       </Card>
 
       <SaleDetailDrawer
-        open={!!selectedSale}
-        sale={selectedSale}
-        items={selectedItems}
-        refunds={selectedRefunds}
-        reprintCount={selectedReprints.length}
-        productNames={productNames}
+        open={!!selectedSaleId}
+        saleId={selectedSaleId}
         onClose={() => setSelectedSaleId(null)}
-        actions={
-          <>
-            <ReprintButton
-              onReprint={() => void (async () => {
-                if (!selectedSale || !currentUserId) return;
-                try {
-                  await addReprintLog({ saleId: selectedSale.id, actorId: currentUserId });
-                  navigate(`/app/sales/${selectedSale.id}`);
-                } catch (error) {
-                  toast({
-                    title: "Reprint log failed",
-                    description: error instanceof Error ? error.message : "Could not record the reprint.",
-                    variant: "error",
-                  });
-                }
-              })()}
-            />
-            <Button variant="danger" onClick={() => setVoidOpen(true)} disabled={selectedSale?.status !== "NORMAL"}>
-              Void sale
-            </Button>
-            <Button variant="secondary" onClick={() => setRefundOpen(true)}>
-              Request refund
-            </Button>
-            {currentUser && (currentUser.role === "ADMIN" || currentUser.role === "MANAGER") &&
-              selectedRefunds
-                .filter((refund) => refund.status === "REQUESTED")
-                .map((refund) => (
-                  <Button key={refund.id} onClick={() => void handleApprove(refund.id)}>
-                    Approve {refund.type}
-                  </Button>
-                ))}
-          </>
-        }
-      />
-
-      <VoidModal
-        open={voidOpen}
-        reason={voidReason}
-        onChangeReason={setVoidReason}
-        onClose={() => setVoidOpen(false)}
-        onConfirm={() => void handleVoid()}
-      />
-
-      <RefundModal
-        open={refundOpen}
-        items={selectedItems}
-        selection={refundSelection}
-        reason={refundReason}
-        productNames={productNames}
-        onChangeSelection={(productId, qty) => setRefundSelection((prev) => ({ ...prev, [productId]: qty }))}
-        onChangeReason={setRefundReason}
-        onClose={() => setRefundOpen(false)}
-        onSubmit={() => void handleRefund()}
       />
     </div>
   );
