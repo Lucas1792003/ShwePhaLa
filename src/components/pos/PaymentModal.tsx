@@ -3,7 +3,7 @@ import { Modal } from "../ui/Modal";
 import { Select } from "../ui/Select";
 import { Input } from "../ui/Input";
 import { Button } from "../ui/Button";
-import { formatMmk, toNumber } from "../../lib/utils";
+import { formatMmk, normalizeAmountInput, toNumber } from "../../lib/utils";
 
 interface PaymentModalProps {
   open: boolean;
@@ -15,7 +15,10 @@ interface PaymentModalProps {
 
 export const PaymentModal = ({ open, totalMmk, loading = false, onClose, onConfirm }: PaymentModalProps) => {
   const [method, setMethod] = useState<"CASH" | "OTHER">("CASH");
-  const [paid, setPaid] = useState(0);
+  // String-backed input so we can keep the field empty while editing and
+  // never sit on a padded "02900". toNumber("") -> 0 for calculations.
+  const [paidInput, setPaidInput] = useState("0");
+  const paid = toNumber(paidInput);
   const change = Math.max(0, paid - totalMmk);
   const isUnderpaid = paid < totalMmk;
   const canConfirm = !loading && paid >= totalMmk;
@@ -25,7 +28,7 @@ export const PaymentModal = ({ open, totalMmk, loading = false, onClose, onConfi
   };
 
   useEffect(() => {
-    if (open) setPaid(0);
+    if (open) setPaidInput("0");
   }, [open, totalMmk]);
 
   return (
@@ -89,10 +92,14 @@ export const PaymentModal = ({ open, totalMmk, loading = false, onClose, onConfi
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-slate-700">Amount received</span>
             <Input
-              type="number"
-              min={0}
-              value={paid}
-              onChange={(event) => setPaid(toNumber(event.target.value))}
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              value={paidInput}
+              onChange={(event) => setPaidInput(normalizeAmountInput(event.target.value))}
+              onBlur={() => {
+                if (paidInput === "") setPaidInput("0");
+              }}
               className="text-base font-semibold"
             />
           </label>

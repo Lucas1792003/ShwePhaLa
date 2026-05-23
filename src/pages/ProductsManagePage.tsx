@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuthStore } from "../stores/authStore";
@@ -16,6 +16,7 @@ import { Modal } from "../components/ui/Modal";
 import { Table, THead, TBody, TR, TH, TD } from "../components/ui/Table";
 import { SearchInput } from "../components/forms/SearchInput";
 import { ProductImageInput } from "../components/forms/ProductImageInput";
+import { MoneyInput } from "../components/forms/MoneyInput";
 import { Pagination } from "../components/ui/Pagination";
 import { formatMmk } from "../lib/utils";
 import { CATEGORY_ICONS, resolveCategoryIcon } from "../features/categories/categoryIcons";
@@ -715,14 +716,39 @@ export const ProductsManagePage = () => {
           <div className="grid gap-3 md:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Selling Price (MMK) *</label>
-              <Input type="text" inputMode="numeric" placeholder="0" {...form.register("priceMmk", { valueAsNumber: true })} />
+              <Controller
+                control={form.control}
+                name="priceMmk"
+                render={({ field }) => (
+                  <MoneyInput
+                    value={field.value}
+                    onChange={(next) => field.onChange(next ?? 0)}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                    placeholder="0"
+                  />
+                )}
+              />
               {form.formState.errors.priceMmk && (
                 <p className="mt-1 text-xs text-red-500">{form.formState.errors.priceMmk.message}</p>
               )}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Cost Price (MMK)</label>
-              <Input type="text" inputMode="numeric" placeholder="0" {...form.register("costMmk", { valueAsNumber: true })} />
+              <Controller
+                control={form.control}
+                name="costMmk"
+                render={({ field }) => (
+                  <MoneyInput
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                    allowEmpty
+                    placeholder="0"
+                  />
+                )}
+              />
             </div>
           </div>
 

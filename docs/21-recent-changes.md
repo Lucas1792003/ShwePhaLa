@@ -1,5 +1,25 @@
 # Recent Changes
 
+## Barcode label preview + layout templates
+
+- **Preview-before-print flow.** `/app/barcode-labels` now opens a preview
+  modal after product selection. The browser print dialog opens only after
+  the final **Print labels** action.
+- **Template registry.** Label designs live in
+  [`src/features/barcodes/labelTemplates.ts`](../src/features/barcodes/labelTemplates.ts):
+  Compact `50mm x 25mm`, Standard `60mm x 30mm` (default), Price focused
+  `60mm x 30mm`, and Large `70mm x 40mm`.
+- **Template-aware print sheet.** `BarcodeLabel` and `BarcodePrintSheet`
+  accept the selected template key and use the same DOM for preview and print.
+- **Print CSS.** `src/print/labels.css` uses `--label-width` /
+  `--label-height` and named `@page` hints for label sizes. Browser support
+  varies, so operators may still need to choose the matching label stock in
+  the print dialog.
+- **Unchanged scan/business rules.** Barcode value resolution still prefers
+  the first `product_barcodes.value`, falls back to `product.sku`, and renders
+  CODE128. No POS scan, backend, Supabase, RLS, RPC, product, or inventory
+  logic changed.
+
 ## Tablet / desktop responsiveness + small-screen guard
 
 - **Target sizes.** Layout is now intentionally designed for tablet

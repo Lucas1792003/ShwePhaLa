@@ -9,7 +9,7 @@ interface EndShiftCardProps {
 
 export const EndShiftCard = ({ closingCash, onClosingCashChange, onEnd }: EndShiftCardProps) => (
   <div className="space-y-3">
-    <MoneyInput value={closingCash} onChange={onClosingCashChange} placeholder="Closing cash counted" />
+    <MoneyInput value={closingCash} onChange={(next) => onClosingCashChange(next ?? 0)} placeholder="Closing cash counted" />
     <Button onClick={onEnd}>End shift</Button>
   </div>
 );

@@ -1,0 +1,99 @@
+/* Label print isolation.
+ *
+ * Pairs with the visibility:hidden scaffold in print/receipt.css. When
+ * `.label-print-sheet` is mounted, it becomes the only thing the browser
+ * prints. Each selected template sets --label-width and --label-height on
+ * the sheet and on the label DOM so preview and print use the same size.
+ */
+
+.label-print-sheet {
+  position: fixed;
+  top: -10000px;
+  left: -10000px;
+  --label-width: 60mm;
+  --label-height: 30mm;
+}
+
+.barcode-label {
+  width: var(--label-width, 60mm);
+  height: var(--label-height, 30mm);
+  overflow: hidden;
+}
+
+.barcode-label__svg {
+  max-width: 100%;
+  height: auto;
+}
+
+@media print {
+  .label-print-sheet,
+  .label-print-sheet * {
+    visibility: visible;
+  }
+
+  .label-print-sheet {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  .label-print-page {
+    width: var(--label-width, 60mm);
+    min-height: var(--label-height, 30mm);
+    page-break-after: always;
+    break-after: page;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .label-print-page--compact {
+    page: label-compact;
+  }
+
+  .label-print-page--standard {
+    page: label-standard;
+  }
+
+  .label-print-page--price {
+    page: label-price;
+  }
+
+  .label-print-page--large {
+    page: label-large;
+  }
+
+  .label-print-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  .barcode-label {
+    border: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Browser support for named @page sizes is uneven. These are best-effort
+ * hints; if a browser ignores them, choose the matching label/paper size in
+ * the print dialog.
+ */
+@page label-compact {
+  size: 50mm 25mm;
+  margin: 0;
+}
+
+@page label-standard {
+  size: 60mm 30mm;
+  margin: 0;
+}
+
+@page label-price {
+  size: 60mm 30mm;
+  margin: 0;
+}
+
+@page label-large {
+  size: 70mm 40mm;
+  margin: 0;
+}

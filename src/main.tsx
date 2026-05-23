@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
 import "./print/receipt.css";
+import "./print/labels.css";
 import { useAuthStore } from "./stores/authStore";
 
 // Restore Supabase session on app start

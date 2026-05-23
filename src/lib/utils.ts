@@ -41,3 +41,24 @@ export const toNumber = (value: string) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 };
+
+/**
+ * Normalize a free-text amount field to a clean non-negative integer string.
+ *
+ * - Strips any non-digit (commas, spaces, currency symbols, etc.) so a paste
+ *   of "2,900" becomes "2900".
+ * - Trims leading zeros so "02900" becomes "2900".
+ * - Collapses all-zero input ("000") to a single "0" so the field never sits
+ *   on a meaningless padded zero.
+ * - Returns "" when the caller's input was empty — the caller decides what to
+ *   show: the editing UI may keep "" visible while focused and reset to "0"
+ *   on blur.
+ *
+ * This is the source-of-truth sanitizer for any cashier-facing amount field.
+ */
+export const normalizeAmountInput = (raw: string): string => {
+  const digits = raw.replace(/\D/g, "");
+  if (digits === "") return "";
+  const trimmed = digits.replace(/^0+/, "");
+  return trimmed === "" ? "0" : trimmed;
+};

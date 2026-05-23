@@ -4,7 +4,7 @@ import { useAuthStore } from "../../stores/authStore";
 import { useAppStore } from "../../stores/appStore";
 import { useDataStore } from "../../stores/dataStore";
 import { cn } from "../../lib/utils";
-import type { Permission } from "../../types";
+import type { Permission, Role } from "../../types";
 import { hasPermission, ROUTE_PERMISSIONS } from "../../lib/permissions";
 import { ShopSwitcher } from "./ShopSwitcher";
 import { LanguageSwitcher } from "../../components/layout/LanguageSwitcher";
@@ -16,6 +16,9 @@ interface NavItem {
   labelKey: string;
   permission: Permission;
   icon: string;
+  /** Optional role gate layered on top of the permission. The route guard
+   * checks this too — see AppRouter. */
+  allowedRoles?: Role[];
 }
 
 interface NavSection {
@@ -38,6 +41,7 @@ const navSections: NavSection[] = [
       { to: "/app/sales", labelKey: "salesHistory", permission: ROUTE_PERMISSIONS.sales, icon: "receipt_long" },
       { to: "/app/shifts", labelKey: "shifts", permission: ROUTE_PERMISSIONS.shifts, icon: "schedule" },
       { to: "/app/approvals", labelKey: "approvals", permission: ROUTE_PERMISSIONS.approvals, icon: "fact_check" },
+      { to: "/app/barcode-labels", labelKey: "barcodeLabels", permission: ROUTE_PERMISSIONS.barcodeLabels, icon: "qr_code_2", allowedRoles: ["ADMIN", "MANAGER"] },
     ],
   },
   {
@@ -107,10 +111,12 @@ export const Sidebar = () => {
 
         <nav className="nav">
           {navSections.map((section, sectionIndex) => {
-            // Filter items by permission
-            const visibleItems = section.items.filter(
-              (item) => hasPermission(currentUser, item.permission)
-            );
+            // Filter items by permission AND optional role gate.
+            const visibleItems = section.items.filter((item) => {
+              if (!hasPermission(currentUser, item.permission)) return false;
+              if (item.allowedRoles && currentUser && !item.allowedRoles.includes(currentUser.role)) return false;
+              return true;
+            });
 
             // Skip section if no visible items or admin-only section for non-admins
             if (visibleItems.length === 0) return null;

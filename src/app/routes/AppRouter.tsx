@@ -23,6 +23,7 @@ import { PricingPage } from "../../features/admin/pages/PricingPage";
 import { AuditLogPage } from "../../features/admin/pages/AuditLogPage";
 import { CatalogPage } from "../../features/catalog/pages/CatalogPage";
 import { DashboardPage } from "../../pages/DashboardPage";
+import { BarcodeLabelsPage } from "../../pages/BarcodeLabelsPage";
 import { NotFoundPage } from "../../pages/NotFoundPage";
 import { useAuthStore } from "../../stores/authStore";
 import { useDataStore } from "../../stores/dataStore";
@@ -141,6 +142,14 @@ export const AppRouter = () => (
         element={
           <RequireRole permission={ROUTE_PERMISSIONS.catalog}>
             <CatalogPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path="barcode-labels"
+        element={
+          <RequireRole allowed={["ADMIN", "MANAGER"]} permission={ROUTE_PERMISSIONS.barcodeLabels}>
+            <BarcodeLabelsPage />
           </RequireRole>
         }
       />

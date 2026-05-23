@@ -9,7 +9,7 @@ interface StartShiftCardProps {
 
 export const StartShiftCard = ({ openingCash, onOpeningCashChange, onStart }: StartShiftCardProps) => (
   <div className="space-y-3">
-    <MoneyInput value={openingCash} onChange={onOpeningCashChange} placeholder="Opening cash" />
+    <MoneyInput value={openingCash} onChange={(next) => onOpeningCashChange(next ?? 0)} placeholder="Opening cash" />
     <Button onClick={onStart}>Start shift</Button>
   </div>
 );

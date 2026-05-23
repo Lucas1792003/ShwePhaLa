@@ -45,6 +45,7 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
   const [refundOpen, setRefundOpen] = useState(false);
   const [refundReason, setRefundReason] = useState("");
   const [refundSelection, setRefundSelection] = useState<Record<string, number>>({});
+  const [reprintInFlight, setReprintInFlight] = useState(false);
 
   const saleItems = useMemo(
     () => allSaleItems.filter((item) => item.saleId === saleId),
@@ -95,9 +96,20 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
   const isNormal = sale.status === "NORMAL";
   const pendingRequests = refundsForSale.filter((r) => r.status === "REQUESTED");
 
-  const handlePrint = () => window.print();
+  // Print and Reprint both require at least one sale item. complete_sale
+  // is transactional so this should always be true in practice; if items
+  // were never loaded the buttons are disabled rather than emitting an
+  // empty receipt.
+  const hasPrintableContent = saleItems.length > 0;
+
+  const handlePrint = () => {
+    if (!hasPrintableContent) return;
+    window.print();
+  };
 
   const handleReprint = async () => {
+    if (!hasPrintableContent || reprintInFlight) return;
+    setReprintInFlight(true);
     try {
       if (currentUserId) await addReprintLog({ saleId: sale.id, actorId: currentUserId });
       window.print();
@@ -107,6 +119,8 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
         description: error instanceof Error ? error.message : "Could not record the reprint.",
         variant: "error",
       });
+    } finally {
+      setReprintInFlight(false);
     }
   };
 
@@ -166,9 +180,13 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
 
   const printToolbar = (
     <div className="flex flex-wrap items-center gap-2 print-hidden">
-      <Button variant="secondary" onClick={handlePrint}>Print</Button>
+      <Button variant="secondary" onClick={handlePrint} disabled={!hasPrintableContent || reprintInFlight}>
+        Print
+      </Button>
       {canReprint && (
-        <Button onClick={() => void handleReprint()}>Reprint</Button>
+        <Button onClick={() => void handleReprint()} disabled={!hasPrintableContent || reprintInFlight}>
+          {reprintInFlight ? "Reprinting…" : "Reprint"}
+        </Button>
       )}
     </div>
   );
@@ -193,6 +211,12 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
             {sale.paymentMethod} • {formatDateTime(sale.createdAt)}
           </div>
           {printToolbar}
+        </div>
+      )}
+
+      {!hasPrintableContent && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 print-hidden">
+          Sale items are still loading or unavailable; printing is disabled until items are visible.
         </div>
       )}
 

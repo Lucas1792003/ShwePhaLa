@@ -34,6 +34,11 @@ export const ROUTE_PERMISSIONS = {
   transfers: "transfer:view",
   purchases: "purchase:view",
   approvals: "approval:view",
+  // Label-printing page. Route is additionally role-gated to ADMIN +
+  // MANAGER via `RequireRole allowed={[...]}`; cashier/buyer never see
+  // this even though they hold `product:read`. The page is read-only
+  // (no writes to product_barcodes), so no SQL/RLS change required.
+  barcodeLabels: "product:read",
   reports: "report:shop_sales",
   reportsProfit: "report:shop_profit",
   catalog: "product:read",

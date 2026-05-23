@@ -1,23 +1,68 @@
+/* Receipt print isolation.
+ *
+ * `window.print()` from ReceiptDetail prints whatever the browser sees on
+ * the page. We want the output to contain ONLY the 80mm `.receipt` card —
+ * no sidebar, no page header, no buttons, no reprint log, no request
+ * actions, no modals.
+ *
+ * The robust pattern: visibility:hidden everything, then visibility:visible
+ * the receipt and its descendants. Visibility (not display:none) preserves
+ * layout so the receipt prints at its natural size. We also absolute-
+ * position the receipt at the top of the page so the empty space above
+ * doesn't push it down.
+ */
 @media print {
   body {
     background: #ffffff;
   }
 
+  /* Belt-and-braces: anything tagged print-hidden is gone regardless. */
   .print-hidden {
     display: none !important;
   }
 
+  /* Hide everything in the document by default … */
+  body * {
+    visibility: hidden;
+  }
+
+  /* … then reveal the receipt and its subtree. */
+  .receipt,
+  .receipt * {
+    visibility: visible;
+  }
+
   .receipt {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     width: 80mm;
     padding: 8px;
     margin: 0 auto;
     background: #ffffff;
     color: #111827;
     box-shadow: none !important;
+    border: none !important;
   }
 
   .receipt * {
     font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace !important;
     font-size: 12px;
+  }
+}
+
+/* Thermal-printer hint, scoped to the named receipt page so the label
+ * sheet (see print/labels.css) can declare its own @page rule without
+ * conflict. Browsers that don't support named pages fall back to the
+ * default page size. */
+@page receipt-page {
+  size: 80mm auto;
+  margin: 4mm;
+}
+
+@media print {
+  .receipt {
+    page: receipt-page;
   }
 }

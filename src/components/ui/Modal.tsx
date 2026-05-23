@@ -9,13 +9,14 @@ interface ModalProps {
   onClose: () => void;
   children?: ReactNode;
   footer?: ReactNode;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
 }
 
 const sizes: Record<string, string> = {
   sm: "max-w-md",
   md: "max-w-xl",
   lg: "max-w-2xl",
+  xl: "max-w-5xl",
 };
 
 export const Modal = ({ open, title, description, onClose, children, footer, size = "md" }: ModalProps) => {
