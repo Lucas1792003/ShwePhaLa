@@ -63,6 +63,7 @@ export const ProductsManagePage = () => {
   const categories = useDataStore((state) => state.categories);
   const addProduct = useDataStore((state) => state.addProduct);
   const updateProduct = useDataStore((state) => state.updateProduct);
+  const deleteProduct = useDataStore((state) => state.deleteProduct);
   const replaceProductBarcodes = useDataStore((state) => state.replaceProductBarcodes);
   const addCategory = useDataStore((state) => state.addCategory);
   const updateCategory = useDataStore((state) => state.updateCategory);
@@ -265,17 +266,21 @@ export const ProductsManagePage = () => {
     setFormBarcodes((list) => list.filter((item) => item !== value));
   };
 
-  const handleDeactivateProduct = (product: Product) => {
-    if (!confirm(`Are you sure you want to deactivate "${product.name}"?`)) return;
+  const handleDeleteProduct = async (product: Product) => {
+    if (!confirm(`Permanently delete "${product.name}"? This cannot be undone.`)) return;
 
-    const updatedProduct = { ...product, isActive: false };
-    updateProduct(updatedProduct, []);
+    try {
+      await deleteProduct(product.id);
+    } catch (error) {
+      alert(getErrorMessage(error) || "Could not delete the product.");
+      return;
+    }
 
     void addAuditLog({
       id: `audit-${Math.random().toString(36).slice(2, 9)}`,
       actorId: currentUserId ?? "system",
       actionType: "PRODUCT_DELETE",
-      message: `Deactivated product ${product.name}.`,
+      message: `Deleted product ${product.name}.`,
       entityType: "Product",
       entityId: product.id,
       createdAt: new Date().toISOString(),
@@ -395,6 +400,25 @@ export const ProductsManagePage = () => {
     );
     if (existing) {
       alert("Category already exists");
+      return;
+    }
+
+    // Block duplicate icon + color combo. Compare the *effective* icon so the
+    // rule also catches matches against icon-less categories (which resolve
+    // their icon from the name).
+    const effectiveIconKey = resolveCategoryIcon(
+      newCategoryIconKey || null,
+      categoryName,
+    ).key;
+    const sameLook = categories.find((c) => {
+      if (c.id === editingCategory?.id) return false;
+      const otherIconKey = resolveCategoryIcon(c.iconKey ?? null, c.name).key;
+      return otherIconKey === effectiveIconKey && c.color === newCategoryColor;
+    });
+    if (sameLook) {
+      alert(
+        `Category "${sameLook.name}" already uses this icon and color combination. Please choose a different icon or color.`,
+      );
       return;
     }
 
@@ -631,11 +655,9 @@ export const ProductsManagePage = () => {
                         <Button variant="ghost" size="sm" onClick={() => handleEditProduct(product)}>
                           <span className="material-symbols-rounded text-sm">edit</span>
                         </Button>
-                        {product.isActive && (
-                          <Button variant="ghost" size="sm" onClick={() => handleDeactivateProduct(product)}>
-                            <span className="material-symbols-rounded text-sm text-red-500">delete</span>
-                          </Button>
-                        )}
+                        <Button variant="ghost" size="sm" onClick={() => void handleDeleteProduct(product)}>
+                          <span className="material-symbols-rounded text-sm text-red-500">delete</span>
+                        </Button>
                       </div>
                     </TD>
                   </TR>

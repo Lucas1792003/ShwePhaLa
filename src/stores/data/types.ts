@@ -97,6 +97,13 @@ export interface ProductState {
   addProduct: (product: Product, barcodes: ProductBarcode[]) => void;
   updateProduct: (product: Product, barcodes: ProductBarcode[]) => void;
   /**
+   * Hard delete a product. Removes the row from `products` and any
+   * inventory rows for it (the `inventory.product_id` FK has no CASCADE).
+   * `product_barcodes` and `price_tiers` cascade-delete automatically.
+   * Throws on DB failure so the caller can surface it.
+   */
+  deleteProduct: (productId: string) => Promise<void>;
+  /**
    * Async barcode reconcile that throws on DB failure (incl. the unique
    * `product_barcodes_unique_normalized_value` index). Used by the
    * product form to surface duplicate-barcode errors inline instead of
