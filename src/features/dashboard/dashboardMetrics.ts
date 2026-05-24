@@ -299,6 +299,99 @@ export const calculateCategoryRevenue = (
   return [...map.entries()].map(([name, value]) => ({ name, value }));
 };
 
+export interface SalesByCategoryPercentRow {
+  name: string;
+  value: number;
+  percent: number;
+}
+
+/**
+ * Sales by category percentage split for dashboard charts.
+ *
+ * Uses line totals because sale_items has the product/category context.
+ * Cart-level discounts are not allocated back into categories yet, so
+ * this is a proportional split of gross line revenue, not headline net
+ * revenue.
+ */
+export const calculateSalesByCategoryPercent = (
+  sales: Sale[],
+  saleItems: SaleItem[],
+  products: Product[],
+  shopId: string | null,
+  range: DateRange,
+  now: Date = new Date()
+): SalesByCategoryPercentRow[] => {
+  const rangedSales = filterSalesByRange(scopeSales(sales, shopId), range, now);
+  const rows = calculateCategoryRevenue(rangedSales, saleItems, products).sort(
+    (a, b) => b.value - a.value
+  );
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  if (total <= 0) return [];
+  return rows.map((row) => ({
+    ...row,
+    percent: (row.value / total) * 100,
+  }));
+};
+
+export interface DailyRevenueCostProfitPoint {
+  date: string;
+  label: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+}
+
+const pad2 = (value: number): string => value.toString().padStart(2, "0");
+
+const localDateKey = (createdAt: string): string | null => {
+  const date = new Date(createdAt);
+  if (!Number.isFinite(date.getTime())) return null;
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+};
+
+/**
+ * Admin profit trend chart data, grouped by local day.
+ *
+ * Revenue uses `calculateNetRevenue`, so approved PARTIAL refunds are
+ * deducted when present. Cost uses the current product-cost approximation
+ * because sale_items does not store historical unit cost yet.
+ */
+export const calculateDailyRevenueCostProfitTrend = (
+  sales: Sale[],
+  saleItems: SaleItem[],
+  products: Product[],
+  refunds: RefundVoidRequest[],
+  shopId: string | null,
+  range: DateRange,
+  now: Date = new Date()
+): DailyRevenueCostProfitPoint[] => {
+  const rangedSales = filterSalesByRange(scopeSales(sales, shopId), range, now);
+  if (rangedSales.length === 0) return [];
+
+  const salesByDay = new Map<string, Sale[]>();
+  for (const sale of rangedSales) {
+    const key = localDateKey(sale.createdAt);
+    if (!key) continue;
+    const daySales = salesByDay.get(key) ?? [];
+    daySales.push(sale);
+    salesByDay.set(key, daySales);
+  }
+
+  return [...salesByDay.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, daySales]) => {
+      const revenue = calculateNetRevenue(daySales, refunds);
+      const cost = calculateCostOfGoods(daySales, saleItems, products);
+      return {
+        date,
+        label: date,
+        revenue,
+        cost,
+        profit: calculateProfit(revenue, cost),
+      };
+    });
+};
+
 // ------------------------------------------------------------
 // Per-shop name decoration (used by the all-shops low-stock card)
 // ------------------------------------------------------------

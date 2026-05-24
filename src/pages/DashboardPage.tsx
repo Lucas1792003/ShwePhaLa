@@ -1,6 +1,7 @@
 import { Card } from "../components/ui/Card";
 import { AdminDashboard } from "../features/dashboard/AdminDashboard";
 import { CashierDashboard } from "../features/dashboard/CashierDashboard";
+import { useDashboardCopy } from "../features/dashboard/dashboardCopy";
 import { ManagerDashboard } from "../features/dashboard/ManagerDashboard";
 import { getEffectiveShopId } from "../lib/utils";
 import { useAppStore } from "../stores/appStore";
@@ -18,6 +19,7 @@ const BlockedDashboard = ({ title, message }: { title: string; message: string }
 );
 
 export const DashboardPage = () => {
+  const copy = useDashboardCopy();
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) =>
     state.users.find((user) => user.id === currentUserId)
@@ -28,8 +30,8 @@ export const DashboardPage = () => {
   if (!currentUser) {
     return (
       <BlockedDashboard
-        title="Dashboard unavailable"
-        message="Sign in again to load dashboard data."
+        title={copy("dashboardUnavailable")}
+        message={copy("signInAgain")}
       />
     );
   }
@@ -42,8 +44,8 @@ export const DashboardPage = () => {
   if (!effectiveShopId) {
     return (
       <BlockedDashboard
-        title="No shop assigned"
-        message="Your account is not assigned to a shop, so there is no dashboard data to show. Contact your administrator."
+        title={copy("noShopAssigned")}
+        message={copy("noShopAssignedMessage")}
       />
     );
   }

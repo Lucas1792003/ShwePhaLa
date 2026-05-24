@@ -421,9 +421,10 @@ visible until resolved.
 | Avg Order Value | `round(net revenue / order count)` | Returns 0 for empty data; whole MMK only |
 | Profit / Margin | `revenue - calculateCostOfGoods`; margin = `profit / revenue * 100` | Requires `report:shop_profit`; ADMIN by default |
 | Cost of goods | `sum(current product.costMmk * sale item qty)` | Profit-only approximation; sale items do not capture historical cost |
+| Revenue, Cost & Profit Trend | `calculateDailyRevenueCostProfitTrend`, grouped by day; revenue is net revenue, cost is current product-cost approximation, profit = revenue - cost | ADMIN analytics; requires `report:shop_profit`; All Shops aggregates, selected shop filters |
 | Active Shift / Expected Cash | open shifts in scope; `opening cash + CASH sales(status != VOID) - approved PARTIAL cash refunds` | MANAGER assigned shop; ADMIN selected/all; CASHIER own shift |
 | Action Needed | low stock + out of stock + requested approvals + approved PO receipts + pending transfers | Each sub-count is only rendered when the matching permission exists |
-| Sales by Category | `sum(sale_items.lineTotalMmk)` by `product.category` for ranged valid sales | Line basis; may exceed headline revenue when cart discounts exist |
+| Sales by Category | `calculateSalesByCategoryPercent`; `sum(sale_items.lineTotalMmk)` by `product.category`, then percent of category total | ADMIN all/selected shop; MANAGER assigned shop; line basis does not allocate cart-level discounts yet |
 | Top Selling Products | `calculateTopProducts`, ranked by line revenue, limit 5 | Cost/profit columns are not shown unless `report:shop_profit` |
 | Low Stock / Inventory Alerts | `calculateLowStock` per `(shop_id, product_id)` | Requires `report:shop_inventory`; all-shops never sums quantities across shops |
 | Pending Refund/Void Approvals | `refund_void_requests.status = REQUESTED` | Requires `approval:view` |
@@ -436,6 +437,14 @@ visible until resolved.
 | Active Staff / Open Shifts | open shifts decorated with user and shop | ADMIN dashboard |
 | Recent Audit Activity | recent `audit_logs` in selected range/scope | Requires `audit:view_global` |
 | Recent Sales | newest ranged valid sales in scope | No profit shown unless a profit-gated card explicitly renders it |
+
+The Admin trend chart is profit-sensitive: revenue uses `sale.totalMmk`
+for `NORMAL` sales, approved PARTIAL refunds are subtracted when present,
+cost/investment uses current `products.costMmk * sale_items.qtyUnits`, and
+profit is `revenue - cost`. This is an approximation until sale items
+store historical unit cost. Sales by Category is safe for managers because
+it is sales mix only; it uses line totals and does not allocate cart-level
+discounts back to categories yet.
 
 ### Shop scope per role
 

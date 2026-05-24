@@ -24,7 +24,7 @@ npm run lint         # ESLint
 | `src/features/pos/cartStock.test.ts` | Stock guards + clamp |
 | `src/features/shifts/workHours.test.ts` | Active/closed duration, monthly attribution rule, formatting, group-by-user |
 | `src/features/admin/userFormErrors.test.ts` | DB constraint → user-friendly message mapping |
-| `src/features/dashboard/dashboardMetrics.test.ts` | Scope, net revenue (gross − approved PARTIAL refunds), cost of goods, profit/margin/AOV (no NaN on empty data), inventory value, **per-shop low stock (never sums across shops)**, top products ranking, supplier debt (RECEIVED-only) |
+| `src/features/dashboard/dashboardMetrics.test.ts` | Scope, net revenue (gross − approved PARTIAL refunds), cost of goods, profit/margin/AOV (no NaN on empty data), Admin daily revenue/cost/profit trend, Sales by Category percentages, inventory value, **per-shop low stock (never sums across shops)**, top products ranking, supplier debt (RECEIVED-only) |
 | `src/features/pos/barcodeLookup.test.ts` | Barcode→SKU fallback + parity with label printer |
 | `src/features/suppliers/debt.test.ts` | Debt math (debt starts on RECEIVED only) |
 | `src/features/suppliers/actions.test.ts` | `getPurchaseOrderActionState(po, user)` matrix |
@@ -101,10 +101,11 @@ Role & shop scope:
 
 - [ ] **ADMIN** lands on "All Shops" by default; the dropdown lists all
       shops + an All Shops option; Revenue by Shop and Shop Performance
-      use all shops.
+      use all shops; Revenue, Cost & Profit Trend uses all shops when
+      `report:shop_profit` is present.
 - [ ] **ADMIN selected shop** limits revenue, orders, AOV, recent sales,
-      low stock, pending approvals, open shifts, supplier debt, and audit
-      activity to the selected shop.
+      profit trend, Sales by Category, low stock, pending approvals, open
+      shifts, supplier debt, and audit activity to the selected shop.
 - [ ] **MANAGER assigned shop** shows the operational layout with locked
       shop selector, compact KPI row, Recent Sales near the top, Top
       Selling Products, Pending Approvals, Inventory Alerts, Pending PO
@@ -112,6 +113,7 @@ Role & shop scope:
       Sales by Category, and Cash vs Other.
 - [ ] **MANAGER without `report:shop_profit`** sees no profit, cost,
       margin, profit trend, goal tracker, or profit/cost product columns.
+      Sales by Category still renders because it is sales mix only.
 - [ ] **CASHIER / BUYER** cannot reach the route by default
       (`report:shop_sales`). If CASHIER is explicitly granted dashboard
       access, only own-shift / own-sales cards render.
@@ -127,8 +129,16 @@ Data correctness:
       shop/range.
 - [ ] **Avg Order Value** is rounded to whole MMK; no long decimals.
 - [ ] **Date range** Today / Week / Month changes sales KPIs, recent
-      sales, top products, category split, payment split, and admin shop
-      performance.
+      sales, top products, category split, payment split, Admin Revenue,
+      Cost & Profit Trend, and admin shop performance.
+- [ ] **Admin trend chart** excludes VOID/REFUNDED sales, groups by day,
+      subtracts approved PARTIAL refunds from revenue, uses current
+      product cost as the investment/cost approximation, and renders a
+      no-sales empty state when there is no ranged data.
+- [ ] **Sales by Category** excludes VOID/REFUNDED sales, respects shop
+      scope, uses `sale_items.lineTotalMmk`, and percentage totals are
+      approximately 100%. Cart-level discounts are not allocated back to
+      categories yet.
 - [ ] **Empty DB / no sales for the scope**: every number reads `0`; no
       NaN, no Infinity; charts/lists render clean empty states.
 - [ ] **Cost of goods approximation**: a product cost change AFTER a

@@ -1,13 +1,8 @@
 import type { ReactNode } from "react";
 import { Card } from "../../components/ui/Card";
 import { cn, formatMmk } from "../../lib/utils";
+import { rangeLabel, useDashboardCopy } from "./dashboardCopy";
 import type { DateRange } from "./dashboardMetrics";
-
-export const RANGE_LABELS: Record<DateRange, string> = {
-  today: "Today",
-  week: "Week",
-  month: "Month",
-};
 
 const toneClasses = {
   emerald: {
@@ -50,25 +45,28 @@ export const DateRangeSelector = ({
 }: {
   value: DateRange;
   onChange: (value: DateRange) => void;
-}) => (
-  <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
-    {(["today", "week", "month"] as DateRange[]).map((range) => (
-      <button
-        key={range}
-        type="button"
-        onClick={() => onChange(range)}
-        className={cn(
-          "rounded-md px-3 py-1.5 text-sm font-semibold transition",
-          value === range
-            ? "bg-emerald-600 text-white shadow-sm"
-            : "text-slate-600 hover:bg-slate-100"
-        )}
-      >
-        {RANGE_LABELS[range]}
-      </button>
-    ))}
-  </div>
-);
+}) => {
+  const copy = useDashboardCopy();
+  return (
+    <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+      {(["today", "week", "month"] as DateRange[]).map((range) => (
+        <button
+          key={range}
+          type="button"
+          onClick={() => onChange(range)}
+          className={cn(
+            "rounded-md px-3 py-1.5 text-sm font-semibold transition",
+            value === range
+              ? "bg-emerald-600 text-white shadow-sm"
+              : "text-slate-600 hover:bg-slate-100"
+          )}
+        >
+          {rangeLabel(copy, range)}
+        </button>
+      ))}
+    </div>
+  );
+};
 
 export const KpiCard = ({
   label,

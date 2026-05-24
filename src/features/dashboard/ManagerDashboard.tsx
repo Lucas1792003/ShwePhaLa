@@ -15,10 +15,10 @@ import {
   calculateActionNeeded,
   calculateAvgOrderValue,
   calculateCashVsOther,
-  calculateCategoryRevenue,
   calculateExpectedCashForActiveShifts,
   calculateLowStock,
   calculateNetRevenue,
+  calculateSalesByCategoryPercent,
   calculateSalesCount,
   calculateSupplierDebt,
   calculateTopProducts,
@@ -37,9 +37,9 @@ import {
   EmptyState,
   KpiCard,
   MiniMoney,
-  RANGE_LABELS,
   SectionCard,
 } from "./DashboardCommon";
+import { rangeLabel, useDashboardCopy } from "./dashboardCopy";
 
 const COLORS = ["#047857", "#2563eb", "#d97706", "#dc2626", "#7c3aed", "#0891b2"];
 
@@ -49,13 +49,14 @@ interface ManagerDashboardProps {
   shops: Shop[];
 }
 
-const findShopName = (shops: Shop[], shopId: string | undefined) =>
-  shops.find((shop) => shop.id === shopId)?.name ?? "Shop";
+const findShopName = (shops: Shop[], shopId: string | undefined, fallback: string) =>
+  shops.find((shop) => shop.id === shopId)?.name ?? fallback;
 
 const paymentPercent = (value: number, total: number) =>
   total > 0 ? Math.round((value / total) * 100) : 0;
 
 export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboardProps) => {
+  const copy = useDashboardCopy();
   const [range, setRange] = useState<DateRange>("today");
   const sales = useDataStore((state) => state.sales);
   const saleItems = useDataStore((state) => state.saleItems);
@@ -70,7 +71,7 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
   const visibility = useMemo(() => getDashboardVisibility(currentUser), [currentUser]);
   const canViewShiftCash =
     visibility.canViewAllShifts || hasPermission(currentUser, "shift:manage_own");
-  const shopName = findShopName(shops, shopId);
+  const shopName = findShopName(shops, shopId, copy("shop"));
 
   const scopedSales = useMemo(() => scopeSales(sales, shopId), [sales, shopId]);
   const rangedSales = useMemo(
@@ -133,18 +134,19 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
     [purchaseOrders, shopId]
   );
   const categoryData = useMemo(
-    () => calculateCategoryRevenue(rangedSales, saleItems, products),
-    [rangedSales, saleItems, products]
+    () => calculateSalesByCategoryPercent(sales, saleItems, products, shopId, range),
+    [sales, saleItems, products, shopId, range]
   );
   const paymentSplit = useMemo(() => calculateCashVsOther(rangedSales), [rangedSales]);
   const paymentTotal = paymentSplit.cashRevenue + paymentSplit.otherRevenue;
+  const selectedRangeLabel = rangeLabel(copy, range);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-sm text-slate-500">{shopName} operations</p>
+          <h1 className="text-2xl font-bold text-slate-900">{copy("dashboard")}</h1>
+          <p className="text-sm text-slate-500">{shopName} {copy("operations")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select
@@ -160,44 +162,44 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
 
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <KpiCard
-          label={`${RANGE_LABELS[range]} Revenue`}
+          label={`${selectedRangeLabel} ${copy("revenue")}`}
           value={formatMmk(revenue)}
           detail={shopName}
           icon="payments"
           tone="emerald"
         />
         <KpiCard
-          label={`${RANGE_LABELS[range]} Orders`}
+          label={`${selectedRangeLabel} ${copy("orders")}`}
           value={orders}
-          detail="Valid sales"
+          detail={copy("validSales")}
           icon="receipt_long"
           tone="blue"
         />
         <KpiCard
-          label="Avg Order Value"
+          label={copy("aov")}
           value={formatMmk(avgOrder)}
-          detail={`${RANGE_LABELS[range]} average`}
+          detail={`${selectedRangeLabel} ${copy("average")}`}
           icon="analytics"
           tone="slate"
         />
         <KpiCard
-          label="Active Shift / Cash"
-          value={canViewShiftCash ? activeShifts.length : "Locked"}
-          detail={canViewShiftCash ? `Expected ${formatMmk(expectedCash)}` : "Shift permission required"}
+          label={copy("activeShiftCash")}
+          value={canViewShiftCash ? activeShifts.length : copy("locked")}
+          detail={canViewShiftCash ? `${copy("expected")} ${formatMmk(expectedCash)}` : copy("shiftPermissionRequired")}
           icon="point_of_sale"
           tone="amber"
         />
         <KpiCard
-          label="Action Needed"
+          label={copy("actionNeeded")}
           value={visibleActionCount}
-          detail="Current open items"
+          detail={copy("currentOpenItems")}
           icon="priority_high"
           tone={visibleActionCount > 0 ? "rose" : "emerald"}
         />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
-        <SectionCard title="Recent Sales" icon="receipt_long">
+        <SectionCard title={copy("recentSales")} icon="receipt_long">
           {recentSales.length > 0 ? (
             <div className="divide-y divide-slate-100">
               {recentSales.map((sale) => (
@@ -208,7 +210,7 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
                         #{sale.receiptNo}
                       </span>
                       <Badge tone={sale.paymentMethod === "CASH" ? "green" : "blue"}>
-                        {sale.paymentMethod}
+                        {sale.paymentMethod === "CASH" ? copy("cash") : copy("other")}
                       </Badge>
                     </div>
                     <p className="truncate text-xs text-slate-500">
@@ -220,12 +222,12 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
               ))}
             </div>
           ) : (
-            <EmptyState message="No sales in this range." icon="receipt" />
+            <EmptyState message={copy("noSalesInRange")} icon="receipt" />
           )}
         </SectionCard>
 
         <div className="space-y-4">
-          <SectionCard title="Top Selling Products" icon="leaderboard">
+          <SectionCard title={copy("topSellingProducts")} icon="leaderboard">
             {topProducts.length > 0 ? (
               <div className="space-y-3">
                 {topProducts.map((row, index) => (
@@ -236,7 +238,7 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
                       </span>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-slate-800">{row.product.name}</p>
-                        <p className="text-xs text-slate-500">{row.qty} sold</p>
+                        <p className="text-xs text-slate-500">{row.qty} {copy("sold")}</p>
                       </div>
                     </div>
                     <MiniMoney value={row.revenue} />
@@ -244,12 +246,12 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
                 ))}
               </div>
             ) : (
-              <EmptyState message="No product sales in this range." icon="inventory_2" />
+              <EmptyState message={copy("noProductSalesInRange")} icon="inventory_2" />
             )}
           </SectionCard>
 
           {visibility.canViewSupplierDebt && (
-            <SectionCard title="Supplier Debt" icon="account_balance_wallet">
+            <SectionCard title={copy("supplierDebt")} icon="account_balance_wallet">
               {supplierDebt.debt > 0 ? (
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -257,13 +259,13 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
                       {formatMmk(supplierDebt.debt)}
                     </div>
                     <p className="text-sm text-slate-500">
-                      {supplierDebt.openPoCount} received PO(s) unpaid or partial
+                      {supplierDebt.openPoCount} {copy("receivedPosUnpaidPartial")}
                     </p>
                   </div>
-                  <Badge tone="red">Needs payment</Badge>
+                  <Badge tone="red">{copy("needsPayment")}</Badge>
                 </div>
               ) : (
-                <EmptyState message="No outstanding received supplier debt." icon="task_alt" />
+                <EmptyState message={copy("noOutstandingSupplierDebt")} icon="task_alt" />
               )}
             </SectionCard>
           )}
@@ -272,47 +274,49 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
 
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         {visibility.canViewApprovals && (
-          <SectionCard title="Pending Refund/Void Approvals" icon="approval">
+          <SectionCard title={copy("pendingRefundVoidApprovals")} icon="approval">
             {pendingApprovals.length > 0 ? (
               <div className="space-y-2">
                 {pendingApprovals.map((request) => (
                   <div key={request.id} className="rounded-lg border border-slate-200 p-3">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-semibold text-slate-800">{request.type}</span>
-                      <Badge tone="amber">Requested</Badge>
+                      <span className="text-sm font-semibold text-slate-800">
+                        {request.type === "VOID" ? copy("voidRequest") : copy("partialRefund")}
+                      </span>
+                      <Badge tone="amber">{copy("requested")}</Badge>
                     </div>
                     <p className="mt-1 truncate text-xs text-slate-500">{request.reason}</p>
                   </div>
                 ))}
               </div>
             ) : (
-              <EmptyState message="No pending approvals." icon="task_alt" />
+              <EmptyState message={copy("noPendingApprovals")} icon="task_alt" />
             )}
           </SectionCard>
         )}
 
         {visibility.canViewInventory && (
-          <SectionCard title="Inventory Alerts" icon="warning">
+          <SectionCard title={copy("inventoryAlerts")} icon="warning">
             {lowStockRows.length > 0 ? (
               <div className="space-y-2">
                 {lowStockRows.map((row) => (
                   <div key={`${row.shopId}-${row.product.id}`} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-slate-800">{row.product.name}</p>
-                      <p className="text-xs text-slate-500">Threshold {row.threshold}</p>
+                      <p className="text-xs text-slate-500">{copy("threshold")} {row.threshold}</p>
                     </div>
-                    <Badge tone={row.status === "out" ? "red" : "amber"}>{row.qty} left</Badge>
+                    <Badge tone={row.status === "out" ? "red" : "amber"}>{row.qty} {copy("left")}</Badge>
                   </div>
                 ))}
               </div>
             ) : (
-              <EmptyState message="No low or out-of-stock items." icon="task_alt" />
+              <EmptyState message={copy("noLowOrOutStock")} icon="task_alt" />
             )}
           </SectionCard>
         )}
 
         {visibility.canViewPurchases && (
-          <SectionCard title="Pending PO Receipts" icon="local_shipping">
+          <SectionCard title={copy("pendingPoReceipts")} icon="local_shipping">
             {pendingReceipts.length > 0 ? (
               <div className="space-y-2">
                 {pendingReceipts.map((po) => (
@@ -322,19 +326,19 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
                       <MiniMoney value={po.totalMmk} />
                     </div>
                     <p className="mt-1 truncate text-xs text-slate-500">
-                      {suppliers.find((supplier) => supplier.id === po.supplierId)?.name ?? "Supplier"}
+                      {suppliers.find((supplier) => supplier.id === po.supplierId)?.name ?? copy("supplier")}
                     </p>
                   </div>
                 ))}
               </div>
             ) : (
-              <EmptyState message="No approved POs waiting for receipt." icon="task_alt" />
+              <EmptyState message={copy("noApprovedPosWaitingReceipt")} icon="task_alt" />
             )}
           </SectionCard>
         )}
 
         {visibility.canViewTransfers && (
-          <SectionCard title="Pending Transfers" icon="sync_alt">
+          <SectionCard title={copy("pendingTransfers")} icon="sync_alt">
             {pendingTransfers.length > 0 ? (
               <div className="space-y-2">
                 {pendingTransfers.map((transfer) => (
@@ -343,23 +347,23 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
                       <span className="truncate text-sm font-semibold text-slate-800">
                         {transfer.transferNo}
                       </span>
-                      <Badge tone="blue">Pending</Badge>
+                      <Badge tone="blue">{copy("pending")}</Badge>
                     </div>
                     <p className="mt-1 truncate text-xs text-slate-500">
-                      {findShopName(shops, transfer.fromShopId)} to {findShopName(shops, transfer.toShopId)}
+                      {findShopName(shops, transfer.fromShopId, copy("unknownShop"))} {copy("to")} {findShopName(shops, transfer.toShopId, copy("unknownShop"))}
                     </p>
                   </div>
                 ))}
               </div>
             ) : (
-              <EmptyState message="No pending transfers for this shop." icon="task_alt" />
+              <EmptyState message={copy("noPendingTransfersForShop")} icon="task_alt" />
             )}
           </SectionCard>
         )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard title="Sales by Category" icon="donut_small">
+        <SectionCard title={copy("salesByCategory")} icon="donut_small">
           <div className="h-56">
             {categoryData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -378,20 +382,25 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
                       <Cell key={`category-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => formatMmk(Number(value))} />
+                  <Tooltip
+                    formatter={(value, name, props) => [
+                      `${formatMmk(Number(value))} (${Number(props.payload?.percent ?? 0).toFixed(1)}%)`,
+                      name,
+                    ]}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <EmptyState message="No category sales in this range." icon="donut_small" />
+              <EmptyState message={copy("noCategorySalesForPeriod")} icon="donut_small" />
             )}
           </div>
         </SectionCard>
 
-        <SectionCard title="Cash vs Other Sales" icon="payments">
+        <SectionCard title={copy("cashVsOtherSales")} icon="payments">
           <div className="space-y-4">
             <div>
               <div className="mb-1 flex items-center justify-between text-sm">
-                <span className="font-medium text-slate-700">Cash</span>
+                <span className="font-medium text-slate-700">{copy("cash")}</span>
                 <span className="text-slate-600">
                   {formatMmk(paymentSplit.cashRevenue)} ({paymentSplit.cashCount})
                 </span>
@@ -405,7 +414,7 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
             </div>
             <div>
               <div className="mb-1 flex items-center justify-between text-sm">
-                <span className="font-medium text-slate-700">Other</span>
+                <span className="font-medium text-slate-700">{copy("other")}</span>
                 <span className="text-slate-600">
                   {formatMmk(paymentSplit.otherRevenue)} ({paymentSplit.otherCount})
                 </span>

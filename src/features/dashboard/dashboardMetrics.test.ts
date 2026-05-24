@@ -18,6 +18,7 @@ import {
   calculateCashVsOther,
   calculateCategoryRevenue,
   calculateCostOfGoods,
+  calculateDailyRevenueCostProfitTrend,
   calculateExpectedCashForActiveShifts,
   calculateGrossRevenue,
   calculateInventoryValue,
@@ -27,6 +28,7 @@ import {
   calculateProfit,
   calculateProfitMargin,
   calculateRefundDeductions,
+  calculateSalesByCategoryPercent,
   calculateSalesCount,
   calculateSupplierDebt,
   calculateTopProducts,
@@ -437,6 +439,146 @@ describe("calculateCategoryRevenue", () => {
       { name: "beer", value: 5000 },
       { name: "juice", value: 1500 },
     ]);
+  });
+});
+
+describe("calculateSalesByCategoryPercent", () => {
+  const NOW = new Date(2026, 4, 24, 12, 0, 0, 0);
+  const products: Product[] = [
+    product({ id: "p1", category: "beer" }),
+    product({ id: "p2", category: "juice" }),
+  ];
+
+  it("excludes VOID sales and returns category percentages", () => {
+    const sales: Sale[] = [
+      sale({ id: "s1", shopId: "shop-a", createdAt: new Date(2026, 4, 24, 9).toISOString() }),
+      sale({ id: "void", shopId: "shop-a", status: "VOID", createdAt: new Date(2026, 4, 24, 10).toISOString() }),
+    ];
+    const items: SaleItem[] = [
+      item({ saleId: "s1", productId: "p1", lineTotalMmk: 3000 }),
+      item({ saleId: "s1", productId: "p2", lineTotalMmk: 1000 }),
+      item({ saleId: "void", productId: "p1", lineTotalMmk: 99000 }),
+    ];
+
+    const rows = calculateSalesByCategoryPercent(sales, items, products, "shop-a", "today", NOW);
+    expect(rows).toEqual([
+      { name: "beer", value: 3000, percent: 75 },
+      { name: "juice", value: 1000, percent: 25 },
+    ]);
+  });
+
+  it("respects shop scope", () => {
+    const sales: Sale[] = [
+      sale({ id: "s-a", shopId: "shop-a", createdAt: new Date(2026, 4, 24, 9).toISOString() }),
+      sale({ id: "s-b", shopId: "shop-b", createdAt: new Date(2026, 4, 24, 9).toISOString() }),
+    ];
+    const items: SaleItem[] = [
+      item({ saleId: "s-a", productId: "p1", lineTotalMmk: 1000 }),
+      item({ saleId: "s-b", productId: "p2", lineTotalMmk: 4000 }),
+    ];
+
+    expect(
+      calculateSalesByCategoryPercent(sales, items, products, "shop-a", "today", NOW).map((r) => r.name)
+    ).toEqual(["beer"]);
+    expect(
+      calculateSalesByCategoryPercent(sales, items, products, null, "today", NOW).map((r) => r.name)
+    ).toEqual(["juice", "beer"]);
+  });
+
+  it("percentage total is approximately 100", () => {
+    const sales: Sale[] = [
+      sale({ id: "s1", shopId: "shop-a", createdAt: new Date(2026, 4, 24, 9).toISOString() }),
+    ];
+    const items: SaleItem[] = [
+      item({ saleId: "s1", productId: "p1", lineTotalMmk: 1 }),
+      item({ saleId: "s1", productId: "p2", lineTotalMmk: 2 }),
+    ];
+
+    const total = calculateSalesByCategoryPercent(sales, items, products, "shop-a", "today", NOW)
+      .reduce((sum, row) => sum + row.percent, 0);
+    expect(total).toBeCloseTo(100, 5);
+  });
+
+  it("returns empty data safely", () => {
+    expect(calculateSalesByCategoryPercent([], [], [], null, "today", NOW)).toEqual([]);
+  });
+});
+
+describe("calculateDailyRevenueCostProfitTrend", () => {
+  const NOW = new Date(2026, 4, 24, 12, 0, 0, 0);
+  const products: Product[] = [product({ id: "p1", costMmk: 600 })];
+
+  it("excludes VOID sales from revenue, cost, and profit", () => {
+    const sales: Sale[] = [
+      sale({ id: "s1", shopId: "shop-a", totalMmk: 10000, createdAt: new Date(2026, 4, 24, 9).toISOString() }),
+      sale({ id: "void", shopId: "shop-a", status: "VOID", totalMmk: 99000, createdAt: new Date(2026, 4, 24, 10).toISOString() }),
+    ];
+    const items: SaleItem[] = [
+      item({ saleId: "s1", productId: "p1", qtyUnits: 5 }),
+      item({ saleId: "void", productId: "p1", qtyUnits: 99 }),
+    ];
+
+    const rows = calculateDailyRevenueCostProfitTrend(sales, items, products, [], "shop-a", "today", NOW);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      revenue: 10000,
+      cost: 3000,
+      profit: 7000,
+    });
+  });
+
+  it("groups by day and subtracts approved partial refunds from revenue", () => {
+    const dayOne = new Date(2026, 4, 23, 9).toISOString();
+    const dayTwo = new Date(2026, 4, 24, 9).toISOString();
+    const sales: Sale[] = [
+      sale({ id: "s1", shopId: "shop-a", totalMmk: 10000, createdAt: dayOne }),
+      sale({ id: "s2", shopId: "shop-a", totalMmk: 5000, createdAt: dayOne }),
+      sale({ id: "s3", shopId: "shop-a", totalMmk: 8000, createdAt: dayTwo }),
+    ];
+    const items: SaleItem[] = [
+      item({ saleId: "s1", productId: "p1", qtyUnits: 10 }),
+      item({ saleId: "s2", productId: "p1", qtyUnits: 2 }),
+      item({ saleId: "s3", productId: "p1", qtyUnits: 3 }),
+    ];
+    const refunds: RefundVoidRequest[] = [
+      refund({ saleId: "s2", status: "APPROVED", type: "PARTIAL", items: [{ productId: "p1", qtyUnits: 1, amountMmk: 1000 }] }),
+    ];
+
+    const rows = calculateDailyRevenueCostProfitTrend(sales, items, products, refunds, "shop-a", "week", NOW);
+    expect(rows.map((row) => row.date)).toEqual(["2026-05-23", "2026-05-24"]);
+    expect(rows[0]).toMatchObject({
+      revenue: 14000,
+      cost: 7200,
+      profit: 6800,
+    });
+    expect(rows[1]).toMatchObject({
+      revenue: 8000,
+      cost: 1800,
+      profit: 6200,
+    });
+  });
+
+  it("respects admin all-shops vs selected-shop scope", () => {
+    const createdAt = new Date(2026, 4, 24, 9).toISOString();
+    const sales: Sale[] = [
+      sale({ id: "s-a", shopId: "shop-a", totalMmk: 10000, createdAt }),
+      sale({ id: "s-b", shopId: "shop-b", totalMmk: 7000, createdAt }),
+    ];
+    const items: SaleItem[] = [
+      item({ saleId: "s-a", productId: "p1", qtyUnits: 2 }),
+      item({ saleId: "s-b", productId: "p1", qtyUnits: 3 }),
+    ];
+
+    expect(
+      calculateDailyRevenueCostProfitTrend(sales, items, products, [], "shop-a", "today", NOW)[0].revenue
+    ).toBe(10000);
+    expect(
+      calculateDailyRevenueCostProfitTrend(sales, items, products, [], null, "today", NOW)[0].revenue
+    ).toBe(17000);
+  });
+
+  it("returns an empty array safely", () => {
+    expect(calculateDailyRevenueCostProfitTrend([], [], [], [], null, "today", NOW)).toEqual([]);
   });
 });
 

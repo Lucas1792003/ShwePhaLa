@@ -183,7 +183,10 @@ column-by-column coverage.
 > and BUYER do not reach the route by default; if sales reporting is
 > explicitly granted, CASHIER sees only own-shift data and BUYER remains
 > assigned-shop scoped. Profit, margin, cost, and profit/cost columns
-> require `report:shop_profit`; inventory alert cards require
+> require `report:shop_profit`, including the Admin Revenue, Cost &
+> Profit Trend. MANAGER can see assigned-shop Sales by Category because
+> it is a sales mix chart, but does not see cost/profit/investment trend
+> data unless `report:shop_profit` is granted. Inventory alert cards require
 > `report:shop_inventory`; supplier debt requires `supplier:debt_view`;
 > audit activity requires `audit:view_global`. See
 > [`04-features-workflows.md` > Dashboard](./04-features-workflows.md#dashboard)

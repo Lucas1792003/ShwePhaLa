@@ -6,6 +6,7 @@ import { formatDateTime, formatMmk } from "../../lib/utils";
 import { useDataStore } from "../../stores/dataStore";
 import type { Shop, User } from "../../types";
 import { EmptyState, KpiCard, MiniMoney, SectionCard } from "./DashboardCommon";
+import { useDashboardCopy } from "./dashboardCopy";
 
 interface CashierDashboardProps {
   currentUser: User;
@@ -17,6 +18,7 @@ const shortcutClass =
   "inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50";
 
 export const CashierDashboard = ({ currentUser, shopId, shops }: CashierDashboardProps) => {
+  const copy = useDashboardCopy();
   const sales = useDataStore((state) => state.sales);
   const refunds = useDataStore((state) => state.refundVoidRequests);
   const shifts = useDataStore((state) => state.shifts);
@@ -51,60 +53,60 @@ export const CashierDashboard = ({ currentUser, shopId, shops }: CashierDashboar
     <div className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{copy("dashboard")}</h1>
           <p className="text-sm text-slate-500">
-            {shop?.name ?? "Assigned shop"} own-shift summary
+            {shop?.name ?? copy("assignedShop")} {copy("ownShiftSummary")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link to="/app/pos" className={shortcutClass}>
             <span className="material-symbols-rounded text-lg">point_of_sale</span>
-            POS
+            {copy("pos")}
           </Link>
           <Link to="/app/sales" className={shortcutClass}>
             <span className="material-symbols-rounded text-lg">receipt_long</span>
-            Sales History
+            {copy("salesHistory")}
           </Link>
           <Link to="/app/shifts" className={shortcutClass}>
             <span className="material-symbols-rounded text-lg">schedule</span>
-            Shift Summary
+            {copy("shiftSummary")}
           </Link>
         </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          label="Shift Status"
-          value={openShift ? "Open" : "No open shift"}
-          detail={openShift ? `Started ${formatDateTime(openShift.startedAt)}` : "Start a shift before POS"}
+          label={copy("shiftStatus")}
+          value={openShift ? copy("open") : copy("noOpenShift")}
+          detail={openShift ? `${copy("started")} ${formatDateTime(openShift.startedAt)}` : copy("startShiftBeforePos")}
           icon="schedule"
           tone={openShift ? "emerald" : "amber"}
         />
         <KpiCard
-          label="Own Shift Sales"
+          label={copy("ownShiftSales")}
           value={formatMmk(ownRevenue)}
-          detail="VOID sales excluded"
+          detail={copy("voidSalesExcluded")}
           icon="payments"
           tone="blue"
         />
         <KpiCard
-          label="Own Orders"
+          label={copy("ownOrders")}
           value={activeSales.length}
-          detail={`${shiftBreakdown?.voidedCount ?? 0} voided`}
+          detail={`${shiftBreakdown?.voidedCount ?? 0} ${copy("voided")}`}
           icon="receipt_long"
           tone="slate"
         />
         <KpiCard
-          label="Expected Cash"
+          label={copy("expectedCash")}
           value={formatMmk(shiftBreakdown?.expectedCash ?? 0)}
-          detail={`${formatMmk(shiftBreakdown?.cashTotal ?? 0)} cash sales`}
+          detail={`${formatMmk(shiftBreakdown?.cashTotal ?? 0)} ${copy("cashSales")}`}
           icon="account_balance_wallet"
           tone="amber"
         />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <SectionCard title="Recent Own Sales" icon="receipt_long">
+        <SectionCard title={copy("recentOwnSales")} icon="receipt_long">
           {ownSales.length > 0 ? (
             <div className="divide-y divide-slate-100">
               {ownSales.slice(0, 8).map((sale) => (
@@ -114,10 +116,12 @@ export const CashierDashboard = ({ currentUser, shopId, shops }: CashierDashboar
                       <span className="truncate text-sm font-semibold text-slate-800">
                         #{sale.receiptNo}
                       </span>
-                      <Badge tone={sale.status === "VOID" ? "red" : "green"}>{sale.status}</Badge>
+                      <Badge tone={sale.status === "VOID" ? "red" : "green"}>
+                        {sale.status === "VOID" ? copy("voidSale") : copy("normal")}
+                      </Badge>
                     </div>
                     <p className="truncate text-xs text-slate-500">
-                      {formatDateTime(sale.createdAt)} - {sale.paymentMethod}
+                      {formatDateTime(sale.createdAt)} - {sale.paymentMethod === "CASH" ? copy("cash") : copy("other")}
                     </p>
                   </div>
                   <MiniMoney value={sale.status === "VOID" ? 0 : sale.totalMmk} />
@@ -125,25 +129,27 @@ export const CashierDashboard = ({ currentUser, shopId, shops }: CashierDashboar
               ))}
             </div>
           ) : (
-            <EmptyState message="No sales for your current scope." icon="receipt" />
+              <EmptyState message={copy("noSalesForCurrentScope")} icon="receipt" />
           )}
         </SectionCard>
 
-        <SectionCard title="Requests" icon="approval">
+        <SectionCard title={copy("requests")} icon="approval">
           {pendingRequests.length > 0 ? (
             <div className="space-y-2">
               {pendingRequests.slice(0, 5).map((request) => (
                 <div key={request.id} className="rounded-lg border border-slate-200 p-3">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold text-slate-800">{request.type}</span>
-                    <Badge tone="amber">Requested</Badge>
+                    <span className="text-sm font-semibold text-slate-800">
+                      {request.type === "VOID" ? copy("voidRequest") : copy("partialRefund")}
+                    </span>
+                    <Badge tone="amber">{copy("requested")}</Badge>
                   </div>
                   <p className="mt-1 truncate text-xs text-slate-500">{request.reason}</p>
                 </div>
               ))}
             </div>
           ) : (
-            <EmptyState message="No pending refund or void requests." icon="task_alt" />
+            <EmptyState message={copy("noPendingRefundVoidRequests")} icon="task_alt" />
           )}
         </SectionCard>
       </div>
