@@ -1,8 +1,9 @@
-import type { Product, Category } from "../../types";
+import type { Product, Category, ProductUnit } from "../../types";
 import { Badge } from "../ui/Badge";
 import { SearchInput } from "../forms/SearchInput";
 import { formatMmk } from "../../lib/utils";
 import { resolveCategoryIcon } from "../../features/categories/categoryIcons";
+import { getActiveProductUnits, getDefaultProductUnit } from "../../features/catalog/productUnits";
 
 interface ProductFinderProps {
   products: Product[];
@@ -14,7 +15,8 @@ interface ProductFinderProps {
   onCategory: (value: string) => void;
   inventoryById: Record<string, number>;
   cartUnitsByProductId?: Record<string, number>;
-  onAdd: (product: Product, usePack: boolean) => void;
+  productUnits?: ProductUnit[];
+  onAdd: (product: Product, unit: ProductUnit) => void;
 }
 
 export const ProductFinder = ({
@@ -26,6 +28,7 @@ export const ProductFinder = ({
   onCategory,
   inventoryById,
   cartUnitsByProductId = {},
+  productUnits = [],
   onAdd,
 }: ProductFinderProps) => {
   // "All" keeps its own grid icon; every category resolves its icon through
@@ -73,11 +76,13 @@ export const ProductFinder = ({
             const qty = inventoryById[product.id] ?? 0;
             const requestedUnits = cartUnitsByProductId[product.id] ?? 0;
             const remainingUnits = Math.max(0, qty - requestedUnits);
+            const units = getActiveProductUnits(product.id, productUnits);
+            const defaultUnit = getDefaultProductUnit(product, productUnits);
+            const visibleUnits = units.length > 0 ? units : [defaultUnit];
             const outOfStock = qty <= 0;
             const fullyReserved = !outOfStock && remainingUnits <= 0;
             const lowStock = qty > 0 && qty <= product.lowStockThreshold;
-            const unitAddDisabled = outOfStock || remainingUnits < 1;
-            const packAddDisabled = outOfStock || !product.packSize || remainingUnits < product.packSize;
+            const unitAddDisabled = outOfStock || remainingUnits < defaultUnit.baseQuantity;
 
             return (
               <div
@@ -87,13 +92,13 @@ export const ProductFinder = ({
                 aria-label={`Add ${product.name}`}
                 aria-disabled={unitAddDisabled}
                 onClick={() => {
-                  if (!unitAddDisabled) onAdd(product, false);
+                  if (!unitAddDisabled) onAdd(product, defaultUnit);
                 }}
                 onKeyDown={(event) => {
                   if (event.currentTarget !== event.target || unitAddDisabled) return;
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    onAdd(product, false);
+                    onAdd(product, defaultUnit);
                   }
                 }}
                 className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
@@ -146,12 +151,12 @@ export const ProductFinder = ({
                 <div className="flex flex-1 flex-col p-3">
                   <h3 className="line-clamp-2 text-sm font-semibold text-slate-800">{product.name}</h3>
                   <div className="mt-auto flex items-center justify-between pt-2">
-                    <span className="text-base font-bold text-emerald-600">{formatMmk(product.priceMmk)}</span>
+                    <span className="text-base font-bold text-emerald-600">{formatMmk(defaultUnit.priceMmk)}</span>
                     <button
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        if (!unitAddDisabled) onAdd(product, false);
+                        if (!unitAddDisabled) onAdd(product, defaultUnit);
                       }}
                       disabled={unitAddDisabled}
                       title={unitAddDisabled ? `Only ${qty} in stock for this shop.` : `Add ${product.name}`}
@@ -160,19 +165,27 @@ export const ProductFinder = ({
                       <span className="material-symbols-rounded text-lg">add</span>
                     </button>
                   </div>
-                  {product.packSize && (
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (!packAddDisabled) onAdd(product, true);
-                      }}
-                      disabled={packAddDisabled}
-                      title={packAddDisabled ? "Not enough stock for pack." : `Add pack of ${product.packSize}`}
-                      className="mt-2 w-full rounded-lg border border-emerald-200 bg-emerald-50 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
-                    >
-                      {packAddDisabled && !outOfStock ? "Not enough stock for pack" : `Add Pack (${product.packSize})`}
-                    </button>
+                  {visibleUnits.length > 1 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {visibleUnits.map((unit) => {
+                        const disabled = remainingUnits < unit.baseQuantity;
+                        return (
+                          <button
+                            key={unit.id}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (!disabled) onAdd(product, unit);
+                            }}
+                            disabled={disabled}
+                            className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={`${unit.name} deducts ${unit.baseQuantity} ${product.unitType}`}
+                          >
+                            {unit.name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>

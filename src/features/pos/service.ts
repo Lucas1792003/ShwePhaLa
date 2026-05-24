@@ -2,14 +2,13 @@ import type { CartItem } from "../../types";
 
 export const calculateCartTotals = (items: CartItem[], cartDiscountPct: number) => {
   // Calculate subtotal (before any discounts)
-  const subtotal = items.reduce((sum, item) => sum + item.unitPriceMmk * item.qty * item.unitsPerItem, 0);
+  const subtotal = items.reduce((sum, item) => sum + item.unitPriceMmk * item.qty, 0);
 
   // Calculate line totals with per-line rounding (matches saleSlice.ts logic)
   const lineTotals = items.map((item) => {
-    const qtyUnits = item.qty * item.unitsPerItem;
     const itemDiscountPct = item.itemDiscountPct || 0;
     // Per-line rounding - matches store calculation exactly
-    return Math.round(qtyUnits * item.unitPriceMmk * (1 - itemDiscountPct / 100));
+    return Math.round(item.qty * item.unitPriceMmk * (1 - itemDiscountPct / 100));
   });
 
   // Sum of rounded line totals = afterItemDiscount

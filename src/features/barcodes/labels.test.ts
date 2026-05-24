@@ -5,13 +5,27 @@ import {
   MAX_LABEL_QTY,
   MIN_LABEL_QTY,
 } from "./labels";
-import type { ProductBarcode } from "../../types";
+import type { ProductBarcode, ProductUnit } from "../../types";
 
 const barcode = (productId: string, value: string): ProductBarcode => ({
   id: `${productId}-${value}`,
   productId,
   value,
   type: "EAN13",
+});
+
+const unit = (overrides: Partial<ProductUnit> = {}): ProductUnit => ({
+  id: "unit-default",
+  productId: "p1",
+  name: "Can",
+  baseQuantity: 1,
+  priceMmk: 1000,
+  isDefault: true,
+  isActive: true,
+  sortOrder: 0,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  ...overrides,
 });
 
 describe("getPrintableBarcodeValue", () => {
@@ -47,6 +61,24 @@ describe("getPrintableBarcodeValue", () => {
       [{ id: "x", productId: "p1", value: "", type: "EAN13" }]
     );
     expect(result).toEqual({ value: "BEE-001", source: "sku" });
+  });
+
+  it("uses a unit-specific barcode for non-default sellable units", () => {
+    const result = getPrintableBarcodeValue(
+      { id: "p1", sku: "BEE-001" },
+      [{ ...barcode("p1", "CASE-001"), productUnitId: "unit-case" }],
+      unit({ id: "unit-case", name: "Case", isDefault: false })
+    );
+    expect(result).toEqual({ value: "CASE-001", source: "barcode" });
+  });
+
+  it("does not use SKU fallback for non-default sellable units", () => {
+    const result = getPrintableBarcodeValue(
+      { id: "p1", sku: "BEE-001" },
+      [],
+      unit({ id: "unit-case", name: "Case", isDefault: false })
+    );
+    expect(result).toBeNull();
   });
 });
 

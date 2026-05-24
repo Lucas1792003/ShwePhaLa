@@ -65,10 +65,34 @@ CREATE TABLE IF NOT EXISTS products (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- product_units (product-specific sellable units; stock remains in base units)
+CREATE TABLE IF NOT EXISTS product_units (
+  id text PRIMARY KEY,
+  product_id text NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  base_quantity integer NOT NULL CHECK (base_quantity > 0),
+  price_mmk integer NOT NULL CHECK (price_mmk >= 0),
+  is_default boolean NOT NULL DEFAULT false,
+  is_active boolean NOT NULL DEFAULT true,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT product_units_name_not_blank CHECK (length(btrim(name)) > 0)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS product_units_unique_active_name
+  ON product_units (product_id, (lower(btrim(name))))
+  WHERE is_active;
+
+CREATE UNIQUE INDEX IF NOT EXISTS product_units_one_default
+  ON product_units (product_id)
+  WHERE is_default;
+
 -- product_barcodes
 CREATE TABLE IF NOT EXISTS product_barcodes (
   id text PRIMARY KEY,
   product_id text NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  product_unit_id text REFERENCES product_units(id) ON DELETE SET NULL,
   value text NOT NULL,
   type text NOT NULL
 );
@@ -246,10 +270,12 @@ CREATE TABLE IF NOT EXISTS sales (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- sale_items (composite PK: one row per product per sale)
+-- sale_items
 CREATE TABLE IF NOT EXISTS sale_items (
+  id text PRIMARY KEY,
   sale_id text NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
   product_id text NOT NULL,
+  product_unit_id text REFERENCES product_units(id) ON DELETE SET NULL,
   qty_units integer NOT NULL,
   unit_price_mmk integer NOT NULL,
   item_discount_pct numeric,
@@ -257,8 +283,11 @@ CREATE TABLE IF NOT EXISTS sale_items (
   price_overridden_by text,
   unit_label text,
   units_per_item integer,
-  stock_override_by text,
-  PRIMARY KEY (sale_id, product_id)
+  unit_name_snapshot text,
+  unit_base_quantity_snapshot integer,
+  unit_price_mmk_snapshot integer,
+  base_quantity_sold integer,
+  stock_override_by text
 );
 
 -- reprint_logs
@@ -302,6 +331,7 @@ ALTER TABLE shops ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_units ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_barcodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE price_tiers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
@@ -324,6 +354,7 @@ CREATE POLICY "authenticated_all" ON shops FOR ALL TO authenticated USING (true)
 CREATE POLICY "authenticated_all" ON users FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "authenticated_all" ON categories FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "authenticated_all" ON products FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_all" ON product_units FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "authenticated_all" ON product_barcodes FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "authenticated_all" ON price_tiers FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "authenticated_all" ON inventory FOR ALL TO authenticated USING (true) WITH CHECK (true);

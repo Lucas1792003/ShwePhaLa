@@ -13,6 +13,7 @@ import {
   seedUsers,
   seedCategories,
   seedProducts,
+  seedProductUnits,
   seedBarcodes,
   seedPriceTiers,
   seedInventory,
@@ -65,8 +66,29 @@ export async function seedSupabase() {
     }))
   );
 
+  await supabase.from("product_units").insert(
+    seedProductUnits.map((u) => ({
+      id: u.id,
+      product_id: u.productId,
+      name: u.name,
+      base_quantity: u.baseQuantity,
+      price_mmk: u.priceMmk,
+      is_default: u.isDefault,
+      is_active: u.isActive,
+      sort_order: u.sortOrder,
+      created_at: u.createdAt,
+      updated_at: u.updatedAt,
+    }))
+  );
+
   await supabase.from("product_barcodes").insert(
-    seedBarcodes.map((b) => ({ id: b.id, product_id: b.productId, value: b.value, type: b.type }))
+    seedBarcodes.map((b) => ({
+      id: b.id,
+      product_id: b.productId,
+      product_unit_id: b.productUnitId ?? null,
+      value: b.value,
+      type: b.type,
+    }))
   );
 
   await supabase.from("price_tiers").insert(
@@ -155,11 +177,17 @@ export async function seedSupabase() {
   );
 
   await supabase.from("sale_items").insert(
-    seedSaleItems.map((i) => ({
-      sale_id: i.saleId, product_id: i.productId, qty_units: i.qtyUnits,
+    seedSaleItems.map((i, index) => ({
+      id: i.id ?? `item-seed-${index}`,
+      sale_id: i.saleId, product_id: i.productId, product_unit_id: i.productUnitId ?? null,
+      qty_units: i.qtyUnits,
       unit_price_mmk: i.unitPriceMmk, item_discount_pct: i.itemDiscountPct,
       line_total_mmk: i.lineTotalMmk, price_overridden_by: i.priceOverriddenBy,
       unit_label: i.unitLabel, units_per_item: i.unitsPerItem,
+      unit_name_snapshot: i.unitNameSnapshot ?? i.unitLabel,
+      unit_base_quantity_snapshot: i.unitBaseQuantitySnapshot ?? i.unitsPerItem ?? 1,
+      unit_price_mmk_snapshot: i.unitPriceMmkSnapshot ?? i.unitPriceMmk,
+      base_quantity_sold: i.baseQuantitySold ?? i.qtyUnits,
       stock_override_by: i.stockOverrideBy,
     }))
   );

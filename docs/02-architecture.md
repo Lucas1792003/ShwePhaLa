@@ -67,7 +67,7 @@ localStorage holds only the three lightweight items above.
 
 ## Data Loading
 
-`stores/data/index.ts` composes ten Zustand slices (shop, category, product,
+`stores/data/index.ts` composes the domain slices (shop, category, unit type, product,
 inventory, shift, sale, transfer, purchase, pricing, audit). `loadData()`
 fetches all relevant tables in parallel and exposes:
 
@@ -102,7 +102,7 @@ Writes split cleanly into two paths:
    `supabase.from(...).insert / update` writes via `dbWrite` (fire-and-forget
    + friendly toast on failure) or `dbExec` (awaited; throws a friendly
    `Error` on failure). Applies to: `shops`, `users`, `categories`,
-   `products`, `product_barcodes`, `price_tiers`, `suppliers`. RLS still
+   `products`, `product_units`, `product_barcodes`, `price_tiers`, `suppliers`. RLS still
    gates by permission server-side.
 
 ## Multi-Shop Model
@@ -138,10 +138,19 @@ Details and per-role tables: [05-roles-permissions.md](./05-roles-permissions.md
 ## Product / Inventory / Image Model
 
 - `products.sku` is the primary catalog code (required in the admin UI).
+- `products.unit_type` is the base stock unit label from the Unit Types
+  registry. Inventory stays in base units.
+- `product_units` are product-specific sellable units (`Can`, `6 Pack`,
+  `Case`) with `base_quantity`, unit price, default/active flags, and sort
+  order. POS deducts `cart qty * product_units.base_quantity`.
+- `product_barcodes.product_unit_id` maps a barcode to an exact sellable
+  unit; null means product/default unit.
 - `product_barcodes.value` is the optional scan-code mapping used by POS.
 - POS barcode scan resolves: trim → exact `product_barcodes.value` match →
   case-insensitive `products.sku` fallback. This mirrors the label
   printer's selection rule, so a SKU-source label scans back correctly.
+  If a barcode row has `product_unit_id`, POS adds that exact sellable unit;
+  SKU fallback always adds the default unit.
 - Product images compress to `<= 100 KB` and upload to the **public
   Supabase Storage bucket `product-images`**. The `products.image_url`
   column holds only the public URL — never base64.

@@ -7,7 +7,7 @@ writes are RPC-only, and `audit_logs` direct writes are blocked.
 
 | Group | Tables |
 | --- | --- |
-| Core / reference | `shops`, `users`, `categories`, `products`, `product_barcodes`, `price_tiers`, `suppliers`, `product_image_upload_sessions` |
+| Core / reference | `shops`, `users`, `categories`, `products`, `product_units`, `product_barcodes`, `price_tiers`, `suppliers`, `product_image_upload_sessions` |
 | Inventory | `inventory` (PK `(shop_id, product_id)`), `inventory_movements` |
 | Sales / POS | `shifts`, `sales`, `sale_items`, `refund_void_requests`, `reprint_logs` |
 | Purchasing | `purchase_orders`, `purchase_order_items`, `supplier_payments` |
@@ -48,6 +48,9 @@ Apply in numeric order. The current ordered list:
 | `021_shop_id_required_rpc_guards.sql` | Explicit `Shop is required` guards on `create_purchase_order` and `create_stock_transfer` (the other shop-scoped RPCs already had them) |
 | `022_unique_normalized_shops.sql` | Preflight duplicate shop name/code detection + unique expression indexes on `lower(trim(name))` and `lower(trim(code))` |
 | `023_unique_normalized_product_barcodes.sql` | Preflight duplicate package-barcode detection + partial unique expression index on `product_barcodes(lower(trim(value)))` so a single scanned code cannot resolve to two products at POS |
+| `024_delete_product_rpc.sql` | Permission-checked product delete RPC |
+| `025_unit_types.sql` | Dynamic Unit Types registry for base stock unit labels |
+| `026_product_sellable_units.sql` | `product_units`, unit-linked barcodes, sale item unit snapshots, and `complete_sale` validation/deduction by base units |
 
 > **Migration order warning.** Some later migrations depend on identity
 > helpers from `003` and the audit-write lockdown from `013`. Always apply
@@ -88,7 +91,7 @@ the audit row — all in one transaction.
 
 | RPC | Purpose |
 | --- | --- |
-| `complete_sale(...)` | POS checkout: sale + items + inventory + movements + audit |
+| `complete_sale(...)` | POS checkout: validates product units/prices/stock, writes sale + items + inventory + movements + audit |
 | `create_refund_void_request(...)` | Cashier raises a refund or void request |
 | `approve_refund_request(p_request_id)` | Manager approves a refund; restores stock, writes movements + audit |
 | `approve_void_request(p_request_id)` | Manager approves a void; restocks all items |
@@ -117,7 +120,7 @@ RLS is enabled on all listed tables.
   authenticated writes** after migrations `010`–`013`. The only way to
   modify them is via the RPCs above.
 - Admin / reference tables (`shops`, `users`, `categories`, `products`,
-  `product_barcodes`, `price_tiers`, `suppliers`) accept direct writes
+  `product_units`, `product_barcodes`, `price_tiers`, `suppliers`) accept direct writes
   gated by RLS that checks the relevant granular permission.
 - `shops` additionally enforces normalized uniqueness at the DB layer:
   `shops_unique_normalized_name` on `lower(trim(name))` and

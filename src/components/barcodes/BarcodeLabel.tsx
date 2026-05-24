@@ -10,6 +10,8 @@ import { BarcodeSvg } from "./BarcodeSvg";
 
 interface BarcodeLabelProps {
   product: Pick<Product, "name" | "priceMmk">;
+  unitName?: string;
+  unitPriceMmk?: number;
   value: string;
   templateKey?: BarcodeLabelTemplateKey | string;
 }
@@ -56,9 +58,10 @@ const LabelBarcode = ({ value, template }: { value: string; template: BarcodeLab
  * Single barcode label. Used both in preview and inside the print sheet:
  * same DOM, same selected template, same millimeter dimensions.
  */
-export const BarcodeLabel = ({ product, value, templateKey }: BarcodeLabelProps) => {
+export const BarcodeLabel = ({ product, unitName, unitPriceMmk, value, templateKey }: BarcodeLabelProps) => {
   const template = getLabelTemplate(templateKey);
-  const price = formatMmk(product.priceMmk);
+  const labelName = unitName ? `${product.name} - ${unitName}` : product.name;
+  const price = formatMmk(unitPriceMmk ?? product.priceMmk);
 
   if (template.variant === "compact") {
     return (
@@ -69,7 +72,7 @@ export const BarcodeLabel = ({ product, value, templateKey }: BarcodeLabelProps)
       >
         <div className="px-1.5 pt-1">
           {template.showName && (
-            <div className="truncate text-[8px] font-semibold leading-none text-slate-900">{product.name}</div>
+            <div className="truncate text-[8px] font-semibold leading-none text-slate-900">{labelName}</div>
           )}
         </div>
         <div className="flex flex-1 items-center justify-center px-1">
@@ -93,7 +96,7 @@ export const BarcodeLabel = ({ product, value, templateKey }: BarcodeLabelProps)
         style={getLabelStyle(template)}
       >
         <div className="px-2 pt-1 text-center">
-          {template.showName && <div className="truncate text-[9px] font-semibold leading-tight">{product.name}</div>}
+          {template.showName && <div className="truncate text-[9px] font-semibold leading-tight">{labelName}</div>}
           {template.showPrice && <div className="mt-0.5 text-base font-black leading-none text-slate-950">{price}</div>}
         </div>
         <div className="flex flex-1 items-end justify-center px-1 pb-1">
@@ -114,7 +117,7 @@ export const BarcodeLabel = ({ product, value, templateKey }: BarcodeLabelProps)
         style={getLabelStyle(template)}
       >
         <div className="px-3 pt-2 text-center">
-          {template.showName && <div className="line-clamp-2 text-xs font-bold leading-tight">{product.name}</div>}
+          {template.showName && <div className="line-clamp-2 text-xs font-bold leading-tight">{labelName}</div>}
           {template.showPrice && (
             <div className="mt-0.5 text-sm font-extrabold leading-none text-emerald-700">{price}</div>
           )}
@@ -136,7 +139,7 @@ export const BarcodeLabel = ({ product, value, templateKey }: BarcodeLabelProps)
       style={getLabelStyle(template)}
     >
       <div className="px-2 pt-1 text-[10px] font-semibold leading-tight text-slate-900">
-        {template.showName && <div className="line-clamp-2">{product.name}</div>}
+        {template.showName && <div className="line-clamp-2">{labelName}</div>}
         {template.showPrice && <div className="text-emerald-700">{price}</div>}
       </div>
       <div className="flex justify-center px-1 pb-1">

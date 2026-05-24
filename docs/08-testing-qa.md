@@ -5,7 +5,7 @@ supplier debt + action matrix, barcode lookup, error mapper, etc.). End-
 to-end UI assertions and database-side verification live in checklists.
 
 ```bash
-npm test             # Vitest (currently 22 files / 329 tests passing)
+npm test             # Vitest (currently 32 files / 427 tests passing)
 npx tsc -b           # Type check
 npm run build        # Production build
 npm run lint         # ESLint
@@ -21,7 +21,9 @@ npm run lint         # ESLint
 | `src/lib/compressProductImage.test.ts` | Image compression branches |
 | `src/lib/productImageStorage.test.ts` | Storage path helper |
 | `src/lib/productImagePhoneUpload.test.ts` | Phone-upload helper |
-| `src/features/pos/cartStock.test.ts` | Stock guards + clamp |
+| `src/features/pos/cartStock.test.ts` | Stock guards + clamp, mixed sellable-unit base stock limits |
+| `src/features/pos/service.test.ts` | Cart totals use sellable-unit price, not base-unit multiplication |
+| `src/features/catalog/productUnits.test.ts` | Product Unit defaults, validation, migration SQL guards |
 | `src/features/shifts/workHours.test.ts` | Active/closed duration, monthly attribution rule, formatting, group-by-user |
 | `src/features/admin/userFormErrors.test.ts` | DB constraint → user-friendly message mapping |
 | `src/lib/shopValidation.test.ts` | Shop name/code trimming, duplicate normalized name/code validation, same-row edit allowance, DB unique-index error mapping |
@@ -165,9 +167,13 @@ Receipt content checks (`/app/receipts/:saleId` after a sale):
       prints the same layout.
 - [ ] CASHIER, MANAGER, and ADMIN receipt prints all look identical.
 
-## Product Barcode Linking QA
+## Product Unit / Barcode Linking QA
 
-`/app/admin/products` Add / Edit Product modal — Package Barcodes section.
+`/app/admin/products` Add / Edit Product modal — Sellable Units section.
+Confirm there is no `Pack Size` field. Add sellable units (`Can`, `6 Pack`,
+`Case`) with base quantities and prices; save; reopen product; units should
+persist with exactly one default. Scan a barcode into a non-default unit row,
+save, then scan it in POS and confirm the matching unit is added.
 The page itself is gated on `product:create` (ADMIN-only by default), so
 CASHIER and BUYER never see the barcode editor.
 

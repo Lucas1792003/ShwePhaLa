@@ -125,6 +125,12 @@ column-by-column coverage.
 | `barcode:manage` | ❌ | ❌ | ❌ |
 | `pricing:manage` | ❌ | ❌ | ❌ |
 
+Product Units use the same catalog permissions as products: read access is
+part of `product:read`, and create/update/deactivate is gated by
+`product:create` or `product:update` plus barcode writes by `barcode:manage`.
+POS uses Product Units read-only to select sellable units and deduct base
+inventory.
+
 ### Inventory & Transfers
 
 | Permission | M | C | B |

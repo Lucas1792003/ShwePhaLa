@@ -5,7 +5,7 @@ import { reportError } from "../../lib/errors";
 import { useAppStore } from "../appStore";
 import type {
   AuditLog, Category, Inventory, InventoryMovement, PriceTier,
-  Product, ProductBarcode, PurchaseOrder, PurchaseOrderItem,
+  Product, ProductBarcode, ProductUnit, PurchaseOrder, PurchaseOrderItem,
   Refund, Sale, SaleItem, Shift, Shop, StockTransfer, StockTransferItem,
   Supplier, SupplierPayment, UnitType, User,
 } from "../../types";
@@ -70,7 +70,22 @@ const mapProduct = (r: any): Product => ({
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mapBarcode = (r: any): ProductBarcode => ({
-  id: r.id, productId: r.product_id, value: r.value, type: r.type,
+  id: r.id, productId: r.product_id, productUnitId: r.product_unit_id ?? undefined,
+  value: r.value, type: r.type,
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapProductUnit = (r: any): ProductUnit => ({
+  id: r.id,
+  productId: r.product_id,
+  name: r.name,
+  baseQuantity: r.base_quantity,
+  priceMmk: r.price_mmk,
+  isDefault: r.is_default,
+  isActive: r.is_active,
+  sortOrder: r.sort_order,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -167,10 +182,16 @@ const mapSale = (r: any): Sale => ({
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mapSaleItem = (r: any): SaleItem => ({
+  id: r.id ?? undefined,
   saleId: r.sale_id, productId: r.product_id, qtyUnits: r.qty_units,
   unitPriceMmk: r.unit_price_mmk, itemDiscountPct: r.item_discount_pct ?? undefined,
   lineTotalMmk: r.line_total_mmk, priceOverriddenBy: r.price_overridden_by ?? undefined,
   unitLabel: r.unit_label ?? undefined, unitsPerItem: r.units_per_item ?? undefined,
+  productUnitId: r.product_unit_id ?? undefined,
+  unitNameSnapshot: r.unit_name_snapshot ?? undefined,
+  unitBaseQuantitySnapshot: r.unit_base_quantity_snapshot ?? undefined,
+  unitPriceMmkSnapshot: r.unit_price_mmk_snapshot ?? undefined,
+  baseQuantitySold: r.base_quantity_sold ?? undefined,
   stockOverrideBy: r.stock_override_by ?? undefined,
 });
 
@@ -226,7 +247,7 @@ export const useDataStore = create<DataState>()((...args) => {
       set({ isLoading: true, loadError: null });
       try {
         const [
-          shops, users, categories, unitTypes, products, barcodes, priceTiers,
+          shops, users, categories, unitTypes, products, productUnits, barcodes, priceTiers,
           inventory, movements, suppliers, purchaseOrders, purchaseOrderItems, supplierPayments,
           stockTransfers, stockTransferItems, shifts, sales, saleItems,
           reprintLogs, refunds, auditLogs,
@@ -236,6 +257,7 @@ export const useDataStore = create<DataState>()((...args) => {
           supabase.from("categories").select("*"),
           supabase.from("unit_types").select("*").order("sort_order", { ascending: true }),
           supabase.from("products").select("*"),
+          supabase.from("product_units").select("*").order("sort_order", { ascending: true }),
           supabase.from("product_barcodes").select("*"),
           supabase.from("price_tiers").select("*"),
           supabase.from("inventory").select("*"),
@@ -258,7 +280,7 @@ export const useDataStore = create<DataState>()((...args) => {
         // The arrays default to [] otherwise — that would render an empty
         // shop with no error indication, hiding the real cause.
         const failedRead = [
-          shops, users, categories, unitTypes, products, barcodes, priceTiers, inventory, movements,
+          shops, users, categories, unitTypes, products, productUnits, barcodes, priceTiers, inventory, movements,
           suppliers, purchaseOrders, purchaseOrderItems, supplierPayments,
           stockTransfers, stockTransferItems, shifts, sales, saleItems,
           reprintLogs, refunds, auditLogs,
@@ -284,6 +306,7 @@ export const useDataStore = create<DataState>()((...args) => {
           categories: (categories.data ?? []).map(mapCategory),
           unitTypes: (unitTypes.data ?? []).map(mapUnitType),
           products: (products.data ?? []).map(mapProduct),
+          productUnits: (productUnits.data ?? []).map(mapProductUnit),
           barcodes: (barcodes.data ?? []).map(mapBarcode),
           priceTiers: (priceTiers.data ?? []).map(mapPriceTier),
           inventory: (inventory.data ?? []).map(mapInventory),

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CartItem } from "../../types";
-import { cn, formatMmk, toNumber } from "../../lib/utils";
+import { cn, formatMmk } from "../../lib/utils";
 import { resolveCategoryIconSymbol } from "../../features/categories/categoryIcons";
 import {
   normalizeCartQuantityInput,
@@ -22,7 +22,6 @@ export const CartItemRow = ({
   onQtyChange,
   onQtySet,
   onRemove,
-  onDiscountChange,
   onOverridePrice,
   stockStatus,
 }: CartItemRowProps) => {
@@ -69,7 +68,9 @@ export const CartItemRow = ({
 
       {/* Product Info */}
       <div className="min-w-0 flex-1">
-        <h4 className="truncate text-sm font-semibold text-slate-800">{item.name}</h4>
+        <h4 className="truncate text-sm font-semibold text-slate-800">
+          {item.name} {item.unitName ? `- ${item.unitName}` : ""}
+        </h4>
         <div className="flex items-center gap-2">
           <p className="text-sm font-bold text-emerald-600">{formatMmk(item.unitPriceMmk)}</p>
           {onOverridePrice && (
@@ -84,28 +85,19 @@ export const CartItemRow = ({
           )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-          {stockStatus && (
-            <span className={isInvalid ? "font-medium text-rose-600" : "text-slate-500"}>
-              {isInvalid ? stockStatus.message ?? "Enter a quantity of at least 1." : `Available: ${stockStatus.stockQty}`}
+          {/* Stock + base-unit hints are only useful while editing the
+              product itself — in the cart they're noise. Keep the red
+              error variant so an over-quantity still surfaces inline. */}
+          {stockStatus && isInvalid && (
+            <span className="font-medium text-rose-600">
+              {stockStatus.message ?? "Enter a quantity of at least 1."}
             </span>
           )}
-          {item.unitLabel && item.unitLabel !== "unit" && <span>{item.unitLabel}</span>}
         </div>
-        {onDiscountChange && (
-          <label className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-            Disc
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={item.itemDiscountPct ?? ""}
-              onChange={(event) => onDiscountChange(item.id, toNumber(event.target.value))}
-              className="h-6 w-14 rounded-md border border-slate-200 bg-white px-1 text-center text-xs outline-none focus:border-emerald-400"
-              placeholder="0"
-            />
-            %
-          </label>
-        )}
+        {/* Per-line discount input intentionally hidden — the cart-level
+            Discount % below the bill totals is the only discount input
+            cashiers should reach. `itemDiscountPct` is still serialized
+            on existing rows, so older sales render correctly. */}
       </div>
 
       {/* Quantity Controls */}

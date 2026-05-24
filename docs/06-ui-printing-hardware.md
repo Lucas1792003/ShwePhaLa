@@ -69,9 +69,11 @@ row — by design, a logged reprint is a reprint *intent*.
   `window.print()`. The browser print only opens from the final button.
 - Barcode value resolution (single source of truth in
   `src/features/barcodes/labels.ts`):
-  1. first `product_barcodes.value`
-  2. fall back to `products.sku`
-  3. otherwise: product cannot print a label
+  1. selected Product Unit barcode (`product_barcodes.product_unit_id`)
+  2. for the default unit only, fall back to `products.sku`
+  3. otherwise: the selected unit cannot print a scannable label
+- Labels print product name, sellable unit name, selected unit price, and
+  barcode/SKU. Legacy `products.pack_size` is not printed.
 - Renderer: CODE128 via
   [`src/components/barcodes/BarcodeSvg.tsx`](../src/components/barcodes/BarcodeSvg.tsx).
 

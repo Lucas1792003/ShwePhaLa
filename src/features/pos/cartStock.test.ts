@@ -23,10 +23,13 @@ const product = (overrides: Partial<Product> = {}): Product => ({
 const cartItem = (overrides: Partial<CartItem> = {}): CartItem => ({
   id: "prod-1-1",
   productId: "prod-1",
+  productUnitId: "unit-single",
   name: "Tea Mix",
+  unitName: "Sachet",
   qty: 1,
   unitPriceMmk: 1000,
   unitsPerItem: 1,
+  unitBaseQuantity: 1,
   unitLabel: "unit",
   ...overrides,
 });
@@ -53,10 +56,37 @@ describe("POS cart stock rules", () => {
     expect(normalizeCartQuantityInput("")).toBe("");
   });
 
-  it("blocks add-pack when the pack size exceeds remaining stock", () => {
+  it("ignores legacy packSize for add attempts", () => {
     const status = getCartAddStockStatus(product({ packSize: 24 }), true, [], { "prod-1": 4 });
+    expect(status.canAdd).toBe(true);
+    expect(status.unitsPerItem).toBe(1);
+  });
+
+  it("tracks mixed sellable units by base stock", () => {
+    const caseLine = cartItem({
+      id: "prod-1-case",
+      productUnitId: "unit-case",
+      unitName: "Case",
+      qty: 1,
+      unitBaseQuantity: 24,
+      unitsPerItem: 24,
+    });
+    const status = getCartAddStockStatus(
+      product(),
+      { baseQuantity: 6 },
+      [caseLine],
+      { "prod-1": 25 }
+    );
     expect(status.canAdd).toBe(false);
-    expect(status.reason).toBe("Not enough stock for pack.");
+    expect(status.remainingUnits).toBe(1);
+
+    const singleStatus = getCartAddStockStatus(
+      product(),
+      { baseQuantity: 1 },
+      [caseLine],
+      { "prod-1": 25 }
+    );
+    expect(singleStatus.canAdd).toBe(true);
   });
 
   it("disables checkout when there is no open shift", () => {

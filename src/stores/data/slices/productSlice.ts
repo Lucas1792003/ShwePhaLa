@@ -1,20 +1,18 @@
 import type { StateCreator } from "zustand";
 import type { DataState, ProductState } from "../types";
-import type { Product, ProductBarcode } from "../../../types";
-import { supabase, dbWrite } from "../../../lib/supabase";
+import type { Product, ProductBarcode, ProductUnit } from "../../../types";
+import { supabase, dbExec } from "../../../lib/supabase";
 import { findProductForScan } from "../../../features/pos/barcodeLookup";
 import { mapBarcodeWriteError, normalizeBarcodeValue } from "../../../lib/barcodeValidation";
+import { sanitizeProductUnits } from "../../../features/catalog/productUnits";
 
 export const createProductSlice: StateCreator<DataState, [], [], ProductState> = (set, get) => ({
   products: [],
+  productUnits: [],
   barcodes: [],
 
-  addProduct: (product: Product, barcodes: ProductBarcode[]) => {
-    set((state) => ({
-      products: [...state.products, product],
-      barcodes: [...state.barcodes, ...barcodes],
-    }));
-    dbWrite(supabase.from("products").insert({
+  addProduct: async (product: Product, barcodes: ProductBarcode[]) => {
+    await dbExec(supabase.from("products").insert({
       id: product.id, sku: product.sku, name: product.name, category: product.category,
       unit_type: product.unitType, price_mmk: product.priceMmk, cost_mmk: product.costMmk,
       pack_size: product.packSize, low_stock_threshold: product.lowStockThreshold,
@@ -22,29 +20,45 @@ export const createProductSlice: StateCreator<DataState, [], [], ProductState> =
       is_active: product.isActive, created_at: product.createdAt,
     }), "addProduct");
     if (barcodes.length > 0) {
-      dbWrite(supabase.from("product_barcodes").insert(
-        barcodes.map((b) => ({ id: b.id, product_id: b.productId, value: b.value, type: b.type }))
+      await dbExec(supabase.from("product_barcodes").insert(
+        barcodes.map((b) => ({
+          id: b.id,
+          product_id: b.productId,
+          product_unit_id: b.productUnitId ?? null,
+          value: b.value,
+          type: b.type,
+        }))
       ), "addProduct barcodes");
     }
+    set((state) => ({
+      products: [...state.products, product],
+      barcodes: [...state.barcodes, ...barcodes],
+    }));
   },
 
-  updateProduct: (product: Product, barcodes: ProductBarcode[]) => {
-    set((state) => ({
-      products: state.products.map((item) => (item.id === product.id ? product : item)),
-      barcodes: state.barcodes.filter((item) => item.productId !== product.id).concat(barcodes),
-    }));
-    dbWrite(supabase.from("products").update({
+  updateProduct: async (product: Product, barcodes: ProductBarcode[]) => {
+    await dbExec(supabase.from("products").update({
       sku: product.sku, name: product.name, category: product.category,
       unit_type: product.unitType, price_mmk: product.priceMmk, cost_mmk: product.costMmk,
       pack_size: product.packSize, low_stock_threshold: product.lowStockThreshold,
       expiry_date: product.expiryDate, image_url: product.imageUrl, is_active: product.isActive,
     }).eq("id", product.id), "updateProduct");
-    dbWrite(supabase.from("product_barcodes").delete().eq("product_id", product.id), "updateProduct delete barcodes");
+    await dbExec(supabase.from("product_barcodes").delete().eq("product_id", product.id), "updateProduct delete barcodes");
     if (barcodes.length > 0) {
-      dbWrite(supabase.from("product_barcodes").insert(
-        barcodes.map((b) => ({ id: b.id, product_id: b.productId, value: b.value, type: b.type }))
+      await dbExec(supabase.from("product_barcodes").insert(
+        barcodes.map((b) => ({
+          id: b.id,
+          product_id: b.productId,
+          product_unit_id: b.productUnitId ?? null,
+          value: b.value,
+          type: b.type,
+        }))
       ), "updateProduct barcodes");
     }
+    set((state) => ({
+      products: state.products.map((item) => (item.id === product.id ? product : item)),
+      barcodes: state.barcodes.filter((item) => item.productId !== product.id).concat(barcodes),
+    }));
   },
 
   deleteProduct: async (productId: string) => {
@@ -63,6 +77,7 @@ export const createProductSlice: StateCreator<DataState, [], [], ProductState> =
 
     set((state) => ({
       products: state.products.filter((p) => p.id !== productId),
+      productUnits: state.productUnits.filter((u) => u.productId !== productId),
       barcodes: state.barcodes.filter((b) => b.productId !== productId),
       inventory: state.inventory.filter((i) => i.productId !== productId),
     }));
@@ -91,6 +106,7 @@ export const createProductSlice: StateCreator<DataState, [], [], ProductState> =
         normalized.map((b) => ({
           id: b.id,
           product_id: productId,
+          product_unit_id: b.productUnitId ?? null,
           value: b.value,
           type: b.type,
         }))
@@ -108,8 +124,44 @@ export const createProductSlice: StateCreator<DataState, [], [], ProductState> =
     }));
   },
 
+  replaceProductUnits: async (productId: string, units: ProductUnit[]) => {
+    const normalized = sanitizeProductUnits(units, productId);
+    const existing = get().productUnits.filter((unit) => unit.productId === productId);
+    const normalizedIds = new Set(normalized.map((unit) => unit.id));
+    const deactivated = existing
+      .filter((unit) => !normalizedIds.has(unit.id) && unit.isActive)
+      .map((unit) => ({ ...unit, isActive: false, updatedAt: new Date().toISOString() }));
+
+    const rows = [...normalized, ...deactivated].map((unit) => ({
+      id: unit.id,
+      product_id: productId,
+      name: unit.name,
+      base_quantity: unit.baseQuantity,
+      price_mmk: unit.priceMmk,
+      is_default: unit.isDefault,
+      is_active: unit.isActive,
+      sort_order: unit.sortOrder,
+      created_at: unit.createdAt,
+      updated_at: unit.updatedAt,
+    }));
+
+    if (rows.length > 0) {
+      const { error } = await supabase.from("product_units").upsert(rows, { onConflict: "id" });
+      if (error) {
+        console.error("[DB] replaceProductUnits failed:", error);
+        throw new Error(error.message);
+      }
+    }
+
+    set((state) => ({
+      productUnits: state.productUnits
+        .filter((unit) => unit.productId !== productId)
+        .concat(normalized, deactivated),
+    }));
+  },
+
   getProductByBarcode: (value: string) => {
     const state = get();
-    return findProductForScan(value, state.products, state.barcodes);
+    return findProductForScan(value, state.products, state.productUnits, state.barcodes);
   },
 });

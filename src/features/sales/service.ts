@@ -6,5 +6,5 @@ export const buildRefundItems = (items: SaleItem[], selection: Record<string, nu
     .map((item) => ({
       productId: item.productId,
       qtyUnits: selection[item.productId],
-      amountMmk: selection[item.productId] * item.unitPriceMmk,
+      amountMmk: Math.round((selection[item.productId] / item.qtyUnits) * item.lineTotalMmk),
     }));

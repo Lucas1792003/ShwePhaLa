@@ -149,12 +149,35 @@ export interface Product {
   unitType: string;
   priceMmk: number;
   costMmk?: number;
+  /**
+   * @deprecated Legacy single-pack quantity. The product form no longer
+   * collects this value; future package selling should use Product Units /
+   * Sellable Units instead.
+   */
   packSize?: number;
   lowStockThreshold: number;
   expiryDate?: string; // Optional expiry tracking
   imageUrl?: string; // Product image URL
   isActive: boolean;
   createdAt: string;
+}
+
+/**
+ * Product-specific sellable unit. Inventory is still stored in the product's
+ * base `unitType`; `baseQuantity` is how many base units one sellable unit
+ * deducts in POS.
+ */
+export interface ProductUnit {
+  id: string;
+  productId: string;
+  name: string;
+  baseQuantity: number;
+  priceMmk: number;
+  isDefault: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Tier-Based Pricing (quantity-based price breaks)
@@ -264,6 +287,8 @@ export interface StockTransferItem {
 export interface ProductBarcode {
   id: string;
   productId: string;
+  /** Optional sellable-unit mapping; null/undefined means product/default unit. */
+  productUnitId?: string;
   value: string;
   type: BarcodeType;
 }
@@ -326,6 +351,7 @@ export interface Sale {
 }
 
 export interface SaleItem {
+  id?: string;
   saleId: string;
   productId: string;
   qtyUnits: number;
@@ -335,6 +361,11 @@ export interface SaleItem {
   priceOverriddenBy?: string;
   unitLabel?: string;
   unitsPerItem?: number;
+  productUnitId?: string;
+  unitNameSnapshot?: string;
+  unitBaseQuantitySnapshot?: number;
+  unitPriceMmkSnapshot?: number;
+  baseQuantitySold?: number;
   stockOverrideBy?: string;
 }
 
@@ -371,12 +402,18 @@ export interface AuditLog {
 export interface CartItem {
   id: string;
   productId: string;
+  productUnitId: string;
   name: string;
+  unitName: string;
   qty: number;
+  /** Price for one selected sellable unit. */
   unitPriceMmk: number;
   itemDiscountPct?: number;
+  /** Legacy display alias kept for older components/tests. */
   unitLabel?: string;
+  /** Legacy base-quantity alias; equal to `unitBaseQuantity`. */
   unitsPerItem: number;
+  unitBaseQuantity: number;
   priceOverriddenBy?: string;
   stockOverrideBy?: string;
   // Display fields

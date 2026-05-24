@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import type { Product } from "../../types";
 import { BarcodeLabel } from "./BarcodeLabel";
 import { BarcodePrintSheet } from "./BarcodePrintSheet";
 
@@ -27,6 +28,36 @@ describe("BarcodeLabel", () => {
 
     expect(markup).toContain('data-template="standard"');
     expect(markup).toContain("barcode-label--standard");
+  });
+
+  it("does not render legacy packSize data", () => {
+    const legacyProduct: Product = {
+      id: "prod-legacy",
+      name: "Legacy Case Product",
+      category: "Drinks",
+      unitType: "Can",
+      priceMmk: 2500,
+      lowStockThreshold: 5,
+      packSize: 24,
+      isActive: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    const markup = renderToStaticMarkup(
+      <BarcodeLabel product={legacyProduct} value="SKU-001" templateKey="standard" />
+    );
+
+    expect(markup).not.toContain("24");
+    expect(markup).not.toContain("Pack");
+  });
+
+  it("renders selected sellable unit name and price", () => {
+    const markup = renderToStaticMarkup(
+      <BarcodeLabel product={product} unitName="Case" unitPriceMmk={55000} value="CASE-001" templateKey="standard" />
+    );
+
+    expect(markup).toContain("Test Product - Case");
+    expect(markup).toContain("55,000");
   });
 });
 

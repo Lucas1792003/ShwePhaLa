@@ -39,17 +39,11 @@ Open work, grouped by area.
 
 ## Medium Priority
 
-- [ ] **Flexible sellable units (per-product).** Migration 025 added the
-      `unit_types` registry (the base stock unit picker in the Product
-      form). The next step is a `product_units` table that maps a
-      product to one or more sellable units with `base_quantity`
-      (e.g. 1 can = 1 base unit, 6-pack = 6, 24-case = 24,
-      30-sachet box = 30), an optional per-unit price override, and an
-      optional unit-specific barcode. POS will deduct stock by base
-      units regardless of which sellable unit the cashier rang up.
-      Receipts, refunds, transfers, and the inventory ledger all need
-      to keep computing in base units. Out of scope for migration 025;
-      do not start until the base-unit picker has soaked.
+- [x] **Flexible sellable units (per-product).** Migration 026 adds
+      `product_units`, unit-linked barcodes, sale item unit snapshots, and
+      POS deduction by base units. `products.pack_size` remains legacy-only.
+      Follow-up: deeper refund UX for mixed units of the same product and
+      full browser/real-scanner QA.
 - [ ] **Playwright smoke tests** for the workflows enumerated in
       [08-testing-qa.md](./08-testing-qa.md).
 - [ ] **Print + barcode hardware QA.** Test ESC/POS thermal printers at

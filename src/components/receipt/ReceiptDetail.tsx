@@ -81,9 +81,14 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
   const productNames = Object.fromEntries(products.map((p) => [p.id, p.name]));
   const lines = saleItems.map((item) => {
     const product = products.find((p) => p.id === item.productId);
+    const unitName = item.unitNameSnapshot ?? item.unitLabel ?? "Unit";
+    const baseQuantity = item.unitBaseQuantitySnapshot ?? item.unitsPerItem ?? 1;
+    const soldBaseQuantity = item.baseQuantitySold ?? item.qtyUnits;
+    const soldUnitQty = baseQuantity > 0 ? soldBaseQuantity / baseQuantity : item.qtyUnits;
+    const unitPrice = item.unitPriceMmkSnapshot ?? item.unitPriceMmk;
     return {
-      name: product?.name ?? item.productId,
-      qtyLabel: `${item.qtyUnits} x ${formatMmk(item.unitPriceMmk)}`,
+      name: `${product?.name ?? item.productId} - ${unitName}`,
+      qtyLabel: `${soldUnitQty} x ${unitName} @ ${formatMmk(unitPrice)} (${soldBaseQuantity} base units)`,
       total: formatMmk(item.lineTotalMmk),
     };
   });

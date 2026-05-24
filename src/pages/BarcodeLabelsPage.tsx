@@ -7,6 +7,7 @@ import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
 import { SearchInput } from "../components/forms/SearchInput";
 import { Input } from "../components/ui/Input";
+import { Select } from "../components/ui/Select";
 import { CategoryFilter } from "../features/categories/CategoryFilter";
 import { resolveCategoryIcon } from "../features/categories/categoryIcons";
 import { BarcodeLabel } from "../components/barcodes/BarcodeLabel";
@@ -27,10 +28,12 @@ import {
   type BarcodeLabelTemplateKey,
 } from "../features/barcodes/labelTemplates";
 import { cn, formatMmk, normalizeAmountInput } from "../lib/utils";
-import type { Product } from "../types";
+import type { Product, ProductUnit } from "../types";
+import { getActiveProductUnits, getDefaultProductUnit } from "../features/catalog/productUnits";
 
 type PrintJob = {
   product: Product;
+  unit: ProductUnit;
   value: string;
   quantity: number;
   templateKey: BarcodeLabelTemplateKey;
@@ -65,10 +68,12 @@ export const BarcodeLabelsPage = () => {
   const products = useDataStore((state) => state.products);
   const categories = useDataStore((state) => state.categories);
   const barcodes = useDataStore((state) => state.barcodes);
+  const productUnits = useDataStore((state) => state.productUnits);
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [selected, setSelected] = useState<Product | null>(null);
+  const [selectedUnit, setSelectedUnit] = useState<ProductUnit | null>(null);
   const [qtyInput, setQtyInput] = useState("1");
   const [selectedTemplateKey, setSelectedTemplateKey] = useState<BarcodeLabelTemplateKey>(
     DEFAULT_BARCODE_LABEL_TEMPLATE_KEY
@@ -95,9 +100,15 @@ export const BarcodeLabelsPage = () => {
   }, [products, barcodes, search, category]);
 
   const selectedBarcode: PrintableBarcode | null = useMemo(() => {
-    if (!selected) return null;
-    return getPrintableBarcodeValue(selected, barcodes);
-  }, [selected, barcodes]);
+    if (!selected || !selectedUnit) return null;
+    return getPrintableBarcodeValue(selected, barcodes, selectedUnit);
+  }, [selected, selectedUnit, barcodes]);
+
+  const selectedUnits = useMemo(() => {
+    if (!selected) return [];
+    const active = getActiveProductUnits(selected.id, productUnits);
+    return active.length > 0 ? active : [getDefaultProductUnit(selected, productUnits)];
+  }, [selected, productUnits]);
 
   const qty = clampLabelQty(Number(qtyInput));
   const selectedTemplate = getLabelTemplate(selectedTemplateKey);
@@ -106,21 +117,24 @@ export const BarcodeLabelsPage = () => {
 
   const openModal = (product: Product) => {
     setSelected(product);
+    setSelectedUnit(getDefaultProductUnit(product, productUnits));
     setQtyInput("1");
     setSelectedTemplateKey(DEFAULT_BARCODE_LABEL_TEMPLATE_KEY);
   };
 
   const closeModal = () => {
     setSelected(null);
+    setSelectedUnit(null);
     setQtyInput("1");
     setSelectedTemplateKey(DEFAULT_BARCODE_LABEL_TEMPLATE_KEY);
   };
 
   const handlePrint = () => {
-    if (!selected || !selectedBarcode) return;
+    if (!selected || !selectedUnit || !selectedBarcode) return;
     const template = getLabelTemplate(selectedTemplateKey);
     setPrinting({
       product: selected,
+      unit: selectedUnit,
       value: selectedBarcode.value,
       quantity: qty,
       templateKey: template.key,
@@ -159,7 +173,8 @@ export const BarcodeLabelsPage = () => {
             </div>
           )}
           {filtered.map((product) => {
-            const printable = getPrintableBarcodeValue(product, barcodes);
+            const defaultUnit = getDefaultProductUnit(product, productUnits);
+            const printable = getPrintableBarcodeValue(product, barcodes, defaultUnit);
             const disabled = !printable;
             const iconSymbol = resolveCategoryIcon(undefined, product.category).symbol;
             return (
@@ -194,7 +209,7 @@ export const BarcodeLabelsPage = () => {
                   ) : (
                     <div className="mt-auto pt-1 text-xs text-amber-700">No barcode/SKU</div>
                   )}
-                  <div className="text-sm font-bold text-emerald-700">{formatMmk(product.priceMmk)}</div>
+                  <div className="text-sm font-bold text-emerald-700">{formatMmk(defaultUnit.priceMmk)}</div>
                 </div>
               </button>
             );
@@ -217,7 +232,7 @@ export const BarcodeLabelsPage = () => {
           </>
         }
       >
-        {selected && (
+        {selected && selectedUnit && (
           <div className="space-y-5">
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
               <div className="space-y-4">
@@ -225,10 +240,12 @@ export const BarcodeLabelsPage = () => {
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
                     <div className="text-xs uppercase tracking-wide text-slate-500">Product</div>
                     <div className="mt-0.5 line-clamp-2 font-semibold text-slate-900">{selected.name}</div>
+                    <div className="mt-2 text-xs uppercase tracking-wide text-slate-500">Sellable unit</div>
+                    <div className="mt-0.5 font-medium text-slate-800">{selectedUnit.name}</div>
                     <div className="mt-2 text-xs uppercase tracking-wide text-slate-500">SKU</div>
                     <div className="mt-0.5 font-medium text-slate-800">{selected.sku ?? "-"}</div>
                     <div className="mt-2 text-xs uppercase tracking-wide text-slate-500">Price</div>
-                    <div className="mt-0.5 font-bold text-emerald-700">{formatMmk(selected.priceMmk)}</div>
+                    <div className="mt-0.5 font-bold text-emerald-700">{formatMmk(selectedUnit.priceMmk)}</div>
                   </div>
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
@@ -247,6 +264,25 @@ export const BarcodeLabelsPage = () => {
                     <div className="mt-0.5 font-medium text-slate-800">CODE128</div>
                   </div>
                 </div>
+
+                {selectedUnits.length > 1 && (
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-slate-700">Sellable unit</span>
+                    <Select
+                      value={selectedUnit.id}
+                      onChange={(event) => {
+                        const next = selectedUnits.find((unit) => unit.id === event.target.value);
+                        if (next) setSelectedUnit(next);
+                      }}
+                    >
+                      {selectedUnits.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.name} - {formatMmk(unit.priceMmk)}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                )}
 
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -330,6 +366,8 @@ export const BarcodeLabelsPage = () => {
                     {selectedBarcode ? (
                       <BarcodeLabel
                         product={selected}
+                        unitName={selectedUnit.name}
+                        unitPriceMmk={selectedUnit.priceMmk}
                         value={selectedBarcode.value}
                         templateKey={selectedTemplate.key}
                       />
@@ -344,6 +382,8 @@ export const BarcodeLabelsPage = () => {
                   <dl className="mt-3 grid grid-cols-[auto,1fr] gap-x-3 gap-y-2 text-xs">
                     <dt className="text-slate-500">Product</dt>
                     <dd className="text-right font-medium text-slate-900">{selected.name}</dd>
+                    <dt className="text-slate-500">Unit</dt>
+                    <dd className="text-right font-medium text-slate-900">{selectedUnit.name}</dd>
                     <dt className="text-slate-500">Quantity</dt>
                     <dd className="text-right font-medium text-slate-900">{qty}</dd>
                     <dt className="text-slate-500">Label size</dt>
@@ -373,6 +413,8 @@ export const BarcodeLabelsPage = () => {
                       <div style={getScaledLabelStyle(MINI_PREVIEW_SCALE)}>
                         <BarcodeLabel
                           product={selected}
+                          unitName={selectedUnit.name}
+                          unitPriceMmk={selectedUnit.priceMmk}
                           value={selectedBarcode.value}
                           templateKey={selectedTemplate.key}
                         />
@@ -394,6 +436,8 @@ export const BarcodeLabelsPage = () => {
       {printing && (
         <BarcodePrintSheet
           product={printing.product}
+          unitName={printing.unit.name}
+          unitPriceMmk={printing.unit.priceMmk}
           value={printing.value}
           quantity={printing.quantity}
           templateKey={printing.templateKey}

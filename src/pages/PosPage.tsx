@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { CartItem, Product } from "../types";
+import type { CartItem, Product, ProductUnit } from "../types";
 import { useAuthStore } from "../stores/authStore";
 import { useAppStore } from "../stores/appStore";
 import { useDataStore } from "../stores/dataStore";
@@ -26,8 +26,6 @@ import {
 import { hasShopPermission } from "../lib/permissions";
 import { getEffectiveShopId, toNumber } from "../lib/utils";
 
-const packLabel = (product: Product) => (product.packSize ? `pack of ${product.packSize}` : undefined);
-
 export const PosPage = () => {
   const navigate = useNavigate();
   const toast = useToast();
@@ -40,7 +38,6 @@ export const PosPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [overrideItem, setOverrideItem] = useState<CartItem | null>(null);
   const [overridePrice, setOverridePrice] = useState(0);
-  const [packMode, setPackMode] = useState(false);
   const [showBarcodeInput, setShowBarcodeInput] = useState(false);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,6 +46,7 @@ export const PosPage = () => {
   const { currentShopId } = useAppStore();
   const shops = useDataStore((state) => state.shops);
   const products = useDataStore((state) => state.products);
+  const productUnits = useDataStore((state) => state.productUnits);
   const categories = useDataStore((state) => state.categories);
   const getInventoryQty = useDataStore((state) => state.getInventoryQty);
   const getProductByBarcode = useDataStore((state) => state.getProductByBarcode);
@@ -122,33 +120,35 @@ export const PosPage = () => {
     [firstCartError, toast]
   );
 
-  const handleAddToCart = (product: Product, usePack: boolean): boolean => {
-    const addStatus = getCartAddStockStatus(product, usePack, cartItems, inventoryById);
+  const handleAddToCart = (product: Product, unit: ProductUnit): boolean => {
+    const addStatus = getCartAddStockStatus(product, unit, cartItems, inventoryById);
     const unitsPerItem = addStatus.unitsPerItem;
     if (!addStatus.canAdd) {
       toast({
-        title: usePack ? "Not enough stock for pack" : addStatus.stockQty <= 0 ? "Out of stock" : "Stock limit reached",
+        title: addStatus.stockQty <= 0 ? "Out of stock" : "Stock limit reached",
         description: getStockBlockDescription(addStatus.stockQty),
         variant: "error",
       });
       return false;
     }
-    const unitLabel = usePack && product.packSize ? packLabel(product) : "unit";
     setCartItems((items) => {
-      const existing = items.find((item) => item.productId === product.id && item.unitsPerItem === unitsPerItem);
+      const existing = items.find((item) => item.productId === product.id && item.productUnitId === unit.id);
       if (existing) {
         return items.map((item) => (item.id === existing.id ? { ...item, qty: item.qty + 1 } : item));
       }
       return [
         ...items,
         {
-          id: `${product.id}-${unitsPerItem}`,
+          id: `${product.id}-${unit.id}`,
           productId: product.id,
+          productUnitId: unit.id,
           name: product.name,
+          unitName: unit.name,
           qty: 1,
-          unitPriceMmk: product.priceMmk,
+          unitPriceMmk: unit.priceMmk,
+          unitBaseQuantity: unit.baseQuantity,
           unitsPerItem,
-          unitLabel,
+          unitLabel: unit.name,
           // Display fields
           imageUrl: product.imageUrl,
           category: product.category,
@@ -169,15 +169,15 @@ export const PosPage = () => {
   const handleBarcodeSubmit = () => {
     const value = barcodeInput.trim();
     if (!value) return;
-    const product = getProductByBarcode(value);
-    if (!product) {
+    const match = getProductByBarcode(value);
+    if (!match) {
       toast({ title: "Barcode not found", description: value, variant: "error" });
       resetBarcodeInputForNextScan();
       return;
     }
-    const added = handleAddToCart(product, packMode);
+    const added = handleAddToCart(match.product, match.unit);
     if (added) {
-      toast({ title: `Added ${product.name}`, variant: "success" });
+      toast({ title: `Added ${match.product.name} - ${match.unit.name}`, variant: "success" });
     }
     resetBarcodeInputForNextScan();
   };
@@ -354,15 +354,6 @@ export const PosPage = () => {
             className="flex-1"
             autoFocus
           />
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={packMode}
-              onChange={(e) => setPackMode(e.target.checked)}
-              className="rounded border-slate-300"
-            />
-            Pack mode
-          </label>
           <Button onClick={handleBarcodeSubmit}>Add</Button>
         </div>
       )}
@@ -380,7 +371,8 @@ export const PosPage = () => {
             onCategory={setCategory}
             inventoryById={inventoryById}
             cartUnitsByProductId={cartUnitsByProductId}
-            onAdd={(product, usePack) => handleAddToCart(product, usePack)}
+            productUnits={productUnits}
+            onAdd={handleAddToCart}
           />
         </Card>
 

@@ -1,4 +1,4 @@
-import type { Product, ProductBarcode } from "../../types";
+import type { Product, ProductBarcode, ProductUnit } from "../../types";
 
 export interface PrintableBarcode {
   /** The scannable string to encode + show under the bars. */
@@ -25,11 +25,16 @@ export interface PrintableBarcode {
  */
 export const getPrintableBarcodeValue = (
   product: Pick<Product, "id" | "sku">,
-  barcodes: ProductBarcode[]
+  barcodes: ProductBarcode[],
+  unit?: Pick<ProductUnit, "id" | "isDefault">
 ): PrintableBarcode | null => {
-  const own = barcodes.find((b) => b.productId === product.id && !!b.value);
+  const own = barcodes.find((b) => {
+    if (b.productId !== product.id || !b.value) return false;
+    if (!unit) return true;
+    return unit.isDefault ? !b.productUnitId : b.productUnitId === unit.id;
+  });
   if (own) return { value: own.value, source: "barcode" };
-  if (product.sku) return { value: product.sku, source: "sku" };
+  if ((!unit || unit.isDefault) && product.sku) return { value: product.sku, source: "sku" };
   return null;
 };
 

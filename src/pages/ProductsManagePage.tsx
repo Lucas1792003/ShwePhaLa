@@ -5,7 +5,7 @@ import { z } from "zod";
 import { useAuthStore } from "../stores/authStore";
 import { useAppStore } from "../stores/appStore";
 import { useDataStore } from "../stores/dataStore";
-import type { ProductCategory, Category, Product, ProductBarcode } from "../types";
+import type { ProductCategory, Category, Product, ProductBarcode, ProductUnit } from "../types";
 import {
   checkBarcodeAddable,
   findBarcodeOwner,
@@ -35,31 +35,26 @@ import {
   compareUnitTypes,
   resolveProductUnit,
 } from "../features/unitTypes/unitTypeValidation";
+import {
+  buildProductFromFormValues,
+  type ProductFormValues as FormValues,
+} from "../features/catalog/productForm";
+import {
+  makeDefaultProductUnit,
+  sanitizeProductUnits,
+  validateProductUnits,
+} from "../features/catalog/productUnits";
 
 type CategoryColor = "amber" | "red" | "green" | "blue" | "purple" | "slate" | "pink" | "teal" | "indigo" | "yellow" | "orange" | "cyan";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
-
-interface FormValues {
-  id?: string;
-  sku: string;
-  name: string;
-  category: ProductCategory;
-  unitType: string;
-  priceMmk: number;
-  costMmk?: number;
-  packSize?: number;
-  lowStockThreshold: number;
-  expiryDate?: string;
-  imageUrl?: string;
-  isActive: boolean;
-}
 
 export const ProductsManagePage = () => {
   const toast = useToast();
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentShopId = useAppStore((state) => state.currentShopId);
   const products = useDataStore((state) => state.products);
+  const productUnits = useDataStore((state) => state.productUnits);
   const barcodes = useDataStore((state) => state.barcodes);
   const inventory = useDataStore((state) => state.inventory);
   const shops = useDataStore((state) => state.shops);
@@ -69,6 +64,7 @@ export const ProductsManagePage = () => {
   const addProduct = useDataStore((state) => state.addProduct);
   const updateProduct = useDataStore((state) => state.updateProduct);
   const deleteProduct = useDataStore((state) => state.deleteProduct);
+  const replaceProductUnits = useDataStore((state) => state.replaceProductUnits);
   const replaceProductBarcodes = useDataStore((state) => state.replaceProductBarcodes);
   const addCategory = useDataStore((state) => state.addCategory);
   const updateCategory = useDataStore((state) => state.updateCategory);
@@ -84,7 +80,9 @@ export const ProductsManagePage = () => {
 
   // Package barcode editor state — lives outside the react-hook-form schema
   // because the list is multi-row and capture is driven by a separate modal.
-  const [formBarcodes, setFormBarcodes] = useState<string[]>([]);
+  const [formUnits, setFormUnits] = useState<ProductUnit[]>([]);
+  const [unitBarcodes, setUnitBarcodes] = useState<Record<string, string>>({});
+  const [scanUnitId, setScanUnitId] = useState<string | null>(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [productSaveError, setProductSaveError] = useState<string | null>(null);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
@@ -128,7 +126,6 @@ export const ProductsManagePage = () => {
       unitType: z.string().min(1, "Unit type is required"),
       priceMmk: z.number().min(1, "Price must be greater than 0"),
       costMmk: z.number().optional(),
-      packSize: z.number().optional(),
       lowStockThreshold: z.number().min(0, "Threshold must be 0 or greater"),
       expiryDate: z.string().optional(),
       imageUrl: z.string().optional(),
@@ -145,7 +142,6 @@ export const ProductsManagePage = () => {
       unitType: activeUnitTypes[0]?.name ?? "",
       priceMmk: 0,
       costMmk: undefined,
-      packSize: undefined,
       lowStockThreshold: 10,
       expiryDate: undefined,
       imageUrl: undefined,
@@ -197,11 +193,16 @@ export const ProductsManagePage = () => {
     return cat?.color ?? "slate";
   };
 
-  const resetBarcodeEditor = () => {
-    setFormBarcodes([]);
+  const resetUnitEditor = () => {
+    setFormUnits([]);
+    setUnitBarcodes({});
+    setScanUnitId(null);
     setScanModalOpen(false);
     setProductSaveError(null);
   };
+
+  const buildInitialUnit = (productId: string, unitType: string, priceMmk: number) =>
+    makeDefaultProductUnit(productId, unitType || activeUnitTypes[0]?.name || "Piece", priceMmk);
 
   // Open modal for adding new product
   const handleAddProduct = () => {
@@ -212,15 +213,16 @@ export const ProductsManagePage = () => {
       unitType: activeUnitTypes[0]?.name ?? "",
       priceMmk: 0,
       costMmk: undefined,
-      packSize: undefined,
       lowStockThreshold: 10,
       expiryDate: undefined,
       imageUrl: undefined,
       isActive: true,
     });
     setEditingId(null);
-    setFormProductId(`prod-${Date.now()}`);
-    resetBarcodeEditor();
+    const productId = `prod-${Date.now()}`;
+    setFormProductId(productId);
+    resetUnitEditor();
+    setFormUnits([buildInitialUnit(productId, activeUnitTypes[0]?.name ?? "Piece", 0)]);
     setShowProductModal(true);
   };
 
@@ -234,7 +236,6 @@ export const ProductsManagePage = () => {
       unitType: product.unitType,
       priceMmk: product.priceMmk,
       costMmk: product.costMmk,
-      packSize: product.packSize,
       lowStockThreshold: product.lowStockThreshold,
       expiryDate: product.expiryDate,
       imageUrl: product.imageUrl,
@@ -242,19 +243,30 @@ export const ProductsManagePage = () => {
     });
     setEditingId(product.id);
     setFormProductId(product.id);
-    resetBarcodeEditor();
-    setFormBarcodes(
-      barcodes
-        .filter((b) => b.productId === product.id)
-        .map((b) => b.value)
-    );
+    resetUnitEditor();
+    const savedUnits = productUnits
+      .filter((unit) => unit.productId === product.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+    const units = savedUnits.length > 0
+      ? savedUnits
+      : [buildInitialUnit(product.id, product.unitType, product.priceMmk)];
+    setFormUnits(units);
+    setUnitBarcodes(Object.fromEntries(
+      units.map((unit) => {
+        const barcode = barcodes.find((b) =>
+          b.productId === product.id &&
+          (unit.isDefault ? !b.productUnitId : b.productUnitId === unit.id)
+        );
+        return [unit.id, barcode?.value ?? ""];
+      })
+    ));
     setShowProductModal(true);
   };
 
   const handleCloseProductModal = () => {
     setShowProductModal(false);
     setEditingId(null);
-    resetBarcodeEditor();
+    resetUnitEditor();
     form.reset();
   };
 
@@ -269,16 +281,75 @@ export const ProductsManagePage = () => {
    * current list and the loaded cross-product `barcodes` store.
    */
   const handleScannedBarcode = (value: string): string | null => {
+    if (!scanUnitId) return "Choose a sellable unit before scanning.";
     const normalized = normalizeBarcodeValue(value);
-    const error = checkBarcodeAddable(normalized, formBarcodes, barcodes, editingId);
+    const currentValues = Object.entries(unitBarcodes)
+      .filter(([unitId]) => unitId !== scanUnitId)
+      .map(([, barcode]) => barcode)
+      .filter(Boolean);
+    const error = checkBarcodeAddable(normalized, currentValues, barcodes, editingId);
     if (error) return error;
-    setFormBarcodes((list) => [...list, normalized]);
+    setUnitBarcodes((list) => ({ ...list, [scanUnitId]: normalized }));
     toast({ title: "Barcode added", description: normalized, variant: "success" });
     return null;
   };
 
-  const handleRemoveBarcode = (value: string) => {
-    setFormBarcodes((list) => list.filter((item) => item !== value));
+  const handleRemoveBarcode = (unitId: string) => {
+    setUnitBarcodes((list) => ({ ...list, [unitId]: "" }));
+  };
+
+  const updateFormUnit = (unitId: string, patch: Partial<ProductUnit>) => {
+    setFormUnits((units) =>
+      units.map((unit) => (unit.id === unitId ? { ...unit, ...patch } : unit))
+    );
+  };
+
+  const addSellableUnit = () => {
+    const id = `unit-${formProductId || Date.now()}-${Date.now()}`;
+    const now = new Date().toISOString();
+    setFormUnits((units) => [
+      ...units,
+      {
+        id,
+        productId: formProductId,
+        name: "",
+        baseQuantity: 1,
+        priceMmk: 0,
+        isDefault: false,
+        isActive: true,
+        sortOrder: units.length,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+  };
+
+  const deactivateSellableUnit = (unitId: string) => {
+    setFormUnits((units) => {
+      const next = units.map((unit) => (unit.id === unitId ? { ...unit, isActive: false, isDefault: false } : unit));
+      if (!next.some((unit) => unit.isActive && unit.isDefault)) {
+        const firstActive = next.find((unit) => unit.isActive);
+        return firstActive
+          ? next.map((unit) => ({ ...unit, isDefault: unit.id === firstActive.id }))
+          : next;
+      }
+      return next;
+    });
+  };
+
+  const setDefaultSellableUnit = (unitId: string) => {
+    setFormUnits((units) =>
+      units.map((unit) => ({
+        ...unit,
+        isDefault: unit.id === unitId,
+        isActive: unit.id === unitId ? true : unit.isActive,
+      }))
+    );
+  };
+
+  const openUnitScanModal = (unitId: string) => {
+    setScanUnitId(unitId);
+    setScanModalOpen(true);
   };
 
   const handleDeleteProduct = async (product: Product) => {
@@ -313,29 +384,27 @@ export const ProductsManagePage = () => {
     // Same id used for the storage image path (see formProductId / ProductImageInput).
     const productId = editingId || formProductId || `prod-${Date.now()}`;
     const existingProduct = editingId ? products.find((p) => p.id === editingId) : null;
-    const costMmk = Number.isFinite(values.costMmk) ? values.costMmk : undefined;
-    const packSize = Number.isFinite(values.packSize) ? values.packSize : undefined;
-
-    const product = {
-      id: productId,
-      sku: values.sku,
-      name: values.name,
-      category: values.category,
-      unitType: values.unitType,
-      priceMmk: values.priceMmk,
-      costMmk,
-      packSize,
-      lowStockThreshold: values.lowStockThreshold,
-      expiryDate: values.expiryDate || undefined,
-      imageUrl: values.imageUrl || undefined,
-      isActive: values.isActive,
-      createdAt: existingProduct?.createdAt ?? new Date().toISOString(),
-    };
+    const product = buildProductFromFormValues(values, productId, existingProduct);
+    const nextUnits = sanitizeProductUnits(formUnits.length > 0
+      ? formUnits
+      : [buildInitialUnit(productId, values.unitType, values.priceMmk)], productId);
+    const unitValidation = validateProductUnits(nextUnits);
+    if (!unitValidation.valid) {
+      setProductSaveError(unitValidation.error ?? "Sellable units are invalid.");
+      return;
+    }
 
     // Pre-flight barcode duplicate check against the loaded store data so
     // we fail fast before touching the DB. The DB unique index is the
     // authoritative fallback if the local barcode list is stale.
-    for (const value of formBarcodes) {
+    const barcodeValues = nextUnits
+      .map((unit) => normalizeBarcodeValue(unitBarcodes[unit.id] ?? ""))
+      .filter(Boolean);
+    if (new Set(barcodeValues.map((value) => value.toLowerCase())).size !== barcodeValues.length) {
+      setProductSaveError(BARCODE_FORM_MESSAGES.duplicateInForm);
+      return;
+    }
+    for (const value of barcodeValues) {
       const owner = findBarcodeOwner(value, barcodes, editingId);
       if (owner) {
         setProductSaveError(
@@ -350,18 +419,26 @@ export const ProductsManagePage = () => {
     try {
       // Product row first (fire-and-forget like the rest of the page — the
       // image upload, audit log, and category writes all use this pattern).
-      if (editingId) updateProduct(product, []);
-      else addProduct(product, []);
+      if (editingId) await updateProduct(product, []);
+      else await addProduct(product, []);
+
+      await replaceProductUnits(productId, nextUnits);
 
       // Then reconcile barcode rows. This call throws on DB unique-index
       // violation so a duplicate barcode is surfaced inline; the form
       // stays open and the user can adjust.
-      const nextRows: ProductBarcode[] = formBarcodes.map((value, index) => ({
-        id: `bc-${productId}-${index}-${Date.now()}`,
-        productId,
-        value,
-        type: "EAN13",
-      }));
+      const nextRows: ProductBarcode[] = nextUnits
+        .flatMap((unit, index): ProductBarcode[] => {
+          const value = normalizeBarcodeValue(unitBarcodes[unit.id] ?? "");
+          if (!value) return [];
+          return [{
+            id: `bc-${productId}-${unit.id}-${index}-${Date.now()}`,
+            productId,
+            productUnitId: unit.isDefault ? undefined : unit.id,
+            value,
+            type: "EAN13" as const,
+          }];
+        });
       await replaceProductBarcodes(productId, nextRows);
 
       void addAuditLog({
@@ -398,10 +475,23 @@ export const ProductsManagePage = () => {
 
   // Auto-generate SKU when category changes (new product only)
   const watchedCategory = form.watch("category");
+  const watchedUnitType = form.watch("unitType");
+  const watchedPriceMmk = form.watch("priceMmk");
   useEffect(() => {
     if (!editingId && watchedCategory) generateSku(watchedCategory);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchedCategory, editingId]);
+
+  useEffect(() => {
+    if (editingId || formUnits.length !== 1 || !formUnits[0]?.isDefault) return;
+    setFormUnits((units) =>
+      units.map((unit) => ({
+        ...unit,
+        name: watchedUnitType || unit.name,
+        priceMmk: Math.max(0, Math.trunc(watchedPriceMmk || 0)),
+      }))
+    );
+  }, [editingId, formUnits.length, watchedPriceMmk, watchedUnitType]);
 
   // Category management functions
   const handleSaveCategory = () => {
@@ -928,26 +1018,15 @@ export const ProductsManagePage = () => {
             </div>
           </div>
 
-          {/* Pack Size & Low Stock */}
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Pack Size</label>
-              <Input
-                type="text"
-                inputMode="numeric"
-                placeholder="e.g. 24 for a case"
-                {...form.register("packSize", { valueAsNumber: true })}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Low Stock Threshold *</label>
-              <Input
-                type="text"
-                inputMode="numeric"
-                placeholder="10"
-                {...form.register("lowStockThreshold", { valueAsNumber: true })}
-              />
-            </div>
+          {/* Low Stock */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Low Stock Threshold *</label>
+            <Input
+              type="text"
+              inputMode="numeric"
+              placeholder="10"
+              {...form.register("lowStockThreshold", { valueAsNumber: true })}
+            />
           </div>
 
           {/* Expiry Date & Active */}
@@ -967,53 +1046,115 @@ export const ProductsManagePage = () => {
             </div>
           </div>
 
-          {/* Package Barcodes */}
+          {/* Sellable Units */}
           <div className="rounded-xl border border-slate-200/70 bg-slate-50/40 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <label className="block text-sm font-medium text-slate-700">
-                  Package Barcodes
+                  Sellable Units
                 </label>
                 <p className="mt-1 text-xs text-slate-500">
-                  Scan the barcode printed on the product package. Cashiers can
-                  scan this at POS to add the product to the cart.
+                  Product-specific selling options. Quantity is in base units:
+                  {" "}{form.watch("unitType") || "unit"}.
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setScanModalOpen(true)}
-              >
-                <span className="material-symbols-rounded mr-1 text-sm">
-                  qr_code_scanner
-                </span>
-                Scan barcode
+              <Button type="button" variant="secondary" onClick={addSellableUnit}>
+                <span className="material-symbols-rounded mr-1 text-sm">add</span>
+                Add unit
               </Button>
             </div>
-            {formBarcodes.length > 0 ? (
-              <ul className="mt-3 flex flex-wrap gap-2">
-                {formBarcodes.map((value) => (
-                  <li
-                    key={value}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-mono text-slate-700"
-                  >
-                    <span>{value}</span>
+
+            <div className="mt-3 space-y-3">
+              {formUnits.map((unit) => (
+                <div key={unit.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr_1fr_1.2fr_auto]">
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-slate-500">Unit name</span>
+                      <Input
+                        value={unit.name}
+                        onChange={(event) => updateFormUnit(unit.id, { name: event.target.value })}
+                        placeholder="Can, 6 Pack, Case"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-slate-500">Base qty</span>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={unit.baseQuantity}
+                        onChange={(event) => updateFormUnit(unit.id, {
+                          baseQuantity: Math.max(1, Number(event.target.value.replace(/\D/g, "") || 1)),
+                        })}
+                        placeholder="1"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-slate-500">Price (MMK)</span>
+                      <MoneyInput
+                        value={unit.priceMmk}
+                        onChange={(next) => updateFormUnit(unit.id, { priceMmk: next ?? 0 })}
+                        placeholder="0"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-slate-500">Barcode</span>
+                      <div className="flex gap-2">
+                        <Input
+                          value={unitBarcodes[unit.id] ?? ""}
+                          onChange={(event) => setUnitBarcodes((rows) => ({
+                            ...rows,
+                            [unit.id]: normalizeBarcodeValue(event.target.value),
+                          }))}
+                          placeholder={unit.isDefault ? "Optional, SKU fallback" : "Optional unit barcode"}
+                        />
+                        <Button type="button" variant="secondary" onClick={() => openUnitScanModal(unit.id)}>
+                          <span className="material-symbols-rounded text-sm">qr_code_scanner</span>
+                        </Button>
+                      </div>
+                    </label>
+                    <div className="flex items-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDefaultSellableUnit(unit.id)}
+                        className={`rounded-lg px-3 py-2 text-xs font-medium ${
+                          unit.isDefault
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        Default
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateFormUnit(unit.id, { isActive: !unit.isActive })}
+                        className={`rounded-lg px-3 py-2 text-xs font-medium ${
+                          unit.isActive
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {unit.isActive ? "Active" : "Inactive"}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-500">
+                    <span>
+                      POS deducts {unit.baseQuantity || 1} {form.watch("unitType") || "base units"} per {unit.name || "unit"}.
+                    </span>
                     <button
                       type="button"
-                      onClick={() => handleRemoveBarcode(value)}
-                      className="text-slate-400 hover:text-red-500"
-                      title="Remove"
+                      onClick={() => {
+                        if (unitBarcodes[unit.id]) handleRemoveBarcode(unit.id);
+                        else deactivateSellableUnit(unit.id);
+                      }}
+                      className="font-medium text-rose-500 hover:text-rose-700"
                     >
-                      <span className="material-symbols-rounded text-xs">close</span>
+                      {unitBarcodes[unit.id] ? "Clear barcode" : "Deactivate"}
                     </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-3 text-xs italic text-slate-400">
-                No package barcodes yet. Click Scan barcode to add one.
-              </p>
-            )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {productSaveError && (
@@ -1048,7 +1189,10 @@ export const ProductsManagePage = () => {
           with the product form's inputs. */}
       <BarcodeScanModal
         open={scanModalOpen}
-        onClose={() => setScanModalOpen(false)}
+        onClose={() => {
+          setScanModalOpen(false);
+          setScanUnitId(null);
+        }}
         onScan={handleScannedBarcode}
       />
 

@@ -197,6 +197,7 @@ export const PricingPage = () => {
           <li>- Price tiers are automatically applied in POS based on quantity</li>
           <li>- Higher quantities = lower per-unit price (bulk discounts)</li>
           <li>- Shop-specific tiers override global tiers for that shop</li>
+          <li>- Tiers apply only to the default/base sellable unit; packs/cases use their configured Product Unit price</li>
           <li>- Example: 1-9 units = $10, 10-49 units = $9, 50+ units = $8</li>
         </ul>
       </div>

@@ -6,6 +6,7 @@ import type {
   PriceTier,
   Product,
   ProductBarcode,
+  ProductUnit,
   PurchaseOrder,
   PurchaseOrderItem,
   RefundVoidRequest,
@@ -207,6 +208,19 @@ export const seedBarcodes: ProductBarcode[] = [
   makeBarcode("prod-juice-11", "8850123456741", "EAN13"),
   makeBarcode("prod-juice-12", "8850123456742", "EAN13"),
 ];
+
+export const seedProductUnits: ProductUnit[] = seedProducts.map((product, index) => ({
+  id: `unit-${product.id}-default`,
+  productId: product.id,
+  name: product.unitType || "Piece",
+  baseQuantity: 1,
+  priceMmk: product.priceMmk,
+  isDefault: true,
+  isActive: true,
+  sortOrder: index,
+  createdAt: product.createdAt,
+  updatedAt: product.createdAt,
+}));
 
 export const seedInventory: Inventory[] = seedShops.flatMap((shop, index) =>
   seedProducts.map((product, idx) => ({
@@ -491,6 +505,7 @@ export const seedData = {
   users: seedUsers,
   categories: seedCategories,
   products: seedProducts,
+  productUnits: seedProductUnits,
   barcodes: seedBarcodes,
   inventory: seedInventory,
   movements: seedMovements,

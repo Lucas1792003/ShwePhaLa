@@ -54,20 +54,24 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
   // permission, shop scope, the open shift, stock and overrides, then writes
   // the sale, items, inventory, movements and audit rows in one transaction.
   createSale: async ({ shopId, shiftId, cartItems, cartDiscountPct, paymentMethod, paidMmk }: CreateSaleInput) => {
-    // Resolve the per-line unit price (tier pricing / manual override) on the
-    // client; the RPC recomputes every total from these and writes atomically.
+    // Send the selected sellable unit. The RPC validates unit membership,
+    // active status, stock deduction, and price server-side.
     const items = cartItems.map((item) => {
-      const qtyUnits = item.qty * item.unitsPerItem;
+      const baseQuantitySold = item.qty * item.unitBaseQuantity;
+      const productUnit = get().productUnits.find((unit) => unit.id === item.productUnitId);
       const unitPrice = item.priceOverriddenBy
         ? item.unitPriceMmk
-        : get().getProductPrice(item.productId, shopId, qtyUnits) || item.unitPriceMmk;
+        : productUnit?.isDefault && item.unitBaseQuantity === 1
+          ? get().getProductPrice(item.productId, shopId, baseQuantitySold) || item.unitPriceMmk
+          : item.unitPriceMmk;
       return {
         product_id: item.productId,
+        product_unit_id: item.productUnitId,
         qty: item.qty,
-        units_per_item: item.unitsPerItem,
+        units_per_item: item.unitBaseQuantity,
         unit_price_mmk: unitPrice,
         item_discount_pct: item.itemDiscountPct ?? 0,
-        unit_label: item.unitLabel ?? null,
+        unit_label: item.unitName,
         price_overridden: Boolean(item.priceOverriddenBy),
         stock_override_requested: Boolean(item.stockOverrideBy),
       };

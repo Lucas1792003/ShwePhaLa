@@ -1,4 +1,4 @@
-import type { CartItem, Product } from "../../types";
+import type { CartItem, ProductUnit } from "../../types";
 import { normalizeAmountInput } from "../../lib/utils";
 
 export const STOCK_OVERRIDE_REQUIRED_MESSAGE =
@@ -70,11 +70,11 @@ export const getOnlyInStockMessage = (stockQty: number) =>
 
 export const normalizeCartQuantityInput = normalizeAmountInput;
 
-export const getCartItemUnitsPerItem = (item: Pick<CartItem, "unitsPerItem">): number =>
-  cleanPositiveInteger(item.unitsPerItem);
+export const getCartItemUnitsPerItem = (item: Partial<Pick<CartItem, "unitsPerItem" | "unitBaseQuantity">>): number =>
+  cleanPositiveInteger(item.unitBaseQuantity ?? item.unitsPerItem);
 
-export const getProductUnitsPerAdd = (product: Pick<Product, "packSize">, usePack: boolean): number =>
-  usePack && product.packSize ? cleanPositiveInteger(product.packSize) : 1;
+export const getProductUnitsPerAdd = (unit?: Pick<ProductUnit, "baseQuantity">): number =>
+  cleanPositiveInteger(unit?.baseQuantity);
 
 export const getCartItemRequestedUnits = (item: Pick<CartItem, "qty" | "unitsPerItem">): number =>
   cleanNonNegativeInteger(item.qty) * getCartItemUnitsPerItem(item);
@@ -157,15 +157,18 @@ export const clampCartItemQuantity = (
 };
 
 export const getCartAddStockStatus = (
-  product: Pick<Product, "id" | "packSize">,
-  usePack: boolean,
+  product: Pick<CartItem, "productId"> | { id: string },
+  unitOrUsePack: Pick<ProductUnit, "baseQuantity"> | boolean | undefined,
   items: CartItem[],
   stockByProductId: StockByProductId
 ): CartAddStockStatus => {
-  const stockQty = cleanNonNegativeInteger(stockByProductId[product.id] ?? 0);
-  const requestedUnits = getRequestedUnitsByProduct(items)[product.id] ?? 0;
+  const productId = "id" in product ? product.id : product.productId;
+  const stockQty = cleanNonNegativeInteger(stockByProductId[productId] ?? 0);
+  const requestedUnits = getRequestedUnitsByProduct(items)[productId] ?? 0;
   const remainingUnits = stockQty - requestedUnits;
-  const unitsPerItem = getProductUnitsPerAdd(product, usePack);
+  const unitsPerItem = typeof unitOrUsePack === "object"
+    ? getProductUnitsPerAdd(unitOrUsePack)
+    : getProductUnitsPerAdd();
   const canAdd = remainingUnits >= unitsPerItem;
 
   return {
@@ -174,11 +177,7 @@ export const getCartAddStockStatus = (
     requestedUnits,
     remainingUnits,
     unitsPerItem,
-    reason: canAdd
-      ? undefined
-      : usePack
-        ? "Not enough stock for pack."
-        : getOnlyInStockMessage(stockQty),
+    reason: canAdd ? undefined : getOnlyInStockMessage(stockQty),
   };
 };
 

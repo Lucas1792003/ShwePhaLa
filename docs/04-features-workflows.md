@@ -11,13 +11,17 @@ for the full RPC list.
 - F3 toggles the barcode input; Escape hides it. The input autofocuses and
   is **refocused after every scan** so the next Enter-terminated burst
   always lands there.
-- On Enter, POS calls `findProductForScan(value, products, barcodes)` in
+- On Enter, POS calls `findProductForScan(value, products, productUnits, barcodes)` in
   `src/features/pos/barcodeLookup.ts`:
   1. Exact (verbatim, case-sensitive) match against `product_barcodes.value`.
-  2. Trimmed, case-insensitive match against `products.sku`.
+     If the barcode row has `product_unit_id`, POS adds that exact sellable
+     unit; otherwise it adds the product's default unit.
+  2. Trimmed, case-insensitive match against `products.sku`, which always
+     adds the default sellable unit.
   This mirrors the label printer's selection rule so a SKU-source label
   scans back correctly.
-- On hit: cart adds 1 (respecting pack mode), success toast `Added <name>`.
+- On hit: cart adds 1 selected sellable unit, success toast
+  `Added <name> - <unit>`.
 - On miss: error toast `Barcode not found`.
 - Stock guards apply: out of stock / at max cart units shows
   `Only X in stock for this shop.`
@@ -25,12 +29,17 @@ for the full RPC list.
 ### Cart
 
 - Quantity changes via scan, +/-, or direct edit.
+- Cart lines are unique by `productId + productUnitId`, so a product can
+  appear once as `Can` and once as `Case`.
+- Stock validation is in base units. Example: 1 Case with `base_quantity=24`
+  reserves 24 base units; with 25 base units in stock, only 1 single base
+  unit remains available.
 - Per-line item discount %.
 - Cart discount % applies after item discounts.
 - Price override requires `pos:override_price`.
 - Selling below stock requires `pos:override_stock`.
-- Tier pricing recalculates the unit price as quantity crosses each tier
-  threshold (see Pricing section below).
+- Tier pricing applies only to the default/base sellable unit. Non-default
+  product units use their configured Product Unit price.
 
 ### Checkout
 
@@ -328,6 +337,10 @@ exits.
 ## Barcode Labels
 
 - Route `/app/barcode-labels`, ADMIN + MANAGER only.
+- The preview supports sellable-unit selection. Labels show product name,
+  unit name, unit price, and barcode/SKU code.
+- Default units may fall back to SKU when no barcode exists. Non-default
+  units need their own barcode to print a scannable package label.
 - Flow: select product → preview modal → confirm quantity (1–200) →
   choose template → live preview → **Print labels** mounts
   `BarcodePrintSheet` and calls `window.print()`.
@@ -344,7 +357,7 @@ exits.
 
 - `products.sku` is required in the admin UI and is generated from the
   category prefix + sequential number (e.g. `BEE-001`) and read-only.
-- Package barcodes are managed in the same product modal via a dedicated
+- Sellable-unit barcodes are managed in the Product Unit rows via a dedicated
   `Scan barcode` button that opens `BarcodeScanModal`
   (`src/components/forms/BarcodeScanModal.tsx`). The scan modal auto-
   focuses a single input, refocuses on any blur, captures both Enter
@@ -354,7 +367,7 @@ exits.
   it returns the normalized value to the page handler, which runs
   `checkBarcodeAddable` (in-form duplicate → cross-product duplicate)
   and either rejects (modal stays open, inline error) or appends to
-  `formBarcodes` and toasts `Barcode added`. On save the page calls
+  the target unit barcode field and toasts `Barcode added`. On save the page calls
   `replaceProductBarcodes(productId, rows)` — a delete-then-insert
   reconcile that throws on the DB unique index
   `product_barcodes_unique_normalized_value` (migration 023) and shows
@@ -363,6 +376,12 @@ exits.
   length 4–64, no internal whitespace, case-insensitive uniqueness.
   The page is gated on `product:create` (ADMIN), so CASHIER / BUYER
   never reach this editor.
+- Product Units now replace fixed package-size behavior. Each product must
+  have one active default sellable unit and may have more active units such
+  as `6 Pack`, `Case`, or `Package`. Each unit stores base quantity, unit
+  price, default/active flags, and an optional barcode. Default-unit
+  barcodes have `product_unit_id = null`; non-default barcodes store the
+  unit id.
 - Product images compressed `<= 100 KB` and uploaded to the
   `product-images` Storage bucket; the row stores only the public URL.
 - A phone QR upload flow uses temporary one-time tokens — see
@@ -371,6 +390,9 @@ exits.
 - Replacing an image always creates a fresh Storage object (timestamped
   path) so cache invalidation is automatic. Orphan cleanup is a known
   follow-up.
+- The old single `Pack Size` field is no longer shown in the Product
+  create/edit modal. Existing `products.pack_size` / `Product.packSize`
+  data is legacy-only; new package selling uses Product Units.
 
 ### Categories
 
@@ -388,8 +410,8 @@ exits.
 
 - Admin-managed registry — Settings → **Unit Types**
   (`/app/admin/unit-types`, gated by `product:create`). Defines the
-  **base stock unit** for a product (Piece, Can, Bottle, Sachet, Box,
-  Pack, Case, Kilogram, Liter, ...). Backed by the `unit_types` table
+  **base stock unit** for a product (Piece, Can, Bottle, Sachet,
+  Kilogram, Liter, ...). Backed by the `unit_types` table
   introduced in migration `025`.
 - The Product create/edit Unit Type dropdown is dynamic and reads from
   `useDataStore().unitTypes` filtered to `isActive`, sorted by
@@ -405,13 +427,16 @@ exits.
   required. Shared helpers live in
   `src/features/unitTypes/unitTypeValidation.ts` (`validateUnitTypeForm`,
   `resolveProductUnit`).
-- Unit type is currently a label only — POS deduction, sellable-units,
-  per-unit pricing, and per-unit barcodes are tracked in
-  [09-roadmap-todo.md](./09-roadmap-todo.md).
+- Unit type is the base stock unit label. Product Units are separate,
+  product-specific sellable units. Inventory, purchases, transfers, and
+  adjustments continue to use base units.
 
 ### Price tiers
 
 - Quantity-based price breaks per product (and optionally per shop).
+- Applies only to the default/base sellable unit. Non-default Product Units
+  use their configured unit price until tier pricing is redesigned for
+  product-specific units.
 - Admin via `/app/admin/pricing` (gated by `pricing:manage`).
 - Add / Edit modal uses the shared `ProductPicker` (image thumbnail,
   category icon fallback, SKU, category badge, base price, current shop

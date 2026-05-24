@@ -6,6 +6,7 @@ import type {
   InventoryMovement,
   Product,
   ProductBarcode,
+  ProductUnit,
   PriceTier,
   PurchaseOrder,
   PurchaseOrderItem,
@@ -102,9 +103,10 @@ export interface UnitTypeState {
 
 export interface ProductState {
   products: Product[];
+  productUnits: ProductUnit[];
   barcodes: ProductBarcode[];
-  addProduct: (product: Product, barcodes: ProductBarcode[]) => void;
-  updateProduct: (product: Product, barcodes: ProductBarcode[]) => void;
+  addProduct: (product: Product, barcodes: ProductBarcode[]) => Promise<void>;
+  updateProduct: (product: Product, barcodes: ProductBarcode[]) => Promise<void>;
   /**
    * Hard delete a product. Removes the row from `products` and any
    * inventory rows for it (the `inventory.product_id` FK has no CASCADE).
@@ -119,7 +121,8 @@ export interface ProductState {
    * the fire-and-forget toast `addProduct`/`updateProduct` emit.
    */
   replaceProductBarcodes: (productId: string, barcodes: ProductBarcode[]) => Promise<void>;
-  getProductByBarcode: (value: string) => Product | undefined;
+  replaceProductUnits: (productId: string, units: ProductUnit[]) => Promise<void>;
+  getProductByBarcode: (value: string) => { product: Product; unit: ProductUnit } | undefined;
 }
 
 export interface InventoryState {

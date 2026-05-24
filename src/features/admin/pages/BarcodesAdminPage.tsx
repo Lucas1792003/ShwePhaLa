@@ -7,7 +7,12 @@ import { Table } from "../../../components/ui/Table";
 export const BarcodesAdminPage = () => {
   const barcodes = useDataStore((state) => state.barcodes);
   const products = useDataStore((state) => state.products);
+  const productUnits = useDataStore((state) => state.productUnits);
   const productMap = useMemo(() => Object.fromEntries(products.map((product) => [product.id, product.name])), [products]);
+  const unitMap = useMemo(
+    () => Object.fromEntries(productUnits.map((unit) => [unit.id, unit.name])),
+    [productUnits],
+  );
 
   return (
     <div className="space-y-6">
@@ -19,6 +24,7 @@ export const BarcodesAdminPage = () => {
               <th className="px-4 py-3 text-left text-xs uppercase tracking-wider text-slate-500">Barcode</th>
               <th className="px-4 py-3 text-left text-xs uppercase tracking-wider text-slate-500">Type</th>
               <th className="px-4 py-3 text-left text-xs uppercase tracking-wider text-slate-500">Product</th>
+              <th className="px-4 py-3 text-left text-xs uppercase tracking-wider text-slate-500">Unit</th>
             </tr>
           </thead>
           <tbody>
@@ -27,6 +33,9 @@ export const BarcodesAdminPage = () => {
                 <td className="px-4 py-3 text-sm text-slate-700">{barcode.value}</td>
                 <td className="px-4 py-3 text-sm text-slate-500">{barcode.type}</td>
                 <td className="px-4 py-3 text-sm text-slate-700">{productMap[barcode.productId]}</td>
+                <td className="px-4 py-3 text-sm text-slate-500">
+                  {barcode.productUnitId ? unitMap[barcode.productUnitId] ?? "Unit" : "Default"}
+                </td>
               </tr>
             ))}
           </tbody>

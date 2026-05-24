@@ -10,6 +10,8 @@ import { BarcodeLabel } from "./BarcodeLabel";
 
 interface BarcodePrintSheetProps {
   product: Pick<Product, "name" | "priceMmk">;
+  unitName?: string;
+  unitPriceMmk?: number;
   value: string;
   quantity: number;
   templateKey?: BarcodeLabelTemplateKey | string;
@@ -30,7 +32,7 @@ const getPrintStyle = (template: BarcodeLabelTemplate): PrintStyle => ({
  * element revealed by print CSS, and each label gets the selected template's
  * millimeter dimensions and named-page hint.
  */
-export const BarcodePrintSheet = ({ product, value, quantity, templateKey }: BarcodePrintSheetProps) => {
+export const BarcodePrintSheet = ({ product, unitName, unitPriceMmk, value, quantity, templateKey }: BarcodePrintSheetProps) => {
   const template = getLabelTemplate(templateKey);
   const safeQuantity = clampLabelQty(quantity);
 
@@ -38,7 +40,13 @@ export const BarcodePrintSheet = ({ product, value, quantity, templateKey }: Bar
     <div className="label-print-sheet" data-template={template.key} style={getPrintStyle(template)}>
       {Array.from({ length: safeQuantity }).map((_, index) => (
         <div key={index} className={`label-print-page ${template.pageClassName}`}>
-          <BarcodeLabel product={product} value={value} templateKey={template.key} />
+          <BarcodeLabel
+            product={product}
+            unitName={unitName}
+            unitPriceMmk={unitPriceMmk}
+            value={value}
+            templateKey={template.key}
+          />
         </div>
       ))}
     </div>
