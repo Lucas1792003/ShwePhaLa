@@ -22,6 +22,14 @@ Open work, grouped by area.
       dedicated RPC for audit-row consistency (today they're direct
       `dbExec` writes with friendly toasts). Add a confirmation step
       before deactivating a supplier with outstanding RECEIVED POs.
+- [ ] **User-management RPCs (`create_app_user` / `update_app_user` /
+      `deactivate_app_user`).** Migration `020` enforces the
+      assignment rules at the DB level, but creates/updates are still
+      direct table writes. Wrapping them in `SECURITY DEFINER` RPCs would
+      give us atomic validation + per-call audit rows + a place to plug in
+      a `replace_manager(shop_id, new_user_id)` flow that swaps managers
+      atomically (today the operator has to deactivate cashiers first if
+      the shop already has cashiers — see `05-roles-permissions.md`).
 - [ ] **Seed tooling cleanup.** Move `src/data/seedSupabase.ts` out of
       `src/` so it cannot accidentally ship in the browser bundle. Keep a
       service-role / SQL-seed variant for local dev.
@@ -83,6 +91,9 @@ These were the headline backend hardening milestones; details are in
       categories (migration `017`).
 - [x] Supplier debt + `record_supplier_payment` (migration `018`).
 - [x] QR phone product image uploads (migration `019`).
+- [x] RBAC user-assignment constraints — one admin globally, one active
+      manager per shop, cashier-needs-manager, manager-deactivation
+      safety (migration `020`).
 
 ## Completed Frontend Hardening (for reference)
 

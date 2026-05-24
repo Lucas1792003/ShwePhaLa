@@ -31,10 +31,30 @@ export const getDateKey = (value: Date = new Date()) => {
 export const buildReceiptNo = (shopCode: string, dateKey: string, seq: number) =>
   `${shopCode}-${dateKey}-${String(seq).padStart(4, "0")}`;
 
-export const getEffectiveShopId = (user: User | null | undefined, appShopId: string | null, shops: Shop[]) => {
+// Resolve the shop the current user is acting in.
+//
+// ADMIN is global: an admin only has a shop context when they have
+// explicitly picked one via the shop switcher (or an older session
+// persisted one in localStorage). We deliberately DO NOT fall back to
+// `shops[0]` for admins — silently operating on "whichever shop happened
+// to load first" hides the missing-selection state from shop-scoped
+// workflows (POS, shifts, inventory adjustment, purchases, transfers),
+// which all then need to render a blocked state instead.
+//
+// MANAGER / CASHIER / BUYER are bound to their assigned `shopId`; if it
+// is missing the trigger in migration 020 has already rejected the row,
+// so this branch returning "" should be a vanishingly rare edge case.
+//
+// Callers must treat an empty string as "no shop selected" and gate the
+// shop-scoped UI behind that check. They MUST NOT auto-pick a shop here.
+export const getEffectiveShopId = (user: User | null | undefined, appShopId: string | null, shops: Shop[]): string => {
   if (!user) return "";
-  if (user.role === "ADMIN") return appShopId || user.shopId || shops[0]?.id || "";
-  return user.shopId || "";
+  if (user.role === "ADMIN") {
+    if (appShopId && shops.some((s) => s.id === appShopId)) return appShopId;
+    if (user.shopId && shops.some((s) => s.id === user.shopId)) return user.shopId;
+    return "";
+  }
+  return user.shopId ?? "";
 };
 
 export const toNumber = (value: string) => {

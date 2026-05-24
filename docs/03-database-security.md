@@ -44,6 +44,8 @@ Apply in numeric order. The current ordered list:
 | `017_category_icon_key.sql` | `categories.icon_key` for icon-based categories |
 | `018_supplier_debt_payments.sql` | `supplier_payments`, PO payment status, `record_supplier_payment` |
 | `019_product_image_upload_sessions.sql` | Temporary QR upload sessions for phone product photos |
+| `020_rbac_user_assignment_constraints.sql` | One-admin / one-active-manager-per-shop indexes + role/shop/cashier-needs-manager trigger + manager-deactivation safety + `rbac_assignment_violations` diagnostic view |
+| `021_shop_id_required_rpc_guards.sql` | Explicit `Shop is required` guards on `create_purchase_order` and `create_stock_transfer` (the other shop-scoped RPCs already had them) |
 
 > **Migration order warning.** Some later migrations depend on identity
 > helpers from `003` and the audit-write lockdown from `013`. Always apply
@@ -94,6 +96,11 @@ RLS is enabled on all listed tables.
 - Admin / reference tables (`shops`, `users`, `categories`, `products`,
   `product_barcodes`, `price_tiers`, `suppliers`) accept direct writes
   gated by RLS that checks the relevant granular permission.
+- `users` additionally enforces user-assignment business rules at the DB
+  layer (one admin globally, one active manager per shop, cashier requires
+  active manager in its shop, manager-deactivation safety) via partial
+  unique indexes and the `enforce_user_assignment_rules()` trigger from
+  migration `020`. See `05-roles-permissions.md` for the full list.
 
 **Reads.** Permission-gated SELECT (migration `015` + extensions in `018`):
 

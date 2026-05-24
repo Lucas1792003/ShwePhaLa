@@ -67,23 +67,48 @@ for the full RPC list.
 
 ## Shifts
 
+### Who can open / close
+
+`/app/shifts` is a single unified page for every role that holds
+`shift:manage_own`. Both `open_shift` and `close_shift` (migration 009)
+accept callers who hold `shift:manage_own` OR `shift:manage_all` for the
+target shop — ADMIN and MANAGER hold both by default, CASHIER holds only
+`manage_own`. Whoever opens the shift becomes its `cashier_id` (admin /
+manager / cashier may all act as the cashier of record).
+
+| Role | Open / close their own shift in | Target shop comes from |
+| --- | --- | --- |
+| ADMIN | any shop | the shop switcher (explicit pick required — no fallback) |
+| MANAGER | their assigned shop | `users.shop_id` |
+| CASHIER | their assigned shop | `users.shop_id` |
+
+ADMIN with no shop selected sees `Select a shop to open a shift. Pick one
+from the shop switcher at the top of the page.` and the open-shift form
+is hidden. The `open_shift` RPC also rejects a blank `shop_id` with
+`Shop is required` (009:65). There is no auto-created fallback shop.
+
+Backend enforces "one open shift per cashier globally" via the partial
+unique index `shifts_one_open_per_cashier_shop` plus an advisory lock —
+the same admin cannot have two open shifts in two different shops.
+
 ### Open
 
-- Cashier enters opening cash.
-- `open_shift(p_shop_id, p_opening_cash_mmk)` writes `opening_cash_mmk` and
-  `started_at`. `expected_cash_mmk`, `closing_cash_mmk`, and `variance_mmk`
-  remain `NULL` until close.
+- `open_shift(p_shop_id, p_opening_cash_mmk)` writes `opening_cash_mmk`
+  and `started_at`. `expected_cash_mmk`, `closing_cash_mmk`, and
+  `variance_mmk` remain `NULL` until close.
 - A shift is required for POS checkout.
 
 ### Close
 
-- Cashier enters closing cash.
 - `close_shift(p_shift_id, p_closing_cash_mmk, p_variance_reason)`
   recomputes server-side:
   - `expected_cash = opening_cash + CASH sales (status<>VOID) − approved
     PARTIAL cash refunds against this shift's sales`
   - `variance = closing_cash − expected_cash`
 - A non-zero variance requires a written reason or the RPC rejects.
+- MANAGER / ADMIN closing on behalf of someone else still has to satisfy
+  `app_can_for_shop('shift:manage_all', shift.shop_id)` — `manage_own`
+  alone is not enough.
 
 ### Summary UI
 
@@ -103,6 +128,52 @@ the RPC will write at close time.
 A hint appears for open shifts with non-cash-only sales:
 *"Non-cash sales don't increase expected cash. Closing cash should match
 opening cash."*
+
+### Shift Records tab
+
+Default tab of `/app/shifts`. Lists shifts the operator is allowed to
+see — RLS (migration 015) is the authority, the client filter just
+mirrors it:
+
+| Role | Rows | Filters |
+| --- | --- | --- |
+| ADMIN | All shifts in all shops | Shop + User |
+| MANAGER | Shifts in `users.shop_id` | User |
+| CASHIER | Own shifts (`cashier_id = self`) | — |
+
+Each row shows user, role, shop, started, live duration, status. CSV
+export uses whatever the current filter resolves to.
+
+### Work Hours tab
+
+Driven by helpers in `src/features/shifts/workHours.ts`. Same
+row-visibility scope as Records (RLS, mirrored by the client).
+
+Sections:
+
+1. **Active shifts** — cards for every currently-open shift visible to
+   this operator, with a live `Xh Ym so far` calculated from
+   `now - startedAt`. Ticks every 60 s.
+2. **Monthly totals** — per `(user, shop)` for the picked month: shift
+   count, open count, total hours.
+3. **Daily records in <month>** — every shift in the picked month with
+   started/ended/duration/status.
+
+A `Total this month` chip in the filter row shows the sum of all visible
+hours for the picked month.
+
+**Attribution rule (MVP).** A shift is attributed to the local calendar
+month its `startedAt` falls in. A shift that crosses midnight into a new
+month still counts entirely for its starting month. This matches the way
+`close_shift` anchors cash reconciliation on `opening_cash` captured at
+`startedAt`. If you ever need to split duration across calendar months,
+update `isShiftInMonth` / `getMonthlyShiftHoursMs` together with their
+tests in `workHours.test.ts`.
+
+**Durations.** Closed shift = `endedAt - startedAt`. Open shift =
+`now - startedAt`. Negative / invalid dates clamp to `0`. Format
+`Xh Ym` rounded DOWN to the minute (so a 119-second shift shows
+`0h 1m` once it ticks).
 
 ## Inventory
 
@@ -289,6 +360,135 @@ exits.
 - Shop-specific tiers override global tiers for the same quantity range.
 - Selecting an inactive product shows the inline error
   `Selected product is no longer available.` and keeps the modal open.
+
+## No-Shop-Selected Policy (ADMIN)
+
+The app never auto-creates a shop and never silently picks one for an
+admin. Shop creation lives **only** in the Shops management page
+(`/app/admin/shops` → `addShop` slice → direct `shops` INSERT gated by
+`shop:create`). No login, bootstrap, `loadData`, dashboard, POS, shift,
+or shop-switcher path creates a shop.
+
+`getEffectiveShopId(user, currentShopId, shops)` returns the admin's
+explicitly-picked shop (or, for non-admins, their assigned `shopId`).
+It returns **`""` when an admin has not picked a shop** — no `shops[0]`
+fallback. Shop-scoped pages key off that:
+
+| Page | No-shop behavior |
+| --- | --- |
+| POS (`/app/pos`) | Renders only `Select a shop to use POS. Sales and inventory are shop-specific.` |
+| Shift (`/app/shifts`) | Renders only `Select a shop before opening a shift.` |
+| Inventory (`/app/inventory`) | Shows a banner `Select a shop before adjusting inventory.` and disables the per-row Adjust action |
+| Dashboard | Continues to render — admin uses its own "all / per-shop" toggle |
+| Shop switcher | Shows `Select a shop` placeholder option (disabled once chosen) |
+
+Backend RPCs reject blank shop_id explicitly so a frontend regression
+never produces a corrupt row. The guard is in:
+
+- `complete_sale` (`004`), `open_shift` (`009`), `adjust_stock` (`008`/`014`).
+- `create_purchase_order` and `create_stock_transfer` (added in `021`).
+
+POS cart safety: if the selected shop changes mid-session, the cart,
+discount, payment modal, and price-override modal are all cleared. A
+cart rung up against shop A can never check out against shop B.
+
+## Dashboard
+
+`/app/dashboard` is gated by `report:shop_sales`. ADMIN gets an all-shop
+business dashboard with an All Shops / single-shop selector. MANAGER is
+locked to the assigned shop and sees operational cards first. CASHIER
+still has no default route access, but if `report:shop_sales` is granted
+explicitly the page shows only own-shift data. BUYER has no dashboard by
+default; if sales reporting is explicitly granted, the view remains
+assigned-shop scoped and profit still requires `report:shop_profit`.
+
+### Single source of truth for formulas
+
+Every dashboard card/chart/table reads from pure helpers in
+`src/features/dashboard/dashboardMetrics.ts` (covered by
+`dashboardMetrics.test.ts`). The page does not inline KPI arithmetic.
+The date range selector (`Today`, `Week`, `Month`) filters sales-based
+cards/lists/charts; current-state action cards such as low stock,
+approved PO receipts, open shifts, transfers, and supplier debt stay
+visible until resolved.
+
+### Card formulas
+
+| Card / chart | Formula | Scope / gate |
+| --- | --- | --- |
+| Revenue / Today Revenue | `calculateNetRevenue = sum(sale.totalMmk) - approved PARTIAL refund amounts` for `NORMAL` sales in range | ADMIN all/selected shop; MANAGER assigned shop; CASHIER own shift only |
+| Total Orders / Today Orders | `calculateSalesCount` of ranged `NORMAL` sales | VOID and REFUNDED excluded by `scopeSales` |
+| Avg Order Value | `round(net revenue / order count)` | Returns 0 for empty data; whole MMK only |
+| Profit / Margin | `revenue - calculateCostOfGoods`; margin = `profit / revenue * 100` | Requires `report:shop_profit`; ADMIN by default |
+| Cost of goods | `sum(current product.costMmk * sale item qty)` | Profit-only approximation; sale items do not capture historical cost |
+| Active Shift / Expected Cash | open shifts in scope; `opening cash + CASH sales(status != VOID) - approved PARTIAL cash refunds` | MANAGER assigned shop; ADMIN selected/all; CASHIER own shift |
+| Action Needed | low stock + out of stock + requested approvals + approved PO receipts + pending transfers | Each sub-count is only rendered when the matching permission exists |
+| Sales by Category | `sum(sale_items.lineTotalMmk)` by `product.category` for ranged valid sales | Line basis; may exceed headline revenue when cart discounts exist |
+| Top Selling Products | `calculateTopProducts`, ranked by line revenue, limit 5 | Cost/profit columns are not shown unless `report:shop_profit` |
+| Low Stock / Inventory Alerts | `calculateLowStock` per `(shop_id, product_id)` | Requires `report:shop_inventory`; all-shops never sums quantities across shops |
+| Pending Refund/Void Approvals | `refund_void_requests.status = REQUESTED` | Requires `approval:view` |
+| Pending PO Receipts | `purchase_orders.status = APPROVED` | Requires `purchase:view`; receiving action still requires `purchase:receive` elsewhere |
+| Pending Transfers | `stock_transfers.status = PENDING` where shop is source or destination | Requires `transfer:view` |
+| Supplier Debt | RECEIVED POs only; `sum(totalMmk) - sum(paidMmk)`, floored at 0 | Requires `supplier:debt_view`; unpaid and partial received POs only |
+| Cash vs Other Sales | ranged valid sales split by `paymentMethod` | Manager assigned shop |
+| Shop Performance | per-shop revenue, orders, AOV, open shifts, debt; profit/margin if allowed | ADMIN dashboard |
+| Revenue by Shop | Shop Performance revenue by shop | ADMIN dashboard |
+| Active Staff / Open Shifts | open shifts decorated with user and shop | ADMIN dashboard |
+| Recent Audit Activity | recent `audit_logs` in selected range/scope | Requires `audit:view_global` |
+| Recent Sales | newest ranged valid sales in scope | No profit shown unless a profit-gated card explicitly renders it |
+
+### Shop scope per role
+
+| Role | Sees |
+| --- | --- |
+| ADMIN | All Shops aggregate by default, or one selected shop |
+| MANAGER | Assigned shop only; shop selector is disabled |
+| CASHIER | No default access; if explicitly granted dashboard access, own shift / own sales only |
+| BUYER | No default access; sales/profit remain hidden unless matching report permissions are explicitly granted |
+
+### Sensitive card gating (mirrors RLS)
+
+| Permission | Cards / columns gated |
+| --- | --- |
+| `report:shop_profit` | Profit, margin, cost, and any profit/cost columns |
+| `report:shop_inventory` | Inventory Alerts / Low Stock |
+| `supplier:debt_view` | Supplier Debt cards and debt groupings |
+| `approval:view` | Pending refund/void approvals |
+| `purchase:view` | Pending PO receipts |
+| `transfer:view` | Pending transfers |
+| `audit:view_global` | Recent Audit Activity |
+| `report:shop_sales` | Route guard (entire dashboard) |
+
+## User Management
+
+`/app/admin/users` (ADMIN-only by route, gated by `user:create` /
+`user:update` permissions in RLS). The form enforces, in this order, the
+rules baked into migration `020`:
+
+- **ADMIN role hidden once an admin exists.** Editing the existing admin
+  is the only place ADMIN stays selectable.
+- **MANAGER picker:** the shop dropdown disables any shop that already has
+  an active manager *other than the row being edited* and shows the hint
+  `This shop already has a manager. Deactivate or reassign the existing
+  manager first.` next to it.
+- **CASHIER picker:** the shop dropdown enables only shops with an active
+  manager and shows `Manager: <name>` inline. Shops without a manager
+  carry the hint `No active manager assigned`. If no shop has a manager
+  yet, the picker shows `No shop has an active manager yet. Create a
+  manager first.`
+- **BUYER:** shop selection is required (shopless BUYER cannot do anything
+  because the purchase permissions are shop-scoped).
+- **Submit:** preflight validation runs first and shows a single inline
+  error. If the DB still rejects the write (race conditions, stale UI),
+  `mapUserFormError` from `src/features/admin/userFormErrors.ts`
+  translates the Postgres / trigger error to the same canonical message
+  set. The modal stays open on failure so the operator can fix the input
+  and retry.
+- **Deactivate / demote a manager:** the trigger blocks the change when
+  the shop still has active cashiers (without another active manager to
+  replace them). Friendly error: `Cannot remove the only manager of this
+  shop while active cashiers remain. Reassign or deactivate the cashiers
+  first, or assign another manager.`
 
 ## Audit
 

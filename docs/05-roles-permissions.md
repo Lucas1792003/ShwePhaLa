@@ -20,6 +20,53 @@ of truth**. The old coarse permissions are gone.
 > **BUYER is per-shop.** A shopless BUYER is a misconfiguration. The Users
 > page requires a `shopId` for every non-admin role.
 
+## User-Assignment Rules (DB-enforced)
+
+Enforced by `020_rbac_user_assignment_constraints.sql` — a frontend bug or
+direct SQL session cannot bypass them.
+
+| Rule | How it's enforced |
+| --- | --- |
+| Exactly one row with `role = 'ADMIN'` may exist | Partial unique index `users_only_one_admin` |
+| At most one **active** MANAGER per shop | Partial unique index `users_one_active_manager_per_shop` |
+| MANAGER / CASHIER / BUYER must have `shop_id` | `enforce_user_assignment_rules()` trigger |
+| ADMIN must have `shop_id = NULL` (auto-normalized) | Same trigger |
+| Active CASHIER's shop must already have an active MANAGER | Same trigger |
+| Removing the only active MANAGER of a shop while active cashiers remain | Same trigger — blocked unless a replacement manager is in place |
+
+The trigger emits short, end-user-facing strings (e.g. `Manager must be
+assigned to a shop.`). `src/features/admin/userFormErrors.ts` maps these
+plus the two unique-index violations to the canonical UI messages.
+
+### Manager replacement
+
+The unique index forbids two active managers in one shop at the same time,
+so manager replacement is a two-step operator flow:
+
+1. If the shop has **no active cashiers**: deactivate or demote the old
+   manager, then create / assign the new one.
+2. If the shop has **active cashiers**: the only manager cannot be
+   deactivated. Add a temporary second manager? Not allowed. Operators
+   must either (a) temporarily deactivate the cashiers, swap the manager,
+   re-enable the cashiers, or (b) deactivate the old manager only after
+   another manager has been added for the shop via the brief window
+   created by deactivating one and activating another in the same
+   session. A dedicated `replace_manager(shop_id, new_user_id)` RPC is on
+   the roadmap (see `09-roadmap-todo.md`) if this becomes a bottleneck.
+
+### Preflight diagnostic view
+
+`rbac_assignment_violations` (created by migration 020) lists any rows
+that would violate the rules. Useful when planning a data clean-up or
+debugging a stuck migration. Sample queries:
+
+```sql
+SELECT * FROM rbac_assignment_violations;
+SELECT count(*) FROM users WHERE role = 'ADMIN';
+SELECT shop_id, count(*) FROM users
+ WHERE role = 'MANAGER' AND is_active GROUP BY shop_id HAVING count(*) > 1;
+```
+
 ## Effective Permissions: Grant / Revoke Model
 
 ```
@@ -129,6 +176,34 @@ column-by-column coverage.
 | `report:shop_sales` / `report:shop_inventory` | ✅ | ❌ | ❌ |
 | `report:shop_profit` | ❌ | ❌ | ❌ |
 | `report:global` | ❌ | ❌ | ❌ |
+
+> **Dashboard.** `/app/dashboard` is gated by `report:shop_sales`. ADMIN
+> sees the all-shop business dashboard and can select a single shop.
+> MANAGER is pinned to the assigned-shop operational dashboard. CASHIER
+> and BUYER do not reach the route by default; if sales reporting is
+> explicitly granted, CASHIER sees only own-shift data and BUYER remains
+> assigned-shop scoped. Profit, margin, cost, and profit/cost columns
+> require `report:shop_profit`; inventory alert cards require
+> `report:shop_inventory`; supplier debt requires `supplier:debt_view`;
+> audit activity requires `audit:view_global`. See
+> [`04-features-workflows.md` > Dashboard](./04-features-workflows.md#dashboard)
+> for formulas, the cost-of-goods approximation caveat, and the
+> "never sum stock across shops" rule.
+>
+> **Shifts (open / close / view).** `/app/shifts` is one unified page
+> for ADMIN, MANAGER, and CASHIER. Anyone holding `shift:manage_own` can
+> open / close their OWN shift (admin / manager / cashier all become the
+> `cashier_id` of record). ADMIN must explicitly pick a shop in the
+> switcher — there is no fallback shop. ADMIN+MANAGER additionally hold
+> `shift:manage_all`, so `close_shift` lets them close someone else's
+> open shift in their scope. See [`04-features-workflows.md` ›
+> Shifts](./04-features-workflows.md#shifts) for the full table.
+>
+> **Work Hours visibility** mirrors RLS (`015_permission_gated_select_rls.sql`):
+> ADMIN sees all shifts; MANAGER sees the assigned shop only; CASHIER
+> sees their own only. Monthly totals are attributed to the local
+> calendar month of `startedAt`. BUYER does not hold `shift:manage_own`
+> and never reaches `/app/shifts`.
 
 ### Approvals
 

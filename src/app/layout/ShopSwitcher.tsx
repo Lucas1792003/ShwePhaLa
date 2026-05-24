@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useAppStore } from "../../stores/appStore";
 import { useAuthStore } from "../../stores/authStore";
 import { useDataStore } from "../../stores/dataStore";
@@ -15,11 +14,11 @@ export const ShopSwitcher = ({ className }: ShopSwitcherProps) => {
   const shops = useDataStore((state) => state.shops);
   const { currentShopId, setShopId } = useAppStore();
 
-  useEffect(() => {
-    if (!currentUser) return;
-    if (currentUser.role === "ADMIN" && !currentShopId && shops.length > 0) setShopId(shops[0].id);
-    if (currentUser.role !== "ADMIN" && currentUser.shopId) setShopId(currentUser.shopId);
-  }, [currentUser, currentShopId, shops, setShopId]);
+  // No auto-pick. ADMIN must explicitly choose a shop via the dropdown
+  // below; until they do, shop-scoped pages render a blocked state.
+  // Non-admins are bound to their assigned shop, which is set elsewhere
+  // (currentShopId is persisted from prior sessions; the shop-scoped
+  // pages already key off `getEffectiveShopId`).
 
   const effectiveShopId = getEffectiveShopId(currentUser, currentShopId, shops);
   const activeShop = shops.find((shop) => shop.id === effectiveShopId);
@@ -36,8 +35,11 @@ export const ShopSwitcher = ({ className }: ShopSwitcherProps) => {
         <Select
           className="shop-select"
           value={currentShopId ?? ""}
-          onChange={(event) => setShopId(event.target.value)}
+          onChange={(event) => setShopId(event.target.value || null)}
         >
+          <option value="" disabled>
+            Select a shop
+          </option>
           {shops.map((shop) => (
             <option key={shop.id} value={shop.id}>
               {shop.code} - {shop.name}

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { normalizeAmountInput, toNumber } from "./utils";
+import { getEffectiveShopId, normalizeAmountInput, toNumber } from "./utils";
+import type { Shop, User } from "../types";
 
 describe("normalizeAmountInput", () => {
   it("strips leading zeros", () => {
@@ -77,5 +78,60 @@ describe("MoneyInput contract (via normalizeAmountInput rules)", () => {
     const display = normalizeAmountInput(raw);
     expect(display).toBe("2900");
     expect(Number(display)).toBe(2900);
+  });
+});
+
+// `getEffectiveShopId` is the single seam every shop-scoped page goes
+// through to know whether the operator is "in" a shop. The rules below
+// are load-bearing for the no-shop blocked states in POS / Shift /
+// Inventory (see `04-features-workflows.md`).
+describe("getEffectiveShopId", () => {
+  const shops: Shop[] = [
+    { id: "shop-a", code: "A", name: "Shop A", address: "x", isActive: true, createdAt: "" },
+    { id: "shop-b", code: "B", name: "Shop B", address: "y", isActive: true, createdAt: "" },
+  ];
+  const admin: User = { id: "u-admin", name: "A", role: "ADMIN", isActive: true, createdAt: "" };
+  const manager: User = { id: "u-mgr", name: "M", role: "MANAGER", shopId: "shop-b", isActive: true, createdAt: "" };
+  const cashierNoShop: User = { id: "u-cash", name: "C", role: "CASHIER", isActive: true, createdAt: "" };
+
+  it("returns empty string when there is no user", () => {
+    expect(getEffectiveShopId(null, "shop-a", shops)).toBe("");
+    expect(getEffectiveShopId(undefined, "shop-a", shops)).toBe("");
+  });
+
+  it("returns the admin's explicitly-picked shop", () => {
+    expect(getEffectiveShopId(admin, "shop-b", shops)).toBe("shop-b");
+  });
+
+  it("returns empty string for an admin with no shop picked (no shops[0] fallback)", () => {
+    // Critical: the old behavior was to silently fall back to shops[0].
+    // The new contract is that callers must render a blocked state.
+    expect(getEffectiveShopId(admin, null, shops)).toBe("");
+    expect(getEffectiveShopId(admin, "", shops)).toBe("");
+  });
+
+  it("ignores an admin's picked shop id if it no longer exists in the list", () => {
+    // E.g. the shop was deleted between sessions.
+    expect(getEffectiveShopId(admin, "shop-deleted", shops)).toBe("");
+  });
+
+  it("falls back to user.shopId for an admin only if it points to a real shop", () => {
+    const adminWithShop: User = { ...admin, shopId: "shop-a" };
+    expect(getEffectiveShopId(adminWithShop, null, shops)).toBe("shop-a");
+
+    const adminWithGhostShop: User = { ...admin, shopId: "shop-deleted" };
+    expect(getEffectiveShopId(adminWithGhostShop, null, shops)).toBe("");
+  });
+
+  it("returns the manager's assigned shopId regardless of currentShopId", () => {
+    // Non-admins are bound to their assigned shop; they cannot switch.
+    expect(getEffectiveShopId(manager, "shop-a", shops)).toBe("shop-b");
+    expect(getEffectiveShopId(manager, null, shops)).toBe("shop-b");
+  });
+
+  it("returns empty string for a non-admin with no assigned shop", () => {
+    // Should be unreachable under migration 020's trigger, but the helper
+    // stays safe: empty string is treated as "no shop selected" everywhere.
+    expect(getEffectiveShopId(cashierNoShop, "shop-a", shops)).toBe("");
   });
 });

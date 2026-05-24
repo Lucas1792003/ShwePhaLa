@@ -57,6 +57,16 @@ export const PosPage = () => {
 
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
   const currentShop = shops.find((s) => s.id === shopId);
+  const hasShop = !!shopId;
+  // Cart safety: if the operator switches the selected shop, drop the cart
+  // so items rung up against shop A never check out against shop B. The
+  // discount and override modal also reset for the same reason.
+  useEffect(() => {
+    setCartItems([]);
+    setCartDiscountPct(0);
+    setOverrideItem(null);
+    setPaymentOpen(false);
+  }, [shopId]);
   const openShift = shifts.find((shift) => shift.shopId === shopId && shift.cashierId === currentUserId && !shift.endedAt);
   const canOverridePrice = hasShopPermission(currentUser, "pos:override_price", shopId);
   const canOverrideStock = hasShopPermission(currentUser, "pos:override_stock", shopId);
@@ -276,6 +286,23 @@ export const PosPage = () => {
     );
     setOverrideItem(null);
   };
+
+  if (!hasShop) {
+    return (
+      <Card className="mt-6">
+        <div className="flex flex-col items-center gap-3 py-12 text-center">
+          <span className="material-symbols-rounded text-4xl text-slate-400">store</span>
+          <h2 className="text-lg font-semibold text-slate-700">No shop selected</h2>
+          <p className="text-sm text-slate-500 max-w-md">
+            Select a shop to use POS. Sales and inventory are shop-specific.
+            {currentUser?.role === "ADMIN"
+              ? " Pick a shop from the switcher at the top of the page."
+              : " Contact your administrator if you have not been assigned to a shop."}
+          </p>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100vh-2rem)] flex-col gap-4">

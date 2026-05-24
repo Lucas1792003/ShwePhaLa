@@ -60,8 +60,8 @@ export const InventoryIntelligence = ({
         : `Avoid restocking ${m.product.name} this week`,
     reason:
       language === "my"
-        ? `${m.daysOfStock} ရက်စာ ကုန်ပစ္စည်းရှိပြီး ရောင်းအားနှေးသည်`
-        : `${m.daysOfStock} days of stock with slow sales`,
+        ? `${m.daysOfStock ?? "မသိ"} ရက်စာ ကုန်ပစ္စည်းရှိပြီး ရောင်းအားနှေးသည်`
+        : `${m.daysOfStock ?? "Unknown"} days of stock with slow sales`,
   }));
 
   return (
@@ -113,7 +113,7 @@ export const InventoryIntelligence = ({
                 <div key={m.product.id} className="flex items-center justify-between">
                   <span className="truncate text-xs text-slate-700">{m.product.name}</span>
                   <Badge tone="amber" className="text-xs">
-                    {m.daysOfStock}d
+                    {m.daysOfStock === null ? "n/a" : `${m.daysOfStock}d`}
                   </Badge>
                 </div>
               ))}
@@ -139,7 +139,7 @@ export const InventoryIntelligence = ({
                 <div key={m.product.id} className="flex items-center justify-between">
                   <span className="truncate text-xs text-slate-700">{m.product.name}</span>
                   <Badge tone="gray" className="text-xs">
-                    {m.daysOfStock}d
+                    {m.daysOfStock === null ? "n/a" : `${m.daysOfStock}d`}
                   </Badge>
                 </div>
               ))}

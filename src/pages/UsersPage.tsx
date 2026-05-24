@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useDataStore } from "../stores/dataStore";
 import { supabase } from "../lib/supabase";
 import type { Role } from "../types";
@@ -7,6 +7,7 @@ import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { Button } from "../components/ui/Button";
+import { mapUserFormError, USER_FORM_MESSAGES } from "../features/admin/userFormErrors";
 
 export const UsersPage = () => {
   const users = useDataStore((state) => state.users);
@@ -23,10 +24,35 @@ export const UsersPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+  // Pre-compute the maps the form needs to render correctly:
+  //   * existingAdmin       — if present, ADMIN cannot be picked as a new role
+  //   * managerByShop       — for the CASHIER picker hint and the MANAGER lock
+  // Inactive rows are ignored; uniqueness rules in 020 treat them as gone.
+  const existingAdmin = useMemo(
+    () => users.find((u) => u.role === "ADMIN"),
+    [users],
+  );
+  const managerByShop = useMemo(() => {
+    const map: Record<string, { id: string; name: string }> = {};
+    for (const u of users) {
+      if (u.role === "MANAGER" && u.isActive && u.shopId) {
+        map[u.shopId] = { id: u.id, name: u.name };
+      }
+    }
+    return map;
+  }, [users]);
+
   // Every non-admin role is bound to a single shop. BUYER is a per-shop
   // purchasing role: its `purchase:create` / `purchase:view` permissions are
   // shop-scoped by RLS, so a shopless BUYER would be unable to do anything.
   const requiresShop = role !== "ADMIN";
+
+  // Hide ADMIN as a creatable role once an admin exists. When editing, the
+  // existing admin keeps the option; everyone else loses it so they can't
+  // be promoted into a second admin row.
+  const adminAlreadyExists = !!existingAdmin;
+  const editingAdminSelf = !!editingId && existingAdmin?.id === editingId;
+  const showAdminOption = !adminAlreadyExists || editingAdminSelf;
 
   const resetForm = () => {
     setEditingId(null);
@@ -38,12 +64,67 @@ export const UsersPage = () => {
     setFeedback(null);
   };
 
+  // Shop options for the current role. Each shop gets a disabled flag and an
+  // explanation so the picker can render a single Select with grouped state.
+  const shopOptions = useMemo(() => {
+    return shops.map((shop) => {
+      const manager = managerByShop[shop.id];
+      if (role === "MANAGER") {
+        // Block shops that already have an ACTIVE manager OTHER than the row
+        // being edited. The row being edited can keep its current shop.
+        const otherManager = manager && manager.id !== editingId;
+        return {
+          id: shop.id,
+          label: otherManager
+            ? `${shop.name} · Manager: ${manager?.name}`
+            : shop.name,
+          disabled: !!otherManager,
+          hint: otherManager
+            ? "This shop already has a manager. Deactivate or reassign the existing manager first."
+            : undefined,
+        };
+      }
+      if (role === "CASHIER") {
+        return {
+          id: shop.id,
+          label: manager ? `${shop.name} · Manager: ${manager.name}` : shop.name,
+          disabled: !manager,
+          hint: manager ? undefined : "No active manager assigned",
+        };
+      }
+      // BUYER and any other shop-scoped role: no manager dependency.
+      return { id: shop.id, label: shop.name, disabled: false, hint: undefined };
+    });
+  }, [shops, managerByShop, role, editingId]);
+
+  // Pre-submit validation that mirrors the DB rules so users don't have to
+  // round-trip just to see "this shop already has a manager". The DB stays
+  // the source of truth — anything that slips past us still throws there.
+  const validateBeforeSubmit = (): string | null => {
+    if (!name.trim()) return "Name is required.";
+    if (role === "ADMIN" && adminAlreadyExists && !editingAdminSelf) {
+      return USER_FORM_MESSAGES.secondAdmin;
+    }
+    if (role === "MANAGER") {
+      if (!shopId) return USER_FORM_MESSAGES.managerWithoutShop;
+      const m = managerByShop[shopId];
+      if (m && m.id !== editingId) return USER_FORM_MESSAGES.secondManager;
+    }
+    if (role === "CASHIER") {
+      if (!shopId) return USER_FORM_MESSAGES.cashierWithoutShop;
+      if (!managerByShop[shopId]) return USER_FORM_MESSAGES.cashierWithoutManager;
+    }
+    if (role === "BUYER" && !shopId) return USER_FORM_MESSAGES.buyerWithoutShop;
+    return null;
+  };
+
   const handleSubmit = async () => {
-    if (!name.trim()) { setFeedback({ type: "error", message: "Name is required." }); return; }
+    const preflight = validateBeforeSubmit();
+    if (preflight) { setFeedback({ type: "error", message: preflight }); return; }
 
     if (editingId) {
-      // Edit existing user — update profile only (password change not supported from client)
       const existing = users.find((u) => u.id === editingId)!;
+      setIsSubmitting(true);
       try {
         await updateUser({
           ...existing,
@@ -52,8 +133,12 @@ export const UsersPage = () => {
           shopId: requiresShop ? shopId : undefined,
         });
         setFeedback({ type: "success", message: "User updated." });
+        // Keep the modal in place on success of an edit so the operator
+        // can verify the change in the side list before dismissing.
       } catch (error) {
-        setFeedback({ type: "error", message: error instanceof Error ? error.message : "Failed to update user." });
+        setFeedback({ type: "error", message: mapUserFormError(error) });
+      } finally {
+        setIsSubmitting(false);
       }
       return;
     }
@@ -61,7 +146,6 @@ export const UsersPage = () => {
     // Create new user
     if (!email.trim()) { setFeedback({ type: "error", message: "Email is required." }); return; }
     if (password.length < 6) { setFeedback({ type: "error", message: "Password must be at least 6 characters." }); return; }
-    if (requiresShop && !shopId) { setFeedback({ type: "error", message: "Select a shop for this role." }); return; }
 
     const alreadyExists = users.some((u) => u.email === email.trim());
     if (alreadyExists) { setFeedback({ type: "error", message: "A user with this email already exists." }); return; }
@@ -110,10 +194,9 @@ export const UsersPage = () => {
       });
     } catch (error) {
       setIsSubmitting(false);
-      setFeedback({
-        type: "error",
-        message: `Could not save the staff profile: ${error instanceof Error ? error.message : "unknown error"}`,
-      });
+      setFeedback({ type: "error", message: mapUserFormError(error) });
+      // Modal stays open on failure so the operator can fix the input
+      // (e.g. pick a different shop) and resubmit without re-entering everything.
       return;
     }
 
@@ -140,9 +223,16 @@ export const UsersPage = () => {
     try {
       await updateUser({ ...user, isActive: !user.isActive });
     } catch (error) {
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Failed to update user." });
+      setFeedback({ type: "error", message: mapUserFormError(error) });
     }
   };
+
+  // Hint for the currently picked shop (used to render the inline warning
+  // under the shop select so disabled rows aren't just silently un-pickable).
+  const selectedShopHint = useMemo(() => {
+    if (!shopId) return undefined;
+    return shopOptions.find((opt) => opt.id === shopId)?.hint;
+  }, [shopOptions, shopId]);
 
   return (
     <Card>
@@ -182,19 +272,38 @@ export const UsersPage = () => {
           )}
 
           <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            <option value="ADMIN">Admin</option>
+            {showAdminOption && <option value="ADMIN">Admin</option>}
             <option value="MANAGER">Manager</option>
             <option value="CASHIER">Cashier</option>
             <option value="BUYER">Buyer</option>
           </Select>
+          {adminAlreadyExists && !editingAdminSelf && (
+            <div className="text-xs text-slate-400">
+              Admin role is reserved for the existing admin
+              {existingAdmin?.name ? ` (${existingAdmin.name})` : ""}.
+            </div>
+          )}
 
           {requiresShop && (
-            <Select value={shopId ?? ""} onChange={(e) => setShopId(e.target.value || undefined)}>
-              <option value="">Select a shop</option>
-              {shops.map((shop) => (
-                <option key={shop.id} value={shop.id}>{shop.name}</option>
-              ))}
-            </Select>
+            <>
+              <Select value={shopId ?? ""} onChange={(e) => setShopId(e.target.value || undefined)}>
+                <option value="">Select a shop</option>
+                {shopOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id} disabled={opt.disabled}>
+                    {opt.label}
+                    {opt.disabled ? " (unavailable)" : ""}
+                  </option>
+                ))}
+              </Select>
+              {selectedShopHint && (
+                <div className="text-xs text-amber-600">{selectedShopHint}</div>
+              )}
+              {role === "CASHIER" && shops.length > 0 && Object.keys(managerByShop).length === 0 && (
+                <div className="text-xs text-amber-600">
+                  No shop has an active manager yet. Create a manager first.
+                </div>
+              )}
+            </>
           )}
 
           {feedback && (

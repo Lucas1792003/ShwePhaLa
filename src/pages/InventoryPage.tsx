@@ -45,11 +45,15 @@ export const InventoryPage = () => {
   const [movementPageSize, setMovementPageSize] = useState(10);
 
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
+  const hasShop = !!shopId;
 
   // Permission gating: stock availability is broadly visible, but movement
   // history and manual adjustment are restricted (cashiers see stock only).
+  // Manual adjustment is additionally gated on having a shop selected — the
+  // backend `adjust_stock` RPC rejects null/empty shop_id, and we don't want
+  // an admin with no shop selected to even reach the modal.
   const canViewMovements = hasPermission(currentUser, "inventory:view_movements");
-  const canAdjust = hasPermission(currentUser, "inventory:adjust");
+  const canAdjust = hasPermission(currentUser, "inventory:adjust") && hasShop;
   const effectiveTab = activeTab === "movements" && !canViewMovements ? "stock" : activeTab;
 
   const stockRows = useMemo(() => {
@@ -105,6 +109,16 @@ export const InventoryPage = () => {
         subtitle="Track on-hand and adjustments."
         actions={<Button variant="secondary" onClick={exportInventory}>Export CSV</Button>}
       />
+
+      {!hasShop && (
+        <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-600">
+          Select a shop before adjusting inventory. On-hand stock and movements
+          are shop-specific.
+          {currentUser?.role === "ADMIN"
+            ? " Pick one from the shop switcher at the top of the page."
+            : " Contact your administrator if you have not been assigned to a shop."}
+        </div>
+      )}
 
       <div className="mt-6">
         <Tabs

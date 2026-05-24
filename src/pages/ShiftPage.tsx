@@ -28,6 +28,7 @@ export const ShiftPage = () => {
   if (!currentUser) return null;
   const activeUser = currentUser;
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
+  const hasShop = !!shopId;
 
   const handleStartShift = async () => {
     try {
@@ -68,7 +69,14 @@ export const ShiftPage = () => {
   return (
     <Card>
       <PageHeader title="Shift" subtitle="Start or end your cashier session." />
-      {!openShift ? (
+      {!hasShop ? (
+        <div className="mt-6 rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-600">
+          Select a shop before opening a shift.
+          {currentUser.role === "ADMIN"
+            ? " Pick one from the shop switcher at the top of the page."
+            : " Contact your administrator if you have not been assigned to a shop."}
+        </div>
+      ) : !openShift ? (
         <div className="mt-6 space-y-4">
           <div className="text-sm text-slate-500">No active shift.</div>
           <StartShiftCard

@@ -1,5 +1,9 @@
 import { useMemo } from "react";
 import type { Product, Sale, SaleItem, Inventory } from "../types/domain";
+import {
+  calculateCostOfGoods,
+  calculateGrossRevenue,
+} from "../features/dashboard/dashboardMetrics";
 
 export interface BusinessInsight {
   id: string;
@@ -46,7 +50,7 @@ export interface FastSlowMover {
   product: Product;
   salesVelocity: number; // sales per day
   currentStock: number;
-  daysOfStock: number;
+  daysOfStock: number | null;
   type: "fast" | "slow" | "normal";
 }
 
@@ -155,16 +159,18 @@ export const useDashboardInsights = ({
       .sort((a, b) => b.revenuePercent - a.revenuePercent);
   }, [filteredSales, saleItems, products]);
 
-  // Calculate totals
-  const { totalRevenue, totalCost, totalProfit } = useMemo(() => {
-    const revenue = productProfitability.reduce((sum, p) => sum + p.revenue, 0);
-    const cost = productProfitability.reduce((sum, p) => sum + p.cost, 0);
-    return {
-      totalRevenue: revenue,
-      totalCost: cost,
-      totalProfit: revenue - cost,
-    };
-  }, [productProfitability]);
+  // Calculate totals from the SHARED dashboard helpers so this hook
+  // and the headline KPI card never disagree. Note: this is the
+  // GROSS revenue (post cart discount). The DashboardPage further
+  // subtracts approved PARTIAL refunds with `calculateNetRevenue`
+  // for the headline number; both totals are exported so callers can
+  // pick the basis that matches their card.
+  const totalRevenue = useMemo(() => calculateGrossRevenue(filteredSales), [filteredSales]);
+  const totalCost = useMemo(
+    () => calculateCostOfGoods(filteredSales, saleItems, products),
+    [filteredSales, saleItems, products]
+  );
+  const totalProfit = totalRevenue - totalCost;
 
   // Calculate average daily sales for each product (last 7 days)
   const productDailySales = useMemo(() => {
@@ -189,33 +195,50 @@ export const useDashboardInsights = ({
     );
   }, [filteredSales, saleItems]);
 
-  // Calculate stock health
+  // Calculate stock health.
+  //
+  // Single-shop mode (`shopId` set): one row per active product showing
+  // that shop's qty.
+  //
+  // All-shops mode (`shopId === null`): we deliberately DO NOT sum qty
+  // across shops — that hides "shop A is out, shop B has plenty" cases.
+  // Instead we classify each product by its WORST shop:
+  //   * "out"  iff any shop has 0
+  //   * "low"  iff any shop has 0 < qty <= threshold (and no shop is out)
+  //   * "healthy" otherwise
+  // `currentQty` reports the minimum qty across the product's inventory
+  // rows so the operator sees the worst-affected stock level. (Days-
+  // until-stockout is left null in all-shops mode because the velocity
+  // and qty come from different denominators.)
   const stockHealth = useMemo(() => {
     return products
       .filter((p) => p.isActive)
       .map((product) => {
+        const productRows = inventory.filter((i) => i.productId === product.id);
+
         let currentQty: number;
+        let status: "healthy" | "low" | "out";
+        let daysUntilStockout: number | null;
 
         if (shopId === null) {
-          // All shops mode: aggregate inventory across all shops
-          currentQty = inventory
-            .filter((i) => i.productId === product.id)
-            .reduce((sum, inv) => sum + inv.qtyBaseUnits, 0);
+          const qtys = productRows.length > 0 ? productRows.map((r) => r.qtyBaseUnits) : [0];
+          currentQty = Math.min(...qtys);
+          const anyOut = qtys.some((q) => q <= 0);
+          const anyLow = qtys.some((q) => q > 0 && q <= product.lowStockThreshold);
+          status = anyOut ? "out" : anyLow ? "low" : "healthy";
+          daysUntilStockout = null;
         } else {
-          // Single shop mode: get inventory for specific shop
-          const inv = inventory.find((i) => i.shopId === shopId && i.productId === product.id);
-          currentQty = inv?.qtyBaseUnits || 0;
+          const inv = productRows.find((i) => i.shopId === shopId);
+          currentQty = inv?.qtyBaseUnits ?? 0;
+          if (currentQty <= 0) status = "out";
+          else if (currentQty <= product.lowStockThreshold) status = "low";
+          else status = "healthy";
+
+          const avgDailySales = productDailySales[product.id] || 0;
+          daysUntilStockout = avgDailySales > 0 ? Math.floor(currentQty / avgDailySales) : null;
         }
 
         const avgDailySales = productDailySales[product.id] || 0;
-        const daysUntilStockout = avgDailySales > 0 ? Math.floor(currentQty / avgDailySales) : null;
-
-        let status: "healthy" | "low" | "out" = "healthy";
-        if (currentQty === 0) {
-          status = "out";
-        } else if (currentQty <= product.lowStockThreshold) {
-          status = "low";
-        }
 
         return {
           product,
@@ -237,15 +260,21 @@ export const useDashboardInsights = ({
     return stockHealth
       .map((item) => {
         const salesVelocity = item.avgDailySales;
-        const daysOfStock = salesVelocity > 0 ? item.currentQty / salesVelocity : Infinity;
+        const daysOfStock = salesVelocity > 0 ? item.currentQty / salesVelocity : null;
 
         let type: "fast" | "slow" | "normal" = "normal";
         // Fast mover: high sales, low stock (< 7 days of stock)
-        if (salesVelocity > 0 && daysOfStock < 7) {
+        if (daysOfStock !== null && daysOfStock < 7) {
           type = "fast";
         }
-        // Slow mover: low sales (< 0.5 per day), high stock (> 30 days of stock)
-        else if (salesVelocity < 0.5 && item.currentQty > 10 && daysOfStock > 30) {
+        // Slow mover: low but non-zero sales, high stock (> 30 days of stock).
+        // No-sales products do not get a fake "999d" stockout estimate.
+        else if (
+          daysOfStock !== null &&
+          salesVelocity < 0.5 &&
+          item.currentQty > 10 &&
+          daysOfStock > 30
+        ) {
           type = "slow";
         }
 
@@ -253,7 +282,7 @@ export const useDashboardInsights = ({
           product: item.product,
           salesVelocity,
           currentStock: item.currentQty,
-          daysOfStock: daysOfStock === Infinity ? 999 : Math.round(daysOfStock),
+          daysOfStock: daysOfStock === null ? null : Math.round(daysOfStock),
           type,
         };
       })
@@ -261,7 +290,7 @@ export const useDashboardInsights = ({
       .sort((a, b) => {
         if (a.type === "fast" && b.type !== "fast") return -1;
         if (a.type !== "fast" && b.type === "fast") return 1;
-        return a.daysOfStock - b.daysOfStock;
+        return (a.daysOfStock ?? Number.MAX_SAFE_INTEGER) - (b.daysOfStock ?? Number.MAX_SAFE_INTEGER);
       });
   }, [stockHealth]);
 

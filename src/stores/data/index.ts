@@ -253,13 +253,16 @@ export const useDataStore = create<DataState>()((...args) => {
         ].find((result) => result.error);
         if (failedRead?.error) throw failedRead.error;
 
-        // Ensure currentShopId always points to a valid shop in the list
-        let shopsList = (shops.data ?? []).map(mapShop);
-
-        // Ensure currentShopId always points to a real shop
+        // Clear `currentShopId` only if it points to a shop that no longer
+        // exists (e.g., it was deleted between sessions). We deliberately
+        // DO NOT auto-pick `shops[0]` when nothing is selected — shop-scoped
+        // UIs (POS, shift, inventory adjust, purchases, transfers) show a
+        // clear "no shop selected" blocked state for ADMIN instead. See
+        // `getEffectiveShopId` for the contract.
+        const shopsList = (shops.data ?? []).map(mapShop);
         const { currentShopId, setShopId } = useAppStore.getState();
-        if (!currentShopId || !shopsList.find((s) => s.id === currentShopId)) {
-          setShopId(shopsList[0]?.id ?? null);
+        if (currentShopId && !shopsList.find((s) => s.id === currentShopId)) {
+          setShopId(null);
         }
 
         const mappedRefunds = (refunds.data ?? []).map(mapRefund);
