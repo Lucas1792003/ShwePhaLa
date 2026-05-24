@@ -1,11 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuthStore } from "../stores/authStore";
 import { useAppStore } from "../stores/appStore";
 import { useDataStore } from "../stores/dataStore";
-import type { ProductCategory, Category, Product } from "../types";
+import type { ProductCategory, Category, Product, ProductBarcode } from "../types";
+import {
+  findBarcodeOwner,
+  isDuplicateBarcodeInForm,
+  normalizeBarcodeValue,
+  validateBarcodeInput,
+  BARCODE_FORM_MESSAGES,
+} from "../lib/barcodeValidation";
+import { getErrorMessage } from "../lib/errors";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
@@ -53,6 +61,7 @@ export const ProductsManagePage = () => {
   const categories = useDataStore((state) => state.categories);
   const addProduct = useDataStore((state) => state.addProduct);
   const updateProduct = useDataStore((state) => state.updateProduct);
+  const replaceProductBarcodes = useDataStore((state) => state.replaceProductBarcodes);
   const addCategory = useDataStore((state) => state.addCategory);
   const updateCategory = useDataStore((state) => state.updateCategory);
   const deleteCategory = useDataStore((state) => state.deleteCategory);
@@ -64,6 +73,17 @@ export const ProductsManagePage = () => {
   // The product id used for BOTH the storage image path and the saved row.
   // Generated up-front on "Add" so the image can be uploaded before submit.
   const [formProductId, setFormProductId] = useState("");
+
+  // Package barcode editor state — lives outside the react-hook-form schema
+  // because the list is multi-row and we want immediate Enter-to-add UX.
+  const [formBarcodes, setFormBarcodes] = useState<string[]>([]);
+  const [barcodeInput, setBarcodeInput] = useState("");
+  const [barcodeFeedback, setBarcodeFeedback] = useState<
+    { type: "error" | "success"; message: string } | null
+  >(null);
+  const [productSaveError, setProductSaveError] = useState<string | null>(null);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -163,6 +183,13 @@ export const ProductsManagePage = () => {
     return cat?.color ?? "slate";
   };
 
+  const resetBarcodeEditor = () => {
+    setFormBarcodes([]);
+    setBarcodeInput("");
+    setBarcodeFeedback(null);
+    setProductSaveError(null);
+  };
+
   // Open modal for adding new product
   const handleAddProduct = () => {
     form.reset({
@@ -180,6 +207,7 @@ export const ProductsManagePage = () => {
     });
     setEditingId(null);
     setFormProductId(`prod-${Date.now()}`);
+    resetBarcodeEditor();
     setShowProductModal(true);
   };
 
@@ -201,13 +229,56 @@ export const ProductsManagePage = () => {
     });
     setEditingId(product.id);
     setFormProductId(product.id);
+    resetBarcodeEditor();
+    setFormBarcodes(
+      barcodes
+        .filter((b) => b.productId === product.id)
+        .map((b) => b.value)
+    );
     setShowProductModal(true);
   };
 
   const handleCloseProductModal = () => {
     setShowProductModal(false);
     setEditingId(null);
+    resetBarcodeEditor();
     form.reset();
+  };
+
+  // Try to add the value in the input to the form's barcode list. Runs
+  // input validation, in-form duplicate check, and cross-product owner
+  // check (against the loaded store data — the DB unique index is the
+  // final guard if the data is stale).
+  const tryAddBarcode = () => {
+    const raw = barcodeInput;
+    const validationError = validateBarcodeInput(raw);
+    if (validationError) {
+      setBarcodeFeedback({ type: "error", message: validationError });
+      return;
+    }
+    const normalized = normalizeBarcodeValue(raw);
+    if (isDuplicateBarcodeInForm(normalized, formBarcodes)) {
+      setBarcodeFeedback({ type: "error", message: BARCODE_FORM_MESSAGES.duplicateInForm });
+      return;
+    }
+    const owner = findBarcodeOwner(normalized, barcodes, editingId);
+    if (owner) {
+      setBarcodeFeedback({
+        type: "error",
+        message: BARCODE_FORM_MESSAGES.duplicateOtherProduct,
+      });
+      return;
+    }
+    setFormBarcodes((list) => [...list, normalized]);
+    setBarcodeInput("");
+    setBarcodeFeedback({ type: "success", message: "Barcode added." });
+    // Keep focus so the next scanner burst lands here.
+    barcodeInputRef.current?.focus();
+  };
+
+  const handleRemoveBarcode = (value: string) => {
+    setFormBarcodes((list) => list.filter((item) => item !== value));
+    setBarcodeFeedback(null);
   };
 
   const handleDeactivateProduct = (product: Product) => {
@@ -227,7 +298,7 @@ export const ProductsManagePage = () => {
     });
   };
 
-  const handleSubmit = form.handleSubmit((values) => {
+  const handleSubmit = form.handleSubmit(async (values) => {
     // Check for duplicate SKU
     const existingSku = products.find((p) => p.sku === values.sku && p.id !== editingId);
     if (existingSku) {
@@ -257,20 +328,54 @@ export const ProductsManagePage = () => {
       createdAt: existingProduct?.createdAt ?? new Date().toISOString(),
     };
 
-    if (editingId) updateProduct(product, []);
-    else addProduct(product, []);
+    // Pre-flight barcode duplicate check against the loaded store data so
+    // we fail fast before touching the DB. The DB unique index is the
+    // authoritative fallback if the local barcode list is stale.
+    for (const value of formBarcodes) {
+      const owner = findBarcodeOwner(value, barcodes, editingId);
+      if (owner) {
+        setProductSaveError(
+          `${BARCODE_FORM_MESSAGES.duplicateOtherProduct} (${value})`
+        );
+        return;
+      }
+    }
 
-    void addAuditLog({
-      id: `audit-${Math.random().toString(36).slice(2, 9)}`,
-      actorId: currentUserId ?? "system",
-      actionType: editingId ? "PRODUCT_EDIT" : "PRODUCT_CREATE",
-      message: `${editingId ? "Updated" : "Created"} product ${values.name}.`,
-      entityType: "Product",
-      entityId: productId,
-      createdAt: new Date().toISOString(),
-    });
+    setIsSavingProduct(true);
+    setProductSaveError(null);
+    try {
+      // Product row first (fire-and-forget like the rest of the page — the
+      // image upload, audit log, and category writes all use this pattern).
+      if (editingId) updateProduct(product, []);
+      else addProduct(product, []);
 
-    handleCloseProductModal();
+      // Then reconcile barcode rows. This call throws on DB unique-index
+      // violation so a duplicate barcode is surfaced inline; the form
+      // stays open and the user can adjust.
+      const nextRows: ProductBarcode[] = formBarcodes.map((value, index) => ({
+        id: `bc-${productId}-${index}-${Date.now()}`,
+        productId,
+        value,
+        type: "EAN13",
+      }));
+      await replaceProductBarcodes(productId, nextRows);
+
+      void addAuditLog({
+        id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+        actorId: currentUserId ?? "system",
+        actionType: editingId ? "PRODUCT_EDIT" : "PRODUCT_CREATE",
+        message: `${editingId ? "Updated" : "Created"} product ${values.name}.`,
+        entityType: "Product",
+        entityId: productId,
+        createdAt: new Date().toISOString(),
+      });
+
+      handleCloseProductModal();
+    } catch (error) {
+      setProductSaveError(getErrorMessage(error));
+    } finally {
+      setIsSavingProduct(false);
+    }
   });
 
   const generateSku = (categoryName?: string) => {
@@ -792,12 +897,93 @@ export const ProductsManagePage = () => {
             </div>
           </div>
 
+          {/* Package Barcodes */}
+          <div className="rounded-xl border border-slate-200/70 bg-slate-50/40 p-3">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Package Barcodes
+            </label>
+            <p className="mb-2 text-xs text-slate-500">
+              Scan the barcode printed on the product package. Cashiers can scan
+              this at POS to add the product to the cart.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                ref={barcodeInputRef}
+                value={barcodeInput}
+                onChange={(event) => {
+                  setBarcodeInput(event.target.value);
+                  if (barcodeFeedback) setBarcodeFeedback(null);
+                }}
+                onKeyDown={(event) => {
+                  // Scanners terminate the burst with Enter. Capture it here
+                  // so the keypress adds the barcode instead of submitting
+                  // the whole product form.
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    tryAddBarcode();
+                  }
+                }}
+                placeholder="Scan or type barcode, then press Enter"
+              />
+              <Button type="button" variant="secondary" onClick={tryAddBarcode}>
+                Add
+              </Button>
+            </div>
+            {barcodeFeedback && (
+              <p
+                className={`mt-2 text-xs ${
+                  barcodeFeedback.type === "error" ? "text-red-500" : "text-emerald-600"
+                }`}
+              >
+                {barcodeFeedback.message}
+              </p>
+            )}
+            {formBarcodes.length > 0 && (
+              <ul className="mt-3 flex flex-wrap gap-2">
+                {formBarcodes.map((value) => (
+                  <li
+                    key={value}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-mono text-slate-700"
+                  >
+                    <span>{value}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveBarcode(value)}
+                      className="text-slate-400 hover:text-red-500"
+                      title="Remove"
+                    >
+                      <span className="material-symbols-rounded text-xs">close</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {productSaveError && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {productSaveError}
+            </div>
+          )}
+
           {/* Submit Buttons */}
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={handleCloseProductModal}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleCloseProductModal}
+              disabled={isSavingProduct}
+            >
               Cancel
             </Button>
-            <Button type="submit">{editingId ? "Update Product" : "Create Product"}</Button>
+            <Button type="submit" disabled={isSavingProduct}>
+              {isSavingProduct
+                ? "Saving..."
+                : editingId
+                  ? "Update Product"
+                  : "Create Product"}
+            </Button>
           </div>
         </form>
       </Modal>

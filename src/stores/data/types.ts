@@ -96,6 +96,13 @@ export interface ProductState {
   barcodes: ProductBarcode[];
   addProduct: (product: Product, barcodes: ProductBarcode[]) => void;
   updateProduct: (product: Product, barcodes: ProductBarcode[]) => void;
+  /**
+   * Async barcode reconcile that throws on DB failure (incl. the unique
+   * `product_barcodes_unique_normalized_value` index). Used by the
+   * product form to surface duplicate-barcode errors inline instead of
+   * the fire-and-forget toast `addProduct`/`updateProduct` emit.
+   */
+  replaceProductBarcodes: (productId: string, barcodes: ProductBarcode[]) => Promise<void>;
   getProductByBarcode: (value: string) => Product | undefined;
 }
 

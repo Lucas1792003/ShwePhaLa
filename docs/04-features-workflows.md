@@ -326,6 +326,16 @@ exits.
 
 - `products.sku` is required in the admin UI and is generated from the
   category prefix + sequential number (e.g. `BEE-001`) and read-only.
+- Package barcodes are managed inline in the same modal: scan or type a
+  value, press Enter, and the chip is appended to `formBarcodes`. On
+  save the page calls `replaceProductBarcodes(productId, rows)` — a
+  delete-then-insert reconcile that throws on the DB unique index
+  `product_barcodes_unique_normalized_value` (migration 023) and shows
+  `A barcode with this value is already linked to another product.`
+  inline. Validation is normalize → trim + scanner control-char strip,
+  length 4–64, no internal whitespace, case-insensitive uniqueness.
+  The page is gated on `product:create` (ADMIN), so CASHIER / BUYER
+  never reach this editor.
 - Product images compressed `<= 100 KB` and uploaded to the
   `product-images` Storage bucket; the row stores only the public URL.
 - A phone QR upload flow uses temporary one-time tokens — see

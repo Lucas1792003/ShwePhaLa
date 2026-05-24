@@ -47,6 +47,7 @@ Apply in numeric order. The current ordered list:
 | `020_rbac_user_assignment_constraints.sql` | One-admin / one-active-manager-per-shop indexes + role/shop/cashier-needs-manager trigger + manager-deactivation safety + `rbac_assignment_violations` diagnostic view |
 | `021_shop_id_required_rpc_guards.sql` | Explicit `Shop is required` guards on `create_purchase_order` and `create_stock_transfer` (the other shop-scoped RPCs already had them) |
 | `022_unique_normalized_shops.sql` | Preflight duplicate shop name/code detection + unique expression indexes on `lower(trim(name))` and `lower(trim(code))` |
+| `023_unique_normalized_product_barcodes.sql` | Preflight duplicate package-barcode detection + partial unique expression index on `product_barcodes(lower(trim(value)))` so a single scanned code cannot resolve to two products at POS |
 
 > **Migration order warning.** Some later migrations depend on identity
 > helpers from `003` and the audit-write lockdown from `013`. Always apply

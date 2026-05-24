@@ -73,6 +73,10 @@ CREATE TABLE IF NOT EXISTS product_barcodes (
   type text NOT NULL
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS product_barcodes_unique_normalized_value
+  ON product_barcodes ((lower(btrim(value))))
+  WHERE NULLIF(btrim(value), '') IS NOT NULL;
+
 -- price_tiers
 CREATE TABLE IF NOT EXISTS price_tiers (
   id text PRIMARY KEY,

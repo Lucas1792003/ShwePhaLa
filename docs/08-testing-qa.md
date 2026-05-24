@@ -26,6 +26,7 @@ npm run lint         # ESLint
 | `src/features/admin/userFormErrors.test.ts` | DB constraint → user-friendly message mapping |
 | `src/lib/shopValidation.test.ts` | Shop name/code trimming, duplicate normalized name/code validation, same-row edit allowance, DB unique-index error mapping |
 | `src/lib/shopDelete.test.ts` | Shop reference counting across all shop-bearing tables, friendly reference summary, DB foreign-key (`23503`) error mapping |
+| `src/lib/barcodeValidation.test.ts` | Package barcode normalization (trim + scanner control-char strip), length + whitespace validation, in-form and cross-product duplicate detection, DB unique-index (`23505` / `product_barcodes_unique_normalized_value`) error mapping |
 | `src/features/dashboard/dashboardMetrics.test.ts` | Scope, net revenue (gross − approved PARTIAL refunds), cost of goods, profit/margin/AOV (no NaN on empty data), Admin daily revenue/cost/profit trend, Sales by Category percentages, inventory value, **per-shop low stock (never sums across shops)**, top products ranking, supplier debt (RECEIVED-only) |
 | `src/features/pos/barcodeLookup.test.ts` | Barcode→SKU fallback + parity with label printer |
 | `src/features/suppliers/debt.test.ts` | Debt math (debt starts on RECEIVED only) |
@@ -162,6 +163,56 @@ Receipt content checks (`/app/receipts/:saleId` after a sale):
 - [ ] Opening the same sale from Sales History (drawer + full page)
       prints the same layout.
 - [ ] CASHIER, MANAGER, and ADMIN receipt prints all look identical.
+
+## Product Barcode Linking QA
+
+`/app/admin/products` Add / Edit Product modal — Package Barcodes section.
+The page itself is gated on `product:create` (ADMIN-only by default), so
+CASHIER and BUYER never see the barcode editor.
+
+Add / edit flow:
+- [ ] Create a new product, scan the physical package barcode into the
+      Package Barcodes input → on Enter the value becomes a chip and the
+      input clears.
+- [ ] Manually typing a barcode and pressing Enter works the same way.
+- [ ] Pressing Enter inside the barcode input does NOT submit the whole
+      product form (event is captured).
+- [ ] Scanning the same barcode twice in the same form shows
+      `This barcode is already added to this product.`
+- [ ] Scanning a barcode that is already linked to a different product
+      shows `This barcode is already linked to another product.`
+- [ ] Save the product, then re-open it for edit — the chips show the
+      previously saved barcodes.
+- [ ] Removing a chip and re-saving deletes that barcode from the DB.
+- [ ] Submitting with the DB unique index in place: if local data is
+      stale and another tab registered the same code, the form catches
+      the `23505` and shows the friendly message; the form stays open
+      and the chip list is preserved.
+- [ ] Save button shows "Saving..." and is disabled during the write.
+
+POS scan:
+- [ ] Open POS, scan the physical package barcode → product is added
+      to the cart, toast shows `Added <product name>`.
+- [ ] Scan the same barcode again → cart quantity increases by 1 (up
+      to the per-shop stock limit).
+- [ ] Scanning more than stock allows shows
+      `Stock limit reached` and quantity does not exceed stock.
+- [ ] Scanning an unknown code shows `Barcode not found`.
+- [ ] If a product has only a SKU (no package barcode), scanning the
+      SKU still finds it (SKU fallback in `findProductForScan`).
+- [ ] An SKU that collides with another product's registered package
+      barcode resolves to the barcode-owning product (barcode wins).
+
+Barcode Labels (`/app/admin/barcodes`):
+- [ ] Generated labels still print: products with a package barcode
+      use that value; products with only a SKU fall back to the SKU.
+- [ ] Printing a label for the package-barcode value, then scanning
+      that printed label at POS, finds the same product.
+
+Migration:
+- [ ] `023_unique_normalized_product_barcodes.sql` aborts on existing
+      duplicate barcode values, listing each conflicting `(id, product_id)`
+      pair; it does not delete or merge barcodes.
 
 ## Dashboard QA
 

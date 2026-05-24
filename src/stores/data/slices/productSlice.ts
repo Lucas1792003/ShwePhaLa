@@ -3,6 +3,7 @@ import type { DataState, ProductState } from "../types";
 import type { Product, ProductBarcode } from "../../../types";
 import { supabase, dbWrite } from "../../../lib/supabase";
 import { findProductForScan } from "../../../features/pos/barcodeLookup";
+import { mapBarcodeWriteError, normalizeBarcodeValue } from "../../../lib/barcodeValidation";
 
 export const createProductSlice: StateCreator<DataState, [], [], ProductState> = (set, get) => ({
   products: [],
@@ -44,6 +45,46 @@ export const createProductSlice: StateCreator<DataState, [], [], ProductState> =
         barcodes.map((b) => ({ id: b.id, product_id: b.productId, value: b.value, type: b.type }))
       ), "updateProduct barcodes");
     }
+  },
+
+  replaceProductBarcodes: async (productId: string, barcodes: ProductBarcode[]) => {
+    // Normalize values once so DB rows match what the form validated.
+    const normalized = barcodes
+      .map((b) => ({ ...b, value: normalizeBarcodeValue(b.value) }))
+      .filter((b) => b.value.length > 0);
+
+    // Delete-then-insert: simplest reconcile that always converges to the
+    // user's chosen list. The product_barcodes table has no FKs pointing
+    // INTO it, so dropped rows are safe to recreate.
+    const { error: delError } = await supabase
+      .from("product_barcodes")
+      .delete()
+      .eq("product_id", productId);
+    if (delError) {
+      console.error("[DB] replaceProductBarcodes delete failed:", delError);
+      throw new Error(mapBarcodeWriteError(delError));
+    }
+
+    if (normalized.length > 0) {
+      const { error: insError } = await supabase.from("product_barcodes").insert(
+        normalized.map((b) => ({
+          id: b.id,
+          product_id: productId,
+          value: b.value,
+          type: b.type,
+        }))
+      );
+      if (insError) {
+        console.error("[DB] replaceProductBarcodes insert failed:", insError);
+        throw new Error(mapBarcodeWriteError(insError));
+      }
+    }
+
+    set((state) => ({
+      barcodes: state.barcodes
+        .filter((item) => item.productId !== productId)
+        .concat(normalized.map((b) => ({ ...b, productId }))),
+    }));
   },
 
   getProductByBarcode: (value: string) => {
