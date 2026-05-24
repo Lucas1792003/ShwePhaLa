@@ -326,10 +326,19 @@ exits.
 
 - `products.sku` is required in the admin UI and is generated from the
   category prefix + sequential number (e.g. `BEE-001`) and read-only.
-- Package barcodes are managed inline in the same modal: scan or type a
-  value, press Enter, and the chip is appended to `formBarcodes`. On
-  save the page calls `replaceProductBarcodes(productId, rows)` — a
-  delete-then-insert reconcile that throws on the DB unique index
+- Package barcodes are managed in the same product modal via a dedicated
+  `Scan barcode` button that opens `BarcodeScanModal`
+  (`src/components/forms/BarcodeScanModal.tsx`). The scan modal auto-
+  focuses a single input, refocuses on any blur, captures both Enter
+  and Tab as scan terminators (event default + propagation stopped so
+  the outer product form never accidentally submits), and offers an
+  `Add manually` fallback for keyboard entry. On a successful capture
+  it returns the normalized value to the page handler, which runs
+  `checkBarcodeAddable` (in-form duplicate → cross-product duplicate)
+  and either rejects (modal stays open, inline error) or appends to
+  `formBarcodes` and toasts `Barcode added`. On save the page calls
+  `replaceProductBarcodes(productId, rows)` — a delete-then-insert
+  reconcile that throws on the DB unique index
   `product_barcodes_unique_normalized_value` (migration 023) and shows
   `A barcode with this value is already linked to another product.`
   inline. Validation is normalize → trim + scanner control-char strip,
@@ -452,11 +461,12 @@ visible until resolved.
 | Avg Order Value | `round(net revenue / order count)` | Returns 0 for empty data; whole MMK only |
 | Profit / Margin | `revenue - calculateCostOfGoods`; margin = `profit / revenue * 100` | Requires `report:shop_profit`; ADMIN by default |
 | Cost of goods | `sum(current product.costMmk * sale item qty)` | Profit-only approximation; sale items do not capture historical cost |
-| Revenue, Cost & Profit Trend | `calculateDailyRevenueCostProfitTrend`, grouped by day; revenue is net revenue, cost is current product-cost approximation, profit = revenue - cost | ADMIN analytics; requires `report:shop_profit`; All Shops aggregates, selected shop filters |
+| Revenue, Cost & Profit Trend | `calculateDailyRevenueCostProfitTrend`, grouped by day; revenue is net revenue, cost is current product-cost approximation, profit = revenue - cost | ADMIN analytics; requires `report:shop_profit`; All Shops aggregates, selected shop filters. Rendered as a 3-series smooth LineChart with compact chip legend top-right and MMK-formatted Y-axis ticks (`MMK 60k`); ranges with fewer than 2 grouped days show the data as dots with the hint `More days of sales are needed to show a trend.` (e.g. a single-day Today range with sales). Cost approximation uses `product.costMmk` — sale items don't yet store historical unit cost. |
 | Active Shift / Expected Cash | open shifts in scope; `opening cash + CASH sales(status != VOID) - approved PARTIAL cash refunds` | MANAGER assigned shop; ADMIN selected/all; CASHIER own shift |
 | Action Needed | low stock + out of stock + requested approvals + approved PO receipts + pending transfers | Each sub-count is only rendered when the matching permission exists |
 | Sales by Category | `calculateSalesByCategoryPercent`; `sum(sale_items.lineTotalMmk)` by `product.category`, then percent of category total | ADMIN all/selected shop; MANAGER assigned shop; line basis does not allocate cart-level discounts yet |
 | Top Selling Products | `calculateTopProducts`, ranked by line revenue, limit 5 | Cost/profit columns are not shown unless `report:shop_profit` |
+| Inventory Intelligence (Admin) | `useDashboardInsights` → stock health summary (healthy / low / out), fast / slow movers (last-7-day avg-daily-sales velocity), reorder suggestions (low + <=7d to stockout, OR out + had sales). Sales velocity window is fixed at 7 days regardless of the page range so "fast mover" stays comparable across range changes. Days-of-stock returns `null` for products with no recent sales (rendered as `n/a`, never a fake `999d`). Scope respects ADMIN All Shops vs selected shop via `metricShopId`. | Requires `report:shop_inventory`. Overlaps in spirit with the Action Queue counts (out / low) but kept because the card stands on its own and adds Fast/Slow Movers + Reorder Suggestions that aren't surfaced anywhere else. |
 | Low Stock / Inventory Alerts | `calculateLowStock` per `(shop_id, product_id)` | Requires `report:shop_inventory`; all-shops never sums quantities across shops |
 | Pending Refund/Void Approvals | `refund_void_requests.status = REQUESTED` | Requires `approval:view` |
 | Pending PO Receipts | `purchase_orders.status = APPROVED` | Requires `purchase:view`; receiving action still requires `purchase:receive` elsewhere |

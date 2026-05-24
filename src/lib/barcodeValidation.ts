@@ -94,6 +94,31 @@ const errorBlob = (error: AnyError): string => {
 };
 
 /**
+ * Run all the duplicate checks a product form needs after the user
+ * scans/types a value. Returns null when the value is safe to append to
+ * the form's barcode list, or the user-facing error message otherwise.
+ *
+ * This is the pure rule shared by the scan modal's callback and any
+ * other caller that wants to accept a barcode value — extracted so
+ * the rule can be unit-tested independently of the React form.
+ */
+export const checkBarcodeAddable = (
+  value: string,
+  formBarcodes: string[],
+  allBarcodes: ProductBarcode[],
+  editingProductId: string | null
+): string | null => {
+  const normalized = normalizeBarcodeValue(value);
+  if (isDuplicateBarcodeInForm(normalized, formBarcodes)) {
+    return BARCODE_FORM_MESSAGES.duplicateInForm;
+  }
+  if (findBarcodeOwner(normalized, allBarcodes, editingProductId)) {
+    return BARCODE_FORM_MESSAGES.duplicateOtherProduct;
+  }
+  return null;
+};
+
+/**
  * Map a Postgres write error from a barcode insert into a friendly form
  * message. `23505` is unique_violation; the index name is the one created
  * by migration 023.

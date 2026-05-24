@@ -186,8 +186,10 @@ column-by-column coverage.
 > require `report:shop_profit`, including the Admin Revenue, Cost &
 > Profit Trend. MANAGER can see assigned-shop Sales by Category because
 > it is a sales mix chart, but does not see cost/profit/investment trend
-> data unless `report:shop_profit` is granted. Inventory alert cards require
-> `report:shop_inventory`; supplier debt requires `supplier:debt_view`;
+> data unless `report:shop_profit` is granted. Inventory alert cards and
+> the Admin Inventory Intelligence card (stock health summary, fast/slow
+> movers, reorder suggestions) require `report:shop_inventory`; supplier
+> debt requires `supplier:debt_view`;
 > audit activity requires `audit:view_global`. See
 > [`04-features-workflows.md` > Dashboard](./04-features-workflows.md#dashboard)
 > for formulas, the cost-of-goods approximation caveat, and the

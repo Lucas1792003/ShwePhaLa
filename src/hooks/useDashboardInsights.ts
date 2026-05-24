@@ -59,8 +59,16 @@ interface UseDashboardInsightsParams {
   saleItems: SaleItem[];
   products: Product[];
   inventory: Inventory[];
-  shopId: string | null;
-  isAdmin: boolean;
+  /**
+   * Resolved metric scope:
+   *   - `null`  → all shops (ADMIN All Shops mode)
+   *   - `"shop-id"` → scope to one shop (ADMIN selected shop, MANAGER assigned)
+   *
+   * Mirrors `metricShopId` from `resolveDashboardScope` so this hook agrees
+   * with the headline KPI cards. The earlier `isAdmin` short-circuit was
+   * dropped because it ignored ADMIN's shop picker.
+   */
+  metricShopId: string | null;
 }
 
 interface UseDashboardInsightsReturn {
@@ -80,13 +88,16 @@ export const useDashboardInsights = ({
   saleItems,
   products,
   inventory,
-  shopId,
-  isAdmin,
+  metricShopId,
 }: UseDashboardInsightsParams): UseDashboardInsightsReturn => {
-  // Filter sales by shop
+  // Filter sales by scope: `metricShopId === null` ⇒ all shops, otherwise
+  // restrict to that shop. VOID/REFUNDED are excluded by the `NORMAL`
+  // status check (mirrors `scopeSales` in dashboardMetrics).
   const filteredSales = useMemo(() => {
-    return sales.filter((s) => s.status === "NORMAL" && (isAdmin || s.shopId === shopId));
-  }, [sales, shopId, isAdmin]);
+    return sales.filter(
+      (s) => s.status === "NORMAL" && (metricShopId === null || s.shopId === metricShopId)
+    );
+  }, [sales, metricShopId]);
 
   // Calculate product profitability
   const productProfitability = useMemo(() => {
@@ -197,12 +208,12 @@ export const useDashboardInsights = ({
 
   // Calculate stock health.
   //
-  // Single-shop mode (`shopId` set): one row per active product showing
-  // that shop's qty.
+  // Single-shop mode (`metricShopId` set): one row per active product
+  // showing that shop's qty.
   //
-  // All-shops mode (`shopId === null`): we deliberately DO NOT sum qty
-  // across shops — that hides "shop A is out, shop B has plenty" cases.
-  // Instead we classify each product by its WORST shop:
+  // All-shops mode (`metricShopId === null`): we deliberately DO NOT sum
+  // qty across shops — that hides "shop A is out, shop B has plenty"
+  // cases. Instead we classify each product by its WORST shop:
   //   * "out"  iff any shop has 0
   //   * "low"  iff any shop has 0 < qty <= threshold (and no shop is out)
   //   * "healthy" otherwise
@@ -220,7 +231,7 @@ export const useDashboardInsights = ({
         let status: "healthy" | "low" | "out";
         let daysUntilStockout: number | null;
 
-        if (shopId === null) {
+        if (metricShopId === null) {
           const qtys = productRows.length > 0 ? productRows.map((r) => r.qtyBaseUnits) : [0];
           currentQty = Math.min(...qtys);
           const anyOut = qtys.some((q) => q <= 0);
@@ -228,7 +239,7 @@ export const useDashboardInsights = ({
           status = anyOut ? "out" : anyLow ? "low" : "healthy";
           daysUntilStockout = null;
         } else {
-          const inv = productRows.find((i) => i.shopId === shopId);
+          const inv = productRows.find((i) => i.shopId === metricShopId);
           currentQty = inv?.qtyBaseUnits ?? 0;
           if (currentQty <= 0) status = "out";
           else if (currentQty <= product.lowStockThreshold) status = "low";
@@ -253,7 +264,7 @@ export const useDashboardInsights = ({
         const statusOrder = { out: 0, low: 1, healthy: 2 };
         return statusOrder[a.status] - statusOrder[b.status];
       });
-  }, [products, inventory, shopId, productDailySales]);
+  }, [products, inventory, metricShopId, productDailySales]);
 
   // Calculate fast/slow movers
   const fastSlowMovers = useMemo(() => {

@@ -26,7 +26,7 @@ npm run lint         # ESLint
 | `src/features/admin/userFormErrors.test.ts` | DB constraint → user-friendly message mapping |
 | `src/lib/shopValidation.test.ts` | Shop name/code trimming, duplicate normalized name/code validation, same-row edit allowance, DB unique-index error mapping |
 | `src/lib/shopDelete.test.ts` | Shop reference counting across all shop-bearing tables, friendly reference summary, DB foreign-key (`23503`) error mapping |
-| `src/lib/barcodeValidation.test.ts` | Package barcode normalization (trim + scanner control-char strip), length + whitespace validation, in-form and cross-product duplicate detection, DB unique-index (`23505` / `product_barcodes_unique_normalized_value`) error mapping |
+| `src/lib/barcodeValidation.test.ts` | Package barcode normalization (trim + scanner control-char strip), length + whitespace validation, in-form and cross-product duplicate detection, `checkBarcodeAddable` ruleset shared with the scan modal, DB unique-index (`23505` / `product_barcodes_unique_normalized_value`) error mapping |
 | `src/features/dashboard/dashboardMetrics.test.ts` | Scope, net revenue (gross − approved PARTIAL refunds), cost of goods, profit/margin/AOV (no NaN on empty data), Admin daily revenue/cost/profit trend, Sales by Category percentages, inventory value, **per-shop low stock (never sums across shops)**, top products ranking, supplier debt (RECEIVED-only) |
 | `src/features/pos/barcodeLookup.test.ts` | Barcode→SKU fallback + parity with label printer |
 | `src/features/suppliers/debt.test.ts` | Debt math (debt starts on RECEIVED only) |
@@ -171,12 +171,17 @@ The page itself is gated on `product:create` (ADMIN-only by default), so
 CASHIER and BUYER never see the barcode editor.
 
 Add / edit flow:
-- [ ] Create a new product, scan the physical package barcode into the
-      Package Barcodes input → on Enter the value becomes a chip and the
-      input clears.
-- [ ] Manually typing a barcode and pressing Enter works the same way.
-- [ ] Pressing Enter inside the barcode input does NOT submit the whole
-      product form (event is captured).
+- [ ] In the product modal, click `Scan barcode` → the scan modal opens
+      with `Waiting for scanner...` and the capture input is focused.
+- [ ] Scan the physical package barcode → status flashes
+      `Captured: <value>` then the modal closes, a chip is added to the
+      product form, and the toast `Barcode added` appears.
+- [ ] Manually typing a value and clicking `Add manually` does the same.
+- [ ] Pressing Enter (or Tab on Tab-terminating scanners) inside the
+      scan modal does NOT submit the outer product form.
+- [ ] Clicking outside the capture input inside the scan modal refocuses
+      it so the next scanner burst still lands there.
+- [ ] Cancel and Escape both close the scan modal without adding.
 - [ ] Scanning the same barcode twice in the same form shows
       `This barcode is already added to this product.`
 - [ ] Scanning a barcode that is already linked to a different product
@@ -228,8 +233,16 @@ Role & shop scope:
       use all shops; Revenue, Cost & Profit Trend uses all shops when
       `report:shop_profit` is present.
 - [ ] **ADMIN selected shop** limits revenue, orders, AOV, recent sales,
-      profit trend, Sales by Category, low stock, pending approvals, open
-      shifts, supplier debt, and audit activity to the selected shop.
+      profit trend, Sales by Category, Top Selling Products, Inventory
+      Intelligence (stock health / fast / slow / reorder), low stock,
+      pending approvals, open shifts, supplier debt, and audit activity
+      to the selected shop.
+- [ ] **ADMIN Inventory Intelligence** card renders with
+      `report:shop_inventory`. Stock Health summary tiles (healthy / low
+      / out) match the per-product low/out lists; Fast / Slow Movers
+      show `n/a` (never `999d`) for products with no recent sales;
+      Reorder Suggestions surface low-stock items projected to run out
+      within 7 days or out-of-stock items that had sales.
 - [ ] **MANAGER assigned shop** shows the operational layout with locked
       shop selector, compact KPI row, Recent Sales near the top, Top
       Selling Products, Pending Approvals, Inventory Alerts, Pending PO

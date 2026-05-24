@@ -376,7 +376,9 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
                     outerRadius={72}
                     paddingAngle={4}
                     dataKey="value"
-                    label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                    // `percent` is our 0–100 field (calculateSalesByCategoryPercent),
+                    // not Recharts' 0–1 builtin — do not multiply by 100 again.
+                    label={({ name, percent }) => `${name} ${(Number(percent) || 0).toFixed(0)}%`}
                   >
                     {categoryData.map((_, index) => (
                       <Cell key={`category-${index}`} fill={COLORS[index % COLORS.length]} />

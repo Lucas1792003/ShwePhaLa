@@ -1,12 +1,11 @@
 import { useMemo, useState } from "react";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
-  Legend,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -31,6 +30,7 @@ import {
   calculateSalesByCategoryPercent,
   calculateSalesCount,
   calculateSupplierDebt,
+  calculateTopProducts,
   dateRangeStart,
   decorateLowStockWithShopName,
   filterPendingApprovals,
@@ -54,6 +54,8 @@ import {
   SectionCard,
 } from "./DashboardCommon";
 import { rangeLabel, useDashboardCopy } from "./dashboardCopy";
+import { useDashboardInsights } from "../../hooks/useDashboardInsights";
+import { InventoryIntelligence } from "../../components/dashboard/InventoryIntelligence";
 
 interface AdminDashboardProps {
   currentUser: User;
@@ -159,6 +161,32 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
     () => calculateSalesByCategoryPercent(sales, saleItems, products, metricShopId, range),
     [sales, saleItems, products, metricShopId, range]
   );
+
+  // Top selling products in the current shop+range scope. Ranked by line
+  // revenue; VOID/REFUNDED are excluded upstream by `scopeSales` (so
+  // they never enter `rangedSales`). Cost/profit columns are only
+  // rendered when the user holds `report:shop_profit`.
+  const topProducts = useMemo(
+    () => calculateTopProducts(rangedSales, saleItems, products, 5),
+    [rangedSales, saleItems, products]
+  );
+  const topProductsRevenueTotal = useMemo(
+    () => topProducts.reduce((sum, row) => sum + row.revenue, 0),
+    [topProducts]
+  );
+
+  // Stock health + fast/slow movers + reorder suggestions for the
+  // Inventory Intelligence card. Gated on `canViewInventory` so the
+  // hook is only consulted when the card renders. Sales velocity is a
+  // fixed last-7-days window — the dashboard `range` selector does not
+  // change it (mid-week vs week-ago "fast mover" stays comparable).
+  const { stockHealth, fastSlowMovers } = useDashboardInsights({
+    sales,
+    saleItems,
+    products,
+    inventory,
+    metricShopId,
+  });
 
   const lowStockRows = useMemo(
     () =>
@@ -281,56 +309,143 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
       </div>
 
       {visibility.canViewProfit && (
-        <SectionCard title={copy("revenueCostProfitTrend")} icon="show_chart">
-          <div className="h-72">
-            {trendData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trendData} margin={{ top: 8, right: 18, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                  <YAxis
-                    tick={{ fontSize: 12 }}
-                    tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`}
+        <SectionCard
+          title={copy("revenueCostProfitTrend")}
+          icon="show_chart"
+          action={
+            <div className="flex items-center gap-3 text-[11px] font-medium text-slate-600">
+              {[
+                { label: copy("revenue"), color: "#10b981" },
+                { label: copy("costInvestment"), color: "#8b5cf6" },
+                { label: copy("profit"), color: "#3b82f6" },
+              ].map((series) => (
+                <span key={series.label} className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: series.color }}
                   />
-                  <Tooltip formatter={(value, name) => [formatMmk(Number(value)), name]} />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="revenue"
-                    name={copy("revenue")}
-                    stroke="#047857"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    activeDot={{ r: 5 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="cost"
-                    name={copy("costInvestment")}
-                    stroke="#d97706"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    activeDot={{ r: 5 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="profit"
-                    name={copy("profit")}
-                    stroke="#7c3aed"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    activeDot={{ r: 5 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyState message={copy("noSalesDataForPeriod")} icon="show_chart" />
-            )}
-          </div>
+                  {series.label}
+                </span>
+              ))}
+            </div>
+          }
+        >
+          {trendData.length === 1 ? (
+            // Single-day fallback. AreaChart needs 2+ points to draw a
+            // filled shape; with one point all you'd see is three isolated
+            // dots. Render a polished 3-tile snapshot instead so the card
+            // looks intentional. Same data, same colors as the multi-day
+            // area chart. Helper text below still nudges toward a wider
+            // range for a real trend.
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {[
+                  { label: copy("revenue"), value: trendData[0].revenue, color: "#10b981", bg: "bg-emerald-50", text: "text-emerald-700" },
+                  { label: copy("costInvestment"), value: trendData[0].cost, color: "#8b5cf6", bg: "bg-violet-50", text: "text-violet-700" },
+                  { label: copy("profit"), value: trendData[0].profit, color: "#3b82f6", bg: "bg-blue-50", text: "text-blue-700" },
+                ].map((tile) => (
+                  <div key={tile.label} className={`rounded-xl ${tile.bg} p-4`}>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: tile.color }}
+                      />
+                      <span className={`text-xs font-medium ${tile.text}`}>{tile.label}</span>
+                    </div>
+                    <div className={`mt-2 text-xl font-bold tabular-nums ${tile.text}`}>
+                      {formatMmk(tile.value)}
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-500">{trendData[0].label}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-center text-xs text-slate-400">
+                {copy("trendNeedsMoreDays")}
+              </p>
+            </>
+          ) : trendData.length > 1 ? (
+            <>
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  {/*
+                   * Restored old AreaChart style: three overlapping areas
+                   * with gradient fills (30% opacity top → 0% bottom) and a
+                   * 2px stroke. Colors match the original dashboard palette
+                   * (emerald / violet / blue). Formula and scope come from
+                   * `calculateDailyRevenueCostProfitTrend` — unchanged.
+                   */}
+                  <AreaChart data={trendData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="trendRevenueFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="trendCostFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="trendProfitFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 11, fill: "#64748b" }}
+                      tickLine={false}
+                      axisLine={{ stroke: "#e2e8f0" }}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: "#64748b" }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(value) => `MMK ${Math.round(Number(value) / 1000)}k`}
+                      width={70}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: "#cbd5e1", strokeWidth: 1 }}
+                      contentStyle={{
+                        borderRadius: 12,
+                        border: "1px solid #e2e8f0",
+                        boxShadow: "0 6px 18px rgba(15,23,42,0.08)",
+                        fontSize: 12,
+                      }}
+                      labelStyle={{ color: "#475569", fontWeight: 600, marginBottom: 4 }}
+                      formatter={(value, name) => [formatMmk(Number(value)), name]}
+                    />
+                    {[
+                      { key: "revenue", color: "#10b981", name: copy("revenue"), fill: "url(#trendRevenueFill)" },
+                      { key: "cost", color: "#8b5cf6", name: copy("costInvestment"), fill: "url(#trendCostFill)" },
+                      { key: "profit", color: "#3b82f6", name: copy("profit"), fill: "url(#trendProfitFill)" },
+                    ].map((series) => (
+                      <Area
+                        key={series.key}
+                        type="monotone"
+                        dataKey={series.key}
+                        name={series.name}
+                        stroke={series.color}
+                        strokeWidth={2}
+                        fill={series.fill}
+                        // On short ranges show dots so a single-day plot
+                        // doesn't read as broken; on longer ranges the
+                        // shaded area itself is the trend.
+                        dot={trendData.length <= 5 ? { r: 3, strokeWidth: 0, fill: series.color } : false}
+                        activeDot={{ r: 5, strokeWidth: 0 }}
+                        isAnimationActive={false}
+                      />
+                    ))}
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          ) : (
+            <EmptyState message={copy("noSalesDataForPeriod")} icon="show_chart" />
+          )}
         </SectionCard>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)] xl:items-start">
         <SectionCard title={copy("shopPerformance")} icon="storefront">
           {perShopRows.length > 0 ? (
             <div className="overflow-x-auto">
@@ -382,6 +497,107 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
         </SectionCard>
 
         <div className="space-y-4">
+          <SectionCard title={copy("salesByCategory")} icon="donut_small">
+            <div className="h-56">
+              {categoryData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={categoryData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={48}
+                      outerRadius={82}
+                      paddingAngle={4}
+                      dataKey="value"
+                      nameKey="name"
+                      // `percent` here comes from our row (already 0–100 from
+                      // calculateSalesByCategoryPercent), NOT Recharts' 0–1
+                      // builtin — Recharts merges payload into label-render
+                      // props and our field shadows the builtin. Do not
+                      // multiply by 100 again or we get values like 7625%.
+                      label={({ name, percent }) => `${name} ${(Number(percent) || 0).toFixed(0)}%`}
+                    >
+                      {categoryData.map((_, index) => (
+                        <Cell key={`admin-category-${index}`} fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value, name, props) => [
+                        `${formatMmk(Number(value))} (${Number(props.payload?.percent ?? 0).toFixed(1)}%)`,
+                        name,
+                      ]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyState message={copy("noCategorySalesForPeriod")} icon="donut_small" />
+              )}
+            </div>
+          </SectionCard>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-3 xl:items-start xl:gap-6">
+        <div className={visibility.canViewInventory ? "space-y-4 xl:col-span-1" : "space-y-4 xl:col-span-3"}>
+          <SectionCard title={copy("topSellingProducts")} icon="leaderboard">
+            {topProducts.length > 0 ? (
+              <div className="space-y-2.5">
+                {topProducts.map((row, index) => {
+                  const sharePct =
+                    topProductsRevenueTotal > 0
+                      ? (row.revenue / topProductsRevenueTotal) * 100
+                      : 0;
+                  return (
+                    <div
+                      key={row.product.id}
+                      className="flex items-center justify-between gap-3"
+                    >
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600">
+                          {index + 1}
+                        </span>
+                        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                          {row.product.imageUrl ? (
+                            <img
+                              src={row.product.imageUrl}
+                              alt={row.product.name}
+                              loading="lazy"
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-slate-400">
+                              <span className="material-symbols-rounded text-base">
+                                inventory_2
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-800">
+                            {row.product.name}
+                          </p>
+                          <p className="truncate text-[11px] text-slate-500">
+                            {row.qty} {copy("sold")}
+                            {row.product.sku ? ` · ${row.product.sku}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <MiniMoney value={row.revenue} />
+                        <div className="text-[10px] text-slate-400 tabular-nums">
+                          {sharePct.toFixed(0)}%
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState message={copy("noProductSalesInRange")} icon="inventory_2" />
+            )}
+          </SectionCard>
+
           <SectionCard title={copy("revenueByShop")} icon="bar_chart">
             <div className="h-72">
               {revenueByShopData.length > 0 ? (
@@ -402,41 +618,22 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
               )}
             </div>
           </SectionCard>
-
-          <SectionCard title={copy("salesByCategory")} icon="donut_small">
-            <div className="h-64">
-              {categoryData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={categoryData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={48}
-                      outerRadius={82}
-                      paddingAngle={4}
-                      dataKey="value"
-                      nameKey="name"
-                      label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
-                    >
-                      {categoryData.map((_, index) => (
-                        <Cell key={`admin-category-${index}`} fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value, name, props) => [
-                        `${formatMmk(Number(value))} (${Number(props.payload?.percent ?? 0).toFixed(1)}%)`,
-                        name,
-                      ]}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <EmptyState message={copy("noCategorySalesForPeriod")} icon="donut_small" />
-              )}
-            </div>
-          </SectionCard>
         </div>
+
+        {/* Restored Inventory Intelligence — stock health summary, fast/slow
+            movers, and reorder suggestions. Gated on `canViewInventory`. The
+            3-stat summary at the top overlaps with the Action Queue counts
+            below; kept because the card stands on its own and the operator
+            may scan only this section when planning a reorder. */}
+        {visibility.canViewInventory && (
+          <div className="xl:col-span-2 xl:self-stretch">
+            <InventoryIntelligence
+              stockHealth={stockHealth}
+              fastSlowMovers={fastSlowMovers}
+              className="h-full"
+            />
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">

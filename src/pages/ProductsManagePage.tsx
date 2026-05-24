@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -7,10 +7,9 @@ import { useAppStore } from "../stores/appStore";
 import { useDataStore } from "../stores/dataStore";
 import type { ProductCategory, Category, Product, ProductBarcode } from "../types";
 import {
+  checkBarcodeAddable,
   findBarcodeOwner,
-  isDuplicateBarcodeInForm,
   normalizeBarcodeValue,
-  validateBarcodeInput,
   BARCODE_FORM_MESSAGES,
 } from "../lib/barcodeValidation";
 import { getErrorMessage } from "../lib/errors";
@@ -25,6 +24,8 @@ import { Table, THead, TBody, TR, TH, TD } from "../components/ui/Table";
 import { SearchInput } from "../components/forms/SearchInput";
 import { ProductImageInput } from "../components/forms/ProductImageInput";
 import { MoneyInput } from "../components/forms/MoneyInput";
+import { BarcodeScanModal } from "../components/forms/BarcodeScanModal";
+import { useToast } from "../components/ui/Toast";
 import { Pagination } from "../components/ui/Pagination";
 import { formatMmk } from "../lib/utils";
 import { CATEGORY_ICONS, resolveCategoryIcon } from "../features/categories/categoryIcons";
@@ -52,6 +53,7 @@ interface FormValues {
 }
 
 export const ProductsManagePage = () => {
+  const toast = useToast();
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentShopId = useAppStore((state) => state.currentShopId);
   const products = useDataStore((state) => state.products);
@@ -75,15 +77,11 @@ export const ProductsManagePage = () => {
   const [formProductId, setFormProductId] = useState("");
 
   // Package barcode editor state — lives outside the react-hook-form schema
-  // because the list is multi-row and we want immediate Enter-to-add UX.
+  // because the list is multi-row and capture is driven by a separate modal.
   const [formBarcodes, setFormBarcodes] = useState<string[]>([]);
-  const [barcodeInput, setBarcodeInput] = useState("");
-  const [barcodeFeedback, setBarcodeFeedback] = useState<
-    { type: "error" | "success"; message: string } | null
-  >(null);
+  const [scanModalOpen, setScanModalOpen] = useState(false);
   const [productSaveError, setProductSaveError] = useState<string | null>(null);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
-  const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -185,8 +183,7 @@ export const ProductsManagePage = () => {
 
   const resetBarcodeEditor = () => {
     setFormBarcodes([]);
-    setBarcodeInput("");
-    setBarcodeFeedback(null);
+    setScanModalOpen(false);
     setProductSaveError(null);
   };
 
@@ -245,40 +242,27 @@ export const ProductsManagePage = () => {
     form.reset();
   };
 
-  // Try to add the value in the input to the form's barcode list. Runs
-  // input validation, in-form duplicate check, and cross-product owner
-  // check (against the loaded store data — the DB unique index is the
-  // final guard if the data is stale).
-  const tryAddBarcode = () => {
-    const raw = barcodeInput;
-    const validationError = validateBarcodeInput(raw);
-    if (validationError) {
-      setBarcodeFeedback({ type: "error", message: validationError });
-      return;
-    }
-    const normalized = normalizeBarcodeValue(raw);
-    if (isDuplicateBarcodeInForm(normalized, formBarcodes)) {
-      setBarcodeFeedback({ type: "error", message: BARCODE_FORM_MESSAGES.duplicateInForm });
-      return;
-    }
-    const owner = findBarcodeOwner(normalized, barcodes, editingId);
-    if (owner) {
-      setBarcodeFeedback({
-        type: "error",
-        message: BARCODE_FORM_MESSAGES.duplicateOtherProduct,
-      });
-      return;
-    }
+  /**
+   * Accept a normalized barcode value from the scan modal. Returns an
+   * error string when the value is rejected (in-form duplicate, or
+   * already linked to another product) so the modal can surface it
+   * inline and keep itself open. Returns null on success.
+   *
+   * Validation + normalization already ran inside BarcodeScanModal; we
+   * still re-check duplicates here because the parent owns the form's
+   * current list and the loaded cross-product `barcodes` store.
+   */
+  const handleScannedBarcode = (value: string): string | null => {
+    const normalized = normalizeBarcodeValue(value);
+    const error = checkBarcodeAddable(normalized, formBarcodes, barcodes, editingId);
+    if (error) return error;
     setFormBarcodes((list) => [...list, normalized]);
-    setBarcodeInput("");
-    setBarcodeFeedback({ type: "success", message: "Barcode added." });
-    // Keep focus so the next scanner burst lands here.
-    barcodeInputRef.current?.focus();
+    toast({ title: "Barcode added", description: normalized, variant: "success" });
+    return null;
   };
 
   const handleRemoveBarcode = (value: string) => {
     setFormBarcodes((list) => list.filter((item) => item !== value));
-    setBarcodeFeedback(null);
   };
 
   const handleDeactivateProduct = (product: Product) => {
@@ -899,47 +883,28 @@ export const ProductsManagePage = () => {
 
           {/* Package Barcodes */}
           <div className="rounded-xl border border-slate-200/70 bg-slate-50/40 p-3">
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Package Barcodes
-            </label>
-            <p className="mb-2 text-xs text-slate-500">
-              Scan the barcode printed on the product package. Cashiers can scan
-              this at POS to add the product to the cart.
-            </p>
-            <div className="flex gap-2">
-              <Input
-                ref={barcodeInputRef}
-                value={barcodeInput}
-                onChange={(event) => {
-                  setBarcodeInput(event.target.value);
-                  if (barcodeFeedback) setBarcodeFeedback(null);
-                }}
-                onKeyDown={(event) => {
-                  // Scanners terminate the burst with Enter. Capture it here
-                  // so the keypress adds the barcode instead of submitting
-                  // the whole product form.
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    tryAddBarcode();
-                  }
-                }}
-                placeholder="Scan or type barcode, then press Enter"
-              />
-              <Button type="button" variant="secondary" onClick={tryAddBarcode}>
-                Add
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700">
+                  Package Barcodes
+                </label>
+                <p className="mt-1 text-xs text-slate-500">
+                  Scan the barcode printed on the product package. Cashiers can
+                  scan this at POS to add the product to the cart.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setScanModalOpen(true)}
+              >
+                <span className="material-symbols-rounded mr-1 text-sm">
+                  qr_code_scanner
+                </span>
+                Scan barcode
               </Button>
             </div>
-            {barcodeFeedback && (
-              <p
-                className={`mt-2 text-xs ${
-                  barcodeFeedback.type === "error" ? "text-red-500" : "text-emerald-600"
-                }`}
-              >
-                {barcodeFeedback.message}
-              </p>
-            )}
-            {formBarcodes.length > 0 && (
+            {formBarcodes.length > 0 ? (
               <ul className="mt-3 flex flex-wrap gap-2">
                 {formBarcodes.map((value) => (
                   <li
@@ -958,6 +923,10 @@ export const ProductsManagePage = () => {
                   </li>
                 ))}
               </ul>
+            ) : (
+              <p className="mt-3 text-xs italic text-slate-400">
+                No package barcodes yet. Click Scan barcode to add one.
+              </p>
             )}
           </div>
 
@@ -987,6 +956,15 @@ export const ProductsManagePage = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Package barcode scan modal — opened from the Product modal,
+          rendered as a sibling so its own focused input doesn't compete
+          with the product form's inputs. */}
+      <BarcodeScanModal
+        open={scanModalOpen}
+        onClose={() => setScanModalOpen(false)}
+        onScan={handleScannedBarcode}
+      />
 
       {/* Category Modal */}
       <Modal

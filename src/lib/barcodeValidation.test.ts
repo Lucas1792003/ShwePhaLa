@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ProductBarcode } from "../types";
 import {
   BARCODE_FORM_MESSAGES,
+  checkBarcodeAddable,
   findBarcodeOwner,
   isDuplicateBarcodeInForm,
   mapBarcodeWriteError,
@@ -108,6 +109,38 @@ describe("isDuplicateBarcodeInForm", () => {
 describe("normalizeBarcodeKey", () => {
   it("lowercases on top of trim", () => {
     expect(normalizeBarcodeKey(" PEPSI-12 ")).toBe("pepsi-12");
+  });
+});
+
+describe("checkBarcodeAddable", () => {
+  const otherProductBarcodes = [barcode("prod-other", "8801001")];
+
+  it("returns null when the value is safe to add", () => {
+    expect(checkBarcodeAddable("9991111", [], [], "prod-new")).toBeNull();
+  });
+
+  it("rejects in-form duplicates first", () => {
+    expect(
+      checkBarcodeAddable("8801001", ["8801001"], otherProductBarcodes, "prod-new")
+    ).toBe(BARCODE_FORM_MESSAGES.duplicateInForm);
+  });
+
+  it("rejects cross-product duplicates", () => {
+    expect(
+      checkBarcodeAddable("8801001", [], otherProductBarcodes, "prod-new")
+    ).toBe(BARCODE_FORM_MESSAGES.duplicateOtherProduct);
+  });
+
+  it("ignores barcodes that belong to the product being edited (edit re-show)", () => {
+    expect(
+      checkBarcodeAddable("8801001", [], [barcode("prod-self", "8801001")], "prod-self")
+    ).toBeNull();
+  });
+
+  it("normalizes before duplicate checks (case + whitespace + scanner control chars)", () => {
+    expect(
+      checkBarcodeAddable(" PEPSI-12\r\n", [], [barcode("prod-other", "pepsi-12")], "prod-new")
+    ).toBe(BARCODE_FORM_MESSAGES.duplicateOtherProduct);
   });
 });
 
