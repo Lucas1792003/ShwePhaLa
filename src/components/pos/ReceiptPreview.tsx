@@ -12,6 +12,16 @@ interface ReceiptPreviewProps {
 export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: ReceiptPreviewProps) => (
   <div className="receipt rounded-2xl border border-slate-200/70 p-4 shadow-card">
     <div className="text-center">
+      <img
+        src="/logo1.png"
+        alt="Shwe Pha La"
+        className="receipt-logo mx-auto mb-2"
+        onError={(event) => {
+          // If the asset is missing, hide the broken-image icon — the shop
+          // name + address below still identifies the receipt.
+          event.currentTarget.style.display = "none";
+        }}
+      />
       <div className="text-lg font-semibold">{shop.name}</div>
       <div className="text-xs text-slate-500">{shop.address}</div>
       <div className="mt-2 text-xs mono">Receipt {sale.receiptNo}</div>

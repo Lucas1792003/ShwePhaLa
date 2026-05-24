@@ -122,6 +122,47 @@ dashboard, POS, shift, or shop-switcher path should create a shop.
       `This shop is still referenced by operational data.` and the row
       stays in the list.
 
+## Thermal Receipt Print QA
+
+Tested on the actual 80mm thermal printer, not just the browser preview.
+
+Browser/driver setup (one-time per workstation):
+- [ ] In the print dialog, select the thermal printer (not "Microsoft
+      Print to PDF" / not a regular A4 printer).
+- [ ] Paper size: 80mm × Receipt / Roll (matches the driver's defined
+      80mm roll profile). Avoid custom heights — the CSS uses
+      `@page { size: 80mm auto }` so the page ends at content.
+- [ ] Margins: None / Minimum.
+- [ ] Scale: 100% (do not "Fit to page" — that re-shrinks the receipt).
+- [ ] Headers & footers: off (no URL/date strip at the foot of the
+      paper).
+- [ ] Background graphics: on (so the logo prints).
+
+Receipt content checks (`/app/receipts/:saleId` after a sale):
+- [ ] Print preview shows only the receipt (no sidebar, no toolbar, no
+      reprint log, no request actions, no modals, no page background).
+- [ ] Logo (`/logo1.png`, ~30mm wide) appears at the top, centred,
+      above the shop name.
+- [ ] If the logo file is missing, the receipt still renders the shop
+      name and the rest of the receipt — no broken-image icon, no
+      crash.
+- [ ] Shop name, shop address, receipt number all visible.
+- [ ] Date, cashier, status, payment method, items, subtotal,
+      discount, total, paid, change all visible.
+- [ ] Money columns are right-aligned and numerals line up
+      (tabular-nums).
+- [ ] Item qty × unit-price secondary line is smaller than the main
+      item name (Tailwind's `text-[10px]` survives the print override).
+- [ ] Real printer prints readable text (not microscopic) — the
+      receipt fills ~76mm of the 80mm roll.
+- [ ] No long blank tail after the last line — the cutter / tear-off
+      sits right under the receipt.
+- [ ] Reprint button produces the same layout and writes a reprint
+      log entry.
+- [ ] Opening the same sale from Sales History (drawer + full page)
+      prints the same layout.
+- [ ] CASHIER, MANAGER, and ADMIN receipt prints all look identical.
+
 ## Dashboard QA
 
 `/app/dashboard`. Formulas are pinned in

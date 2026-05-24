@@ -1,68 +1,127 @@
-/* Receipt print isolation.
+/* ============================================================
+ * Receipt print isolation + 80mm thermal layout.
  *
- * `window.print()` from ReceiptDetail prints whatever the browser sees on
- * the page. We want the output to contain ONLY the 80mm `.receipt` card —
- * no sidebar, no page header, no buttons, no reprint log, no request
- * actions, no modals.
+ * The receipt is the only thing that prints. Everything else
+ * (sidebar, page header, buttons, reprint log, request actions,
+ * modals, body backgrounds) is hidden by the visibility scaffold
+ * and by `.print-hidden`.
  *
- * The robust pattern: visibility:hidden everything, then visibility:visible
- * the receipt and its descendants. Visibility (not display:none) preserves
- * layout so the receipt prints at its natural size. We also absolute-
- * position the receipt at the top of the page so the empty space above
- * doesn't push it down.
- */
+ * Why the explicit @page + body height resets matter:
+ *   1. Without `@page { size: 80mm auto }` the browser defaults
+ *      to A4/Letter. The thermal driver then scales an A4 page
+ *      down to fit the 80mm roll, making the receipt tiny.
+ *   2. Without resetting `html / body / #root / .min-h-screen`
+ *      during print, the page is sized to the screen viewport
+ *      (h-screen = 100vh = full A4). The receipt is absolutely
+ *      positioned, so the rest of the page becomes blank paper
+ *      that the printer happily feeds out.
+ * ============================================================ */
+
+/* Screen sizing for the receipt brand logo. Kept compact so the
+ * preview card doesn't grow taller than the cart panel beside it. */
+.receipt-logo {
+  display: block;
+  max-width: 120px;
+  max-height: 80px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+/* Tell the browser the printed page is an 80mm thermal roll with
+ * auto height (page ends as soon as content does — no blank feed).
+ * Labels (print/labels.css) declare their own named @page rules
+ * which take precedence via `page: label-*` assignments. */
+@page {
+  size: 80mm auto;
+  margin: 0;
+}
+
 @media print {
-  body {
-    background: #ffffff;
+  /* 1. Strip viewport-tied heights so the printed page doesn't
+   *    grow tall to fit the screen layout. */
+  html,
+  body,
+  #root {
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
   }
 
-  /* Belt-and-braces: anything tagged print-hidden is gone regardless. */
+  /* Tailwind viewport-height utilities leak into print and create
+   * huge pages. Neutralise them globally for print. */
+  .min-h-screen,
+  .h-screen {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  /* Belt-and-braces for elements opted out of print. */
   .print-hidden {
     display: none !important;
   }
 
-  /* Hide everything in the document by default … */
+  /* Visibility scaffold: hide everything … */
   body * {
     visibility: hidden;
   }
-
-  /* … then reveal the receipt and its subtree. */
+  /* … then reveal the receipt subtree. */
   .receipt,
   .receipt * {
     visibility: visible;
   }
 
+  /* 2. 80mm thermal layout.
+   *    width=76mm leaves a small breathing margin against the
+   *    printer's hardware-imposed edge band. padding-bottom: 0
+   *    avoids extra paper at the foot of the receipt. */
   .receipt {
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
-    width: 80mm;
-    padding: 8px;
+    width: 76mm;
+    max-width: 76mm;
     margin: 0 auto;
+    padding: 2mm 2mm 0;
     background: #ffffff;
-    color: #111827;
+    color: #000000;
     box-shadow: none !important;
     border: none !important;
+    border-radius: 0 !important;
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    page-break-after: auto;
+    break-after: auto;
   }
 
+  /* Force the mono stack + true black on every node, but DO NOT
+   * force a single font-size — that flattens the visual hierarchy
+   * (shop name, totals, secondary qty line all benefit from
+   * Tailwind's text-lg / text-xs / text-[10px] sizing). */
   .receipt * {
     font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace !important;
-    font-size: 12px;
+    color: #000000 !important;
   }
-}
 
-/* Thermal-printer hint, scoped to the named receipt page so the label
- * sheet (see print/labels.css) can declare its own @page rule without
- * conflict. Browsers that don't support named pages fall back to the
- * default page size. */
-@page receipt-page {
-  size: 80mm auto;
-  margin: 4mm;
-}
-
-@media print {
-  .receipt {
-    page: receipt-page;
+  /* Logo: ~30mm wide is the practical sweet spot — clearly visible
+   * without dominating the receipt or wasting paper height.
+   * Forced to grayscale + extra contrast for thermal printers, which
+   * are 1-bit monochrome: a coloured PNG would otherwise dither into
+   * a muddy block. Screen preview keeps the colour version. */
+  .receipt .receipt-logo {
+    width: 30mm;
+    max-width: 30mm;
+    height: auto;
+    max-height: 22mm;
+    margin: 0 auto 2mm;
+    filter: grayscale(100%) contrast(1.4);
+    -webkit-filter: grayscale(100%) contrast(1.4);
   }
 }

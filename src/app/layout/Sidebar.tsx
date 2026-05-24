@@ -9,7 +9,7 @@ import { hasPermission, ROUTE_PERMISSIONS } from "../../lib/permissions";
 import { ShopSwitcher } from "./ShopSwitcher";
 import { LanguageSwitcher } from "../../components/layout/LanguageSwitcher";
 import { useTranslation } from "../../hooks/useTranslation";
-import logo from "../../assets/logo.png";
+import logo from "../../assets/logo1.png";
 
 interface NavItem {
   to: string;
