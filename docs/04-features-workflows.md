@@ -76,11 +76,11 @@ target shop — ADMIN and MANAGER hold both by default, CASHIER holds only
 `manage_own`. Whoever opens the shift becomes its `cashier_id` (admin /
 manager / cashier may all act as the cashier of record).
 
-| Role | Open / close their own shift in | Target shop comes from |
+| Role | Open / close workflow | Target shop comes from |
 | --- | --- | --- |
-| ADMIN | any shop | the shop switcher (explicit pick required — no fallback) |
-| MANAGER | their assigned shop | `users.shop_id` |
-| CASHIER | their assigned shop | `users.shop_id` |
+| ADMIN | Opens their own shift in the selected shop; can close visible open shifts when authorized by `shift:manage_all` | the shop switcher (explicit pick required for opening) |
+| MANAGER | Opens their own shift in the assigned shop; can close visible open shifts in that shop when authorized by `shift:manage_all` | `users.shop_id` |
+| CASHIER | Opens and closes only their own shift | `users.shop_id` |
 
 ADMIN with no shop selected sees `Select a shop to open a shift. Pick one
 from the shop switcher at the top of the page.` and the open-shift form
@@ -105,14 +105,25 @@ the same admin cannot have two open shifts in two different shops.
   - `expected_cash = opening_cash + CASH sales (status<>VOID) − approved
     PARTIAL cash refunds against this shift's sales`
   - `variance = closing_cash − expected_cash`
-- A non-zero variance requires a written reason or the RPC rejects.
+- Closing cash is required by the UI and must be zero or greater. The input is
+  a MMK numeric text field; pasted commas/currency symbols are stripped and
+  leading zeroes are normalized.
+- The UI previews variance before submit using `buildShiftBreakdown`. A
+  non-zero variance opens an inline `Variance reason` field and the RPC also
+  rejects if the reason is blank.
 - MANAGER / ADMIN closing on behalf of someone else still has to satisfy
   `app_can_for_shop('shift:manage_all', shift.shop_id)` — `manage_own`
   alone is not enough.
 
-### Summary UI
+### Active shift and summary UI
 
-Cashier card (`ShiftSummary`) and manager modal (`ShiftDetail`) share two
+The active shift card shows cashier name, shop, opened date/time, live
+duration, opening cash, cash sales, other sales, sales count, approved cash
+refunds, expected cash, closing cash input, variance preview, variance reason
+when needed, and the end-shift action. Live duration is `now - startedAt` and
+ticks every 60 seconds.
+
+Active card (`ShiftSummary`) and View summary modal (`ShiftDetail`) share two
 cards, computed once by `buildShiftBreakdown(shift, shiftSales,
 refundRequests)` in `features/shifts/service.ts`. The helper mirrors the
 `close_shift` formula exactly, so the live preview converges with whatever
@@ -123,7 +134,10 @@ the RPC will write at close time.
   sales count.
 - **Cash reconciliation** — opening, expected (live label
   `Expected cash (live)` while open), closing, variance. Closing and
-  variance render as `—` while open.
+  variance render as `Active` while open.
+
+The View summary also shows shop, role, opened/closed timestamps, duration,
+variance reason, and the list of sales in the shift when sales are present.
 
 A hint appears for open shifts with non-cash-only sales:
 *"Non-cash sales don't increase expected cash. Closing cash should match
@@ -137,12 +151,16 @@ mirrors it:
 
 | Role | Rows | Filters |
 | --- | --- | --- |
-| ADMIN | All shifts in all shops | Shop + User |
-| MANAGER | Shifts in `users.shop_id` | User |
-| CASHIER | Own shifts (`cashier_id = self`) | — |
+| ADMIN | All shifts in all shops | Month/date, status, shop, user |
+| MANAGER | Shifts in `users.shop_id` | Month/date, status, user |
+| CASHIER | Own shifts (`cashier_id = self`) | Month/date, status |
 
-Each row shows user, role, shop, started, live duration, status. CSV
-export uses whatever the current filter resolves to.
+Each row shows cashier, role, shop, start time, end time or `Active`, duration,
+sales count, expected cash, closing cash, variance, status, and View. CSV export
+uses the currently visible filter-applied records and includes: cashier, role,
+shop, started_at, ended_at, duration, status, opening_cash, expected_cash,
+closing_cash, variance, sales_count, and variance_reason. Hidden or out-of-scope
+records are never exported.
 
 ### Work Hours tab
 
@@ -171,9 +189,9 @@ update `isShiftInMonth` / `getMonthlyShiftHoursMs` together with their
 tests in `workHours.test.ts`.
 
 **Durations.** Closed shift = `endedAt - startedAt`. Open shift =
-`now - startedAt`. Negative / invalid dates clamp to `0`. Format
-`Xh Ym` rounded DOWN to the minute (so a 119-second shift shows
-`0h 1m` once it ticks).
+`now - startedAt`. Negative / invalid dates clamp to `0`. Format is rounded
+DOWN to the minute, with padded minutes once hours are present (`0h 12m`,
+`2h 05m`). Invalid, negative, NaN, and Infinity values clamp to `0h 0m`.
 
 ## Inventory
 
@@ -365,6 +383,31 @@ exits.
   auto-reassigned.
 - POS filter buttons and other selectors are store-driven; no hardcoded
   category list anywhere.
+
+### Unit Types
+
+- Admin-managed registry — Settings → **Unit Types**
+  (`/app/admin/unit-types`, gated by `product:create`). Defines the
+  **base stock unit** for a product (Piece, Can, Bottle, Sachet, Box,
+  Pack, Case, Kilogram, Liter, ...). Backed by the `unit_types` table
+  introduced in migration `025`.
+- The Product create/edit Unit Type dropdown is dynamic and reads from
+  `useDataStore().unitTypes` filtered to `isActive`, sorted by
+  `sort_order` then `name`. Pre-registry products with a legacy value
+  (`"piece"`, `"box"`, ...) still load: the form renders them as
+  `Current: <value> (legacy)` or `Current: <name> (inactive)` so editing
+  never silently changes a product's unit.
+- Soft delete only. Deactivating a unit just flips `is_active`; products
+  that still reference the name keep displaying it, but new products
+  cannot pick it. Hard delete is intentionally not exposed.
+- Validation mirrors the DB constraints (migration 025): case-insensitive
+  unique name, case-insensitive unique abbreviation when present, name
+  required. Shared helpers live in
+  `src/features/unitTypes/unitTypeValidation.ts` (`validateUnitTypeForm`,
+  `resolveProductUnit`).
+- Unit type is currently a label only — POS deduction, sellable-units,
+  per-unit pricing, and per-unit barcodes are tracked in
+  [09-roadmap-todo.md](./09-roadmap-todo.md).
 
 ### Price tiers
 

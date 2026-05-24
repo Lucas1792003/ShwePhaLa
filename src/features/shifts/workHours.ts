@@ -82,7 +82,8 @@ export const formatDuration = (ms: number): string => {
   const totalMinutes = Math.floor(ms / 60000);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  return `${hours}h ${minutes}m`;
+  const minuteText = hours > 0 ? String(minutes).padStart(2, "0") : String(minutes);
+  return `${hours}h ${minuteText}m`;
 };
 
 /**

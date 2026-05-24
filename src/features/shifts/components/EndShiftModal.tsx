@@ -3,8 +3,8 @@ import { EndShiftCard } from "../../../components/shifts/EndShiftCard";
 
 interface EndShiftModalProps {
   open: boolean;
-  closingCash: number;
-  onClosingCashChange: (value: number) => void;
+  closingCash: number | undefined;
+  onClosingCashChange: (value: number | undefined) => void;
   onEnd: () => void;
   onClose: () => void;
 }

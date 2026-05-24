@@ -120,12 +120,33 @@ export interface User {
   createdAt: string;
 }
 
+/**
+ * Admin-managed unit registry (see migration 025). Each row defines a base
+ * stock unit (Piece, Can, Sachet, Kilogram, ...). The Product form pulls
+ * its dropdown from active rows here.
+ */
+export interface UnitType {
+  id: string;
+  name: string;
+  abbreviation?: string;
+  description?: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Product {
   id: string;
   sku?: string;
   name: string;
   category: ProductCategory;
-  unitType: "piece" | "box" | "kg" | "liter" | "pack";
+  /**
+   * Base stock unit name. Free-form string for backward compatibility with
+   * pre-registry products. New products select from `UnitType.name` values;
+   * legacy products keep their original string ("piece" / "box" / ...).
+   */
+  unitType: string;
   priceMmk: number;
   costMmk?: number;
   packSize?: number;

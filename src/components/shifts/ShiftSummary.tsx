@@ -8,7 +8,17 @@ interface ShiftSummaryProps {
 }
 
 export const ShiftSummary = ({ shift, breakdown }: ShiftSummaryProps) => {
-  const { isOpen, cashSaleCount, otherSaleCount, cashTotal, otherTotal, voidedCount, approvedCashRefunds, expectedCash, salesCount } = breakdown;
+  const {
+    isOpen,
+    cashSaleCount,
+    otherSaleCount,
+    cashTotal,
+    otherTotal,
+    voidedCount,
+    approvedCashRefunds,
+    expectedCash,
+    salesCount,
+  } = breakdown;
 
   return (
     <div className="grid gap-3 md:grid-cols-2">
@@ -44,13 +54,17 @@ export const ShiftSummary = ({ shift, breakdown }: ShiftSummaryProps) => {
           <div>{isOpen ? "Expected cash (live)" : "Expected cash"}</div>
           <div className="text-right tabular-nums">{formatMmk(expectedCash)}</div>
           <div>Closing cash</div>
-          <div className="text-right tabular-nums">{isOpen ? "—" : formatMmk(shift.closingCashMmk ?? 0)}</div>
+          <div className="text-right tabular-nums">
+            {isOpen ? "Active" : formatMmk(shift.closingCashMmk ?? 0)}
+          </div>
           <div>Variance</div>
-          <div className="text-right tabular-nums">{isOpen ? "—" : formatMmk(shift.varianceMmk ?? 0)}</div>
+          <div className="text-right tabular-nums">
+            {isOpen ? "Active" : formatMmk(shift.varianceMmk ?? 0)}
+          </div>
         </div>
         {cashSaleCount === 0 && otherSaleCount > 0 && isOpen && (
           <div className="mt-2 text-xs text-slate-500">
-            Non-cash sales don't increase expected cash. Closing cash should match opening cash.
+            Non-cash sales do not increase expected cash. Closing cash should match opening cash.
           </div>
         )}
       </div>

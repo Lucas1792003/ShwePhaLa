@@ -197,18 +197,20 @@ column-by-column coverage.
 >
 > **Shifts (open / close / view).** `/app/shifts` is one unified page
 > for ADMIN, MANAGER, and CASHIER. Anyone holding `shift:manage_own` can
-> open / close their OWN shift (admin / manager / cashier all become the
-> `cashier_id` of record). ADMIN must explicitly pick a shop in the
-> switcher — there is no fallback shop. ADMIN+MANAGER additionally hold
-> `shift:manage_all`, so `close_shift` lets them close someone else's
-> open shift in their scope. See [`04-features-workflows.md` ›
-> Shifts](./04-features-workflows.md#shifts) for the full table.
+> open / close their own shift (admin / manager / cashier all become the
+> `cashier_id` of record). ADMIN must explicitly pick a shop before opening.
+> ADMIN+MANAGER additionally hold `shift:manage_all`, so the View summary
+> can close someone else's open shift in their scope. CASHIER only sees and
+> closes their own records. BUYER has no shift access. See
+> [`04-features-workflows.md` > Shifts](./04-features-workflows.md#shifts)
+> for the full table.
 >
 > **Work Hours visibility** mirrors RLS (`015_permission_gated_select_rls.sql`):
 > ADMIN sees all shifts; MANAGER sees the assigned shop only; CASHIER
 > sees their own only. Monthly totals are attributed to the local
 > calendar month of `startedAt`. BUYER does not hold `shift:manage_own`
 > and never reaches `/app/shifts`.
+> Shift CSV export uses only the same visible, filter-applied records.
 
 ### Approvals
 
@@ -245,6 +247,7 @@ not see the Suppliers nav item.
 | `/app/reports`, `/app/reports/profit` | `report:shop_sales` / `report:shop_profit` |
 | `/app/catalog` | `product:read` |
 | `/app/barcode-labels` | `product:read` + ADMIN/MANAGER role gate |
+| `/app/admin/unit-types` | `product:create` (`ROUTE_PERMISSIONS.adminUnitTypes`) — same gate as `/app/admin/products` |
 | `/app/admin/*` | each gated by its admin permission |
 
 ## Helpers

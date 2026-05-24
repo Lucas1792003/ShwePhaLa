@@ -18,9 +18,7 @@ export const createShiftSlice: StateCreator<DataState, [], [], ShiftState> = (se
   shifts: [],
 
   startShift: async ({ shopId, cashierId, openingCashMmk }) => {
-    const existing = get().shifts.find(
-      (shift) => shift.shopId === shopId && shift.cashierId === cashierId && !shift.endedAt
-    );
+    const existing = get().shifts.find((shift) => shift.cashierId === cashierId && !shift.endedAt);
     if (existing) return existing.id;
 
     const { data, error } = await supabase.rpc("open_shift", {

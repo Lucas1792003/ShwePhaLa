@@ -74,6 +74,7 @@ describe("getShiftDurationMs", () => {
 describe("formatDuration", () => {
   it("formats whole hours and minutes", () => {
     expect(formatDuration(2 * 60 * 60 * 1000 + 15 * 60 * 1000)).toBe("2h 15m");
+    expect(formatDuration(2 * 60 * 60 * 1000 + 5 * 60 * 1000)).toBe("2h 05m");
   });
 
   it("floors to the minute so a 119s shift shows as 1m once ticked", () => {

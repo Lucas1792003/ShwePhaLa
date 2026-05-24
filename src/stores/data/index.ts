@@ -7,12 +7,13 @@ import type {
   AuditLog, Category, Inventory, InventoryMovement, PriceTier,
   Product, ProductBarcode, PurchaseOrder, PurchaseOrderItem,
   Refund, Sale, SaleItem, Shift, Shop, StockTransfer, StockTransferItem,
-  Supplier, SupplierPayment, User,
+  Supplier, SupplierPayment, UnitType, User,
 } from "../../types";
 
 // Import all slices
 import { createShopSlice } from "./slices/shopSlice";
 import { createCategorySlice } from "./slices/categorySlice";
+import { createUnitTypeSlice } from "./slices/unitTypeSlice";
 import { createProductSlice } from "./slices/productSlice";
 import { createInventorySlice } from "./slices/inventorySlice";
 import { createShiftSlice } from "./slices/shiftSlice";
@@ -47,6 +48,15 @@ const mapUser = (r: any): User => ({
 const mapCategory = (r: any): Category => ({
   id: r.id, name: r.name, color: r.color, iconKey: r.icon_key ?? undefined,
   isActive: r.is_active, createdAt: r.created_at,
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapUnitType = (r: any): UnitType => ({
+  id: r.id, name: r.name,
+  abbreviation: r.abbreviation ?? undefined,
+  description: r.description ?? undefined,
+  isActive: r.is_active, sortOrder: r.sort_order,
+  createdAt: r.created_at, updatedAt: r.updated_at,
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -192,6 +202,7 @@ export const useDataStore = create<DataState>()((...args) => {
   return {
     ...createShopSlice(...args),
     ...createCategorySlice(...args),
+    ...createUnitTypeSlice(...args),
     ...createProductSlice(...args),
     ...createInventorySlice(...args),
     ...createShiftSlice(...args),
@@ -215,7 +226,7 @@ export const useDataStore = create<DataState>()((...args) => {
       set({ isLoading: true, loadError: null });
       try {
         const [
-          shops, users, categories, products, barcodes, priceTiers,
+          shops, users, categories, unitTypes, products, barcodes, priceTiers,
           inventory, movements, suppliers, purchaseOrders, purchaseOrderItems, supplierPayments,
           stockTransfers, stockTransferItems, shifts, sales, saleItems,
           reprintLogs, refunds, auditLogs,
@@ -223,6 +234,7 @@ export const useDataStore = create<DataState>()((...args) => {
           supabase.from("shops").select("*"),
           supabase.from("users").select("*"),
           supabase.from("categories").select("*"),
+          supabase.from("unit_types").select("*").order("sort_order", { ascending: true }),
           supabase.from("products").select("*"),
           supabase.from("product_barcodes").select("*"),
           supabase.from("price_tiers").select("*"),
@@ -246,7 +258,7 @@ export const useDataStore = create<DataState>()((...args) => {
         // The arrays default to [] otherwise — that would render an empty
         // shop with no error indication, hiding the real cause.
         const failedRead = [
-          shops, users, categories, products, barcodes, priceTiers, inventory, movements,
+          shops, users, categories, unitTypes, products, barcodes, priceTiers, inventory, movements,
           suppliers, purchaseOrders, purchaseOrderItems, supplierPayments,
           stockTransfers, stockTransferItems, shifts, sales, saleItems,
           reprintLogs, refunds, auditLogs,
@@ -270,6 +282,7 @@ export const useDataStore = create<DataState>()((...args) => {
           shops: shopsList,
           users: (users.data ?? []).map(mapUser),
           categories: (categories.data ?? []).map(mapCategory),
+          unitTypes: (unitTypes.data ?? []).map(mapUnitType),
           products: (products.data ?? []).map(mapProduct),
           barcodes: (barcodes.data ?? []).map(mapBarcode),
           priceTiers: (priceTiers.data ?? []).map(mapPriceTier),

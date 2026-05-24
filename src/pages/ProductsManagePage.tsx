@@ -31,8 +31,11 @@ import { formatMmk } from "../lib/utils";
 import { CATEGORY_ICONS, resolveCategoryIcon } from "../features/categories/categoryIcons";
 import { getCategoryDeleteBlockMessage } from "../features/categories/categoryUsage";
 import { CategoryFilter } from "../features/categories/CategoryFilter";
+import {
+  compareUnitTypes,
+  resolveProductUnit,
+} from "../features/unitTypes/unitTypeValidation";
 
-type UnitType = "piece" | "box" | "kg" | "liter" | "pack";
 type CategoryColor = "amber" | "red" | "green" | "blue" | "purple" | "slate" | "pink" | "teal" | "indigo" | "yellow" | "orange" | "cyan";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -42,7 +45,7 @@ interface FormValues {
   sku: string;
   name: string;
   category: ProductCategory;
-  unitType: UnitType;
+  unitType: string;
   priceMmk: number;
   costMmk?: number;
   packSize?: number;
@@ -61,6 +64,8 @@ export const ProductsManagePage = () => {
   const inventory = useDataStore((state) => state.inventory);
   const shops = useDataStore((state) => state.shops);
   const categories = useDataStore((state) => state.categories);
+  const unitTypes = useDataStore((state) => state.unitTypes);
+  const loadError = useDataStore((state) => state.loadError);
   const addProduct = useDataStore((state) => state.addProduct);
   const updateProduct = useDataStore((state) => state.updateProduct);
   const deleteProduct = useDataStore((state) => state.deleteProduct);
@@ -105,12 +110,22 @@ export const ProductsManagePage = () => {
     return categories.filter((c) => c.isActive);
   }, [categories]);
 
+  // Active unit types feed the dropdown. Sorted by sort_order then name so
+  // the order admins choose in Settings is what cashiers see here.
+  const activeUnitTypes = useMemo(
+    () => unitTypes.filter((u) => u.isActive).sort(compareUnitTypes),
+    [unitTypes],
+  );
+
   const schema = useMemo(() => {
     return z.object({
       sku: z.string().min(1, "SKU is required"),
       name: z.string().min(2, "Name must be at least 2 characters"),
       category: z.string().min(1, "Category is required"),
-      unitType: z.enum(["piece", "box", "kg", "liter", "pack"]),
+      // Dynamic registry: a non-empty string is required, and the value
+      // must either match an active unit type OR be the row's existing
+      // legacy value (handled at submit time — see handleSubmit).
+      unitType: z.string().min(1, "Unit type is required"),
       priceMmk: z.number().min(1, "Price must be greater than 0"),
       costMmk: z.number().optional(),
       packSize: z.number().optional(),
@@ -127,7 +142,7 @@ export const ProductsManagePage = () => {
       sku: "",
       name: "",
       category: activeCategories[0]?.name ?? "",
-      unitType: "piece",
+      unitType: activeUnitTypes[0]?.name ?? "",
       priceMmk: 0,
       costMmk: undefined,
       packSize: undefined,
@@ -194,7 +209,7 @@ export const ProductsManagePage = () => {
       sku: "",
       name: "",
       category: activeCategories[0]?.name ?? "",
-      unitType: "piece",
+      unitType: activeUnitTypes[0]?.name ?? "",
       priceMmk: 0,
       costMmk: undefined,
       packSize: undefined,
@@ -814,13 +829,62 @@ export const ProductsManagePage = () => {
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Unit Type *</label>
-              <Select {...form.register("unitType")}>
-                <option value="piece">Piece</option>
-                <option value="box">Box</option>
-                <option value="kg">Kilogram (kg)</option>
-                <option value="liter">Liter</option>
-                <option value="pack">Pack</option>
-              </Select>
+              {(() => {
+                // Resolve the saved value so we can still render it for legacy
+                // or deactivated rows when editing an existing product.
+                const currentValue = form.watch("unitType");
+                const resolved = resolveProductUnit(currentValue, unitTypes);
+
+                if (activeUnitTypes.length === 0 && resolved.kind !== "inactive" && resolved.kind !== "legacy") {
+                  // Distinguish "load failed" from "registry is genuinely
+                  // empty" so the admin knows which one to fix first.
+                  return (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      {loadError ? (
+                        <>Unit types could not be loaded ({loadError}). Refresh and try again.</>
+                      ) : (
+                        <>
+                          No unit types found.{" "}
+                          <a className="font-medium underline" href="/app/admin/unit-types">
+                            Add unit types in Settings
+                          </a>{" "}
+                          first.
+                        </>
+                      )}
+                    </div>
+                  );
+                }
+
+                return (
+                  <>
+                    <Select {...form.register("unitType")}>
+                      {/* Legacy / inactive entries kept selectable when editing
+                          so existing products don't silently change unit. */}
+                      {resolved.kind === "legacy" && resolved.value.length > 0 && (
+                        <option value={resolved.value}>
+                          Current: {resolved.value} (legacy)
+                        </option>
+                      )}
+                      {resolved.kind === "inactive" && (
+                        <option value={resolved.unitType.name}>
+                          Current: {resolved.unitType.name} (inactive)
+                        </option>
+                      )}
+                      {activeUnitTypes.map((unit) => (
+                        <option key={unit.id} value={unit.name}>
+                          {unit.name}
+                          {unit.abbreviation ? ` (${unit.abbreviation})` : ""}
+                        </option>
+                      ))}
+                    </Select>
+                    {form.formState.errors.unitType && (
+                      <p className="mt-1 text-xs text-red-500">
+                        {form.formState.errors.unitType.message}
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
 

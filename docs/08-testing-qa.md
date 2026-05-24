@@ -34,6 +34,7 @@ npm run lint         # ESLint
 | `src/features/inventory/selectors.test.ts` | Per-shop stock isolation + composite PK |
 | `src/features/categories/categoryIcons.test.ts` | Icon resolver |
 | `src/features/categories/categoryUsage.test.ts` | Safe-delete block message |
+| `src/features/unitTypes/unitTypeValidation.test.ts` | Unit-type name/abbrev normalization, duplicate name/abbrev rejection (case-insensitive), self-row edit exemption, blank-abbrev guard, sort_order ordering, `resolveProductUnit` active/inactive/legacy branches |
 | `src/features/barcodes/labels.test.ts` | `getPrintableBarcodeValue` precedence |
 | `src/features/barcodes/labelTemplates.test.ts` | Template registry |
 | `src/features/pricing/priceTierForm.test.ts` | Validation rules |
@@ -314,6 +315,8 @@ Open / close:
       message; the StartShift form is hidden.
 - [ ] **ADMIN with shop A selected** → can open + close a shift in shop
       A. The opened shift has `cashier_id = admin.id`.
+- [ ] **ADMIN / MANAGER View summary** can close a visible open shift in
+      scope when they hold `shift:manage_all`.
 - [ ] **ADMIN switches to shop B** without closing the open shift in
       shop A → trying to open a second shift fails with `This cashier
       already has an open shift` (advisory lock + unique index).
@@ -321,29 +324,38 @@ Open / close:
       picked from the switcher; the assigned shop is used directly.
 - [ ] **CASHIER** → unchanged behaviour: opens + closes own shift in
       their assigned shop.
-- [ ] Closing with a non-zero variance requires a written reason; the
-      RPC rejects otherwise.
+- [ ] Closing cash is labeled, MMK-only, numeric, and has no leading-zero
+      issue after typing/paste.
+- [ ] Closing with a non-zero variance shows an inline variance preview and
+      requires a written reason; the RPC rejects otherwise.
 
 Shift Records tab:
 
-- [ ] **ADMIN** sees rows from every shop. Shop + User filters narrow
-      the list. CSV export reflects the current filter.
+- [ ] **ADMIN** sees rows from every shop. Month/date, status, shop, and
+      user filters narrow the list. CSV export reflects the current filter.
 - [ ] **MANAGER** sees only their assigned shop's rows. User filter
       lists only users with a row in that shop.
 - [ ] **MANAGER** querying URL params for shop B sees no shop B rows
       (RLS enforces, not just the client).
-- [ ] **CASHIER** sees only their own rows; no filter row is shown.
+- [ ] **CASHIER** sees only their own rows; no team-wide shop/user filters
+      are shown.
+- [ ] Records show cashier, role, shop, start, end/Active, duration, sales
+      count, expected cash, closing cash, variance, status, and View.
+- [ ] CSV contains cashier, role, shop, started_at, ended_at, duration,
+      status, opening_cash, expected_cash, closing_cash, variance,
+      sales_count, and variance_reason.
 
 Work Hours tab:
 
 - [ ] Month picker defaults to current local month; switching reloads
       Monthly totals + Daily records.
-- [ ] Active shifts cards show `Xh Ym so far` and tick after ~60 s.
+- [ ] Active shifts cards show `Xh Ym so far` and tick after ~60 s. Durations
+      use `0h 12m` / `2h 05m` style and never show NaN/Infinity.
 - [ ] A shift that crossed midnight from May 31 into June 1 (local
       time) shows up in May only. Documented in
       `04-features-workflows.md`.
-- [ ] **ADMIN** sees per-shop, per-user totals. Empty shop selection
-      shows "No shifts found for this month."
+- [ ] **ADMIN** sees per-shop, per-user totals across all shops. Empty months
+      show a clear no-work-hours state.
 - [ ] **MANAGER** sees only their assigned shop's users.
 - [ ] **CASHIER** sees only their own totals.
 

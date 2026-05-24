@@ -6,6 +6,7 @@
  *
  * - slices/shopSlice.ts      - Shops & Users
  * - slices/categorySlice.ts  - Product Categories
+ * - slices/unitTypeSlice.ts  - Product Unit Types (Piece, Can, ...)
  * - slices/productSlice.ts   - Products & Barcodes
  * - slices/inventorySlice.ts - Inventory & Stock Movements
  * - slices/shiftSlice.ts     - Shifts

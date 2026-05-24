@@ -45,6 +45,10 @@ export const ROUTE_PERMISSIONS = {
   adminShops: "shop:create",
   adminUsers: "user:create",
   adminProducts: "product:create",
+  // Unit Types settings: same permission gate as adminProducts so the same
+  // admins who manage products can manage the registry that feeds the
+  // Product form's Unit Type dropdown.
+  adminUnitTypes: "product:create",
   adminBarcodes: "barcode:manage",
   adminSuppliers: "supplier:read",
   adminPricing: "pricing:manage",

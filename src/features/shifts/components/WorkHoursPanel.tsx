@@ -116,6 +116,14 @@ export const WorkHoursPanel = ({
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [shops, shifts]);
 
+  if (viewerRole !== "ADMIN" && !viewerAssignedShopId) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-sm text-slate-500">
+        Your account is not assigned to a shop, so work hours cannot be calculated.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Filter row */}
@@ -232,7 +240,7 @@ export const WorkHoursPanel = ({
                 <TR>
                   <TD colSpan={6}>
                     <div className="py-4 text-center text-sm text-slate-500">
-                      No shifts found for this month.
+                      No work hours found for this month.
                     </div>
                   </TD>
                 </TR>
@@ -274,7 +282,7 @@ export const WorkHoursPanel = ({
                 <TR>
                   <TD colSpan={7}>
                     <div className="py-4 text-center text-sm text-slate-500">
-                      No shifts found for this month.
+                      No shift records found for this month.
                     </div>
                   </TD>
                 </TR>

@@ -9,6 +9,7 @@ import { StartShiftCard } from "../components/shifts/StartShiftCard";
 import { EndShiftCard } from "../components/shifts/EndShiftCard";
 import { ShiftSummary } from "../components/shifts/ShiftSummary";
 import { buildShiftBreakdown } from "../features/shifts/service";
+import { validateCloseShift } from "../features/shifts/shiftRecords";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
 
 export const ShiftPage = () => {
@@ -23,7 +24,9 @@ export const ShiftPage = () => {
   const startShift = useDataStore((state) => state.startShift);
   const endShift = useDataStore((state) => state.endShift);
   const [openingCash, setOpeningCash] = useState(0);
-  const [closingCash, setClosingCash] = useState(0);
+  const [closingCash, setClosingCash] = useState<number | undefined>(undefined);
+  const [varianceReason, setVarianceReason] = useState("");
+  const [closeAttempted, setCloseAttempted] = useState(false);
 
   if (!currentUser) return null;
   const activeUser = currentUser;
@@ -47,16 +50,24 @@ export const ShiftPage = () => {
 
   const handleEndShift = async () => {
     if (!openShift || !breakdown) return;
-    const localVariance = closingCash - breakdown.expectedCash;
-    const varianceReason =
-      localVariance !== 0
-        ? window.prompt("Closing cash does not match expected cash. Enter a variance reason.")?.trim()
-        : undefined;
-    if (localVariance !== 0 && !varianceReason) return;
+    setCloseAttempted(true);
+    const validation = validateCloseShift({
+      closingCash,
+      expectedCash: breakdown.expectedCash,
+      varianceReason,
+    });
+    if (!validation.canClose) return;
 
     try {
-      await endShift({ shiftId: openShift.id, closingCashMmk: closingCash, varianceReason });
+      await endShift({
+        shiftId: openShift.id,
+        closingCashMmk: closingCash ?? 0,
+        varianceReason: (validation.variance ?? 0) !== 0 ? varianceReason.trim() : undefined,
+      });
       toast({ title: "Shift closed", variant: "success" });
+      setClosingCash(undefined);
+      setVarianceReason("");
+      setCloseAttempted(false);
     } catch (error) {
       toast({
         title: "Close shift failed",
@@ -88,8 +99,24 @@ export const ShiftPage = () => {
       ) : (
         <div className="mt-6 space-y-4">
           <div className="text-sm text-slate-500">Shift started {formatDateTime(openShift.startedAt)}</div>
-          {breakdown && <ShiftSummary shift={openShift} breakdown={breakdown} />}
-          <EndShiftCard closingCash={closingCash} onClosingCashChange={setClosingCash} onEnd={handleEndShift} />
+          {breakdown && (
+            <>
+              <ShiftSummary shift={openShift} breakdown={breakdown} />
+              <EndShiftCard
+                closingCash={closingCash}
+                expectedCash={breakdown.expectedCash}
+                varianceReason={varianceReason}
+                onVarianceReasonChange={setVarianceReason}
+                onClosingCashChange={setClosingCash}
+                onEnd={handleEndShift}
+                error={
+                  closeAttempted
+                    ? validateCloseShift({ closingCash, expectedCash: breakdown.expectedCash, varianceReason }).error
+                    : null
+                }
+              />
+            </>
+          )}
         </div>
       )}
     </Card>

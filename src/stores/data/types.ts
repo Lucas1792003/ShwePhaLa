@@ -20,6 +20,7 @@ import type {
   Supplier,
   SupplierPayment,
   SupplierPaymentMethod,
+  UnitType,
   User,
 } from "../../types";
 
@@ -89,6 +90,14 @@ export interface CategoryState {
   addCategory: (category: Category) => void;
   updateCategory: (category: Category) => void;
   deleteCategory: (categoryId: string) => void;
+}
+
+export interface UnitTypeState {
+  unitTypes: UnitType[];
+  addUnitType: (unitType: UnitType) => void;
+  updateUnitType: (unitType: UnitType) => void;
+  /** Soft delete — flips is_active to false. Hard delete is not exposed. */
+  deactivateUnitType: (unitTypeId: string) => void;
 }
 
 export interface ProductState {
@@ -205,6 +214,7 @@ export interface LoadingState {
 
 export type DataState = ShopState &
   CategoryState &
+  UnitTypeState &
   ProductState &
   InventoryState &
   ShiftState &
