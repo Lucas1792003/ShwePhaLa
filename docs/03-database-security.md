@@ -46,6 +46,7 @@ Apply in numeric order. The current ordered list:
 | `019_product_image_upload_sessions.sql` | Temporary QR upload sessions for phone product photos |
 | `020_rbac_user_assignment_constraints.sql` | One-admin / one-active-manager-per-shop indexes + role/shop/cashier-needs-manager trigger + manager-deactivation safety + `rbac_assignment_violations` diagnostic view |
 | `021_shop_id_required_rpc_guards.sql` | Explicit `Shop is required` guards on `create_purchase_order` and `create_stock_transfer` (the other shop-scoped RPCs already had them) |
+| `022_unique_normalized_shops.sql` | Preflight duplicate shop name/code detection + unique expression indexes on `lower(trim(name))` and `lower(trim(code))` |
 
 > **Migration order warning.** Some later migrations depend on identity
 > helpers from `003` and the audit-write lockdown from `013`. Always apply
@@ -55,6 +56,27 @@ Apply in numeric order. The current ordered list:
 Live verification:
 [`archive/29-live-supabase-rls-rpc-verification.md`](./archive/29-live-supabase-rls-rpc-verification.md)
 and [`archive/30-rls-permission-gating-checklist.md`](./archive/30-rls-permission-gating-checklist.md).
+
+Shop duplicate preflight SQL before migration `022`:
+
+```sql
+select lower(trim(name)) as normalized_name, count(*) as row_count,
+       string_agg(id || ' (' || name || ')', ', ' order by id) as rows
+from shops
+group by lower(trim(name))
+having count(*) > 1;
+
+select lower(trim(code)) as normalized_code, count(*) as row_count,
+       string_agg(id || ' (' || code || ')', ', ' order by id) as rows
+from shops
+where nullif(trim(code), '') is not null
+group by lower(trim(code))
+having count(*) > 1;
+```
+
+Fix duplicates by renaming the duplicate shop name/code first. Do not
+delete a shop with existing sales, inventory, shifts, users, purchases,
+or transfers unless a deliberate data migration has been planned.
 
 ## Transactional RPCs
 
@@ -96,6 +118,11 @@ RLS is enabled on all listed tables.
 - Admin / reference tables (`shops`, `users`, `categories`, `products`,
   `product_barcodes`, `price_tiers`, `suppliers`) accept direct writes
   gated by RLS that checks the relevant granular permission.
+- `shops` additionally enforces normalized uniqueness at the DB layer:
+  `shops_unique_normalized_name` on `lower(trim(name))` and
+  `shops_unique_normalized_code` on `lower(trim(code))` for non-empty
+  codes. Shop creation is explicit through Shops management only; there
+  is no fallback auto-created shop.
 - `users` additionally enforces user-assignment business rules at the DB
   layer (one admin globally, one active manager per shop, cashier requires
   active manager in its shop, manager-deactivation safety) via partial

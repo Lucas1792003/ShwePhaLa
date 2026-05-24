@@ -79,6 +79,7 @@ export interface ShopState {
   users: User[];
   addShop: (shop: Shop) => Promise<void>;
   updateShop: (shop: Shop) => Promise<void>;
+  deleteShop: (shopId: string) => Promise<void>;
   addUser: (user: User) => Promise<void>;
   updateUser: (user: User) => Promise<void>;
 }

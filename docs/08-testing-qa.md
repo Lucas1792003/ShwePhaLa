@@ -24,6 +24,8 @@ npm run lint         # ESLint
 | `src/features/pos/cartStock.test.ts` | Stock guards + clamp |
 | `src/features/shifts/workHours.test.ts` | Active/closed duration, monthly attribution rule, formatting, group-by-user |
 | `src/features/admin/userFormErrors.test.ts` | DB constraint → user-friendly message mapping |
+| `src/lib/shopValidation.test.ts` | Shop name/code trimming, duplicate normalized name/code validation, same-row edit allowance, DB unique-index error mapping |
+| `src/lib/shopDelete.test.ts` | Shop reference counting across all shop-bearing tables, friendly reference summary, DB foreign-key (`23503`) error mapping |
 | `src/features/dashboard/dashboardMetrics.test.ts` | Scope, net revenue (gross − approved PARTIAL refunds), cost of goods, profit/margin/AOV (no NaN on empty data), Admin daily revenue/cost/profit trend, Sales by Category percentages, inventory value, **per-shop low stock (never sums across shops)**, top products ranking, supplier debt (RECEIVED-only) |
 | `src/features/pos/barcodeLookup.test.ts` | Barcode→SKU fallback + parity with label printer |
 | `src/features/suppliers/debt.test.ts` | Debt math (debt starts on RECEIVED only) |
@@ -89,6 +91,36 @@ For each role (ADMIN, MANAGER, CASHIER, BUYER):
       disabled-but-visible).
 - [ ] RPCs reject any action the UI would have hidden, with a friendly
       mapped error message in the toast.
+
+## Shops Management QA
+
+`/app/admin/shops`. Shop creation is explicit only; no login, bootstrap,
+dashboard, POS, shift, or shop-switcher path should create a shop.
+
+- [ ] Creating `Shop B` when `Shop B` exists is blocked with
+      `A shop with this name already exists.`
+- [ ] Creating `shop b` when `Shop B` exists is blocked with the same
+      message.
+- [ ] Creating `  Shop B  ` when `Shop B` exists is blocked after trim.
+- [ ] Creating or editing to a duplicate normalized code is blocked with
+      `A shop with this code already exists.`
+- [ ] Editing the same shop without changing its name/code is allowed.
+- [ ] Editing another shop to duplicate a name/code is blocked.
+- [ ] Database unique-index errors from
+      `shops_unique_normalized_name` / `shops_unique_normalized_code` map
+      to the friendly form messages and keep the form open.
+- [ ] Migration `022_unique_normalized_shops.sql` fails on existing
+      duplicates and lists the affected rows; it does not delete or merge
+      shops.
+- [ ] Delete button is hidden for users without `shop:delete`.
+- [ ] Delete is disabled (with `References: …` hint) when the shop has
+      users, inventory, shifts, sales, purchases, payments, transfers,
+      price tiers, refund/void requests, or audit logs attached.
+- [ ] Deleting an empty shop succeeds and clears `currentShopId` if the
+      deleted shop was the currently-selected one.
+- [ ] A DB foreign-key violation (`23503`) maps to
+      `This shop is still referenced by operational data.` and the row
+      stays in the list.
 
 ## Dashboard QA
 

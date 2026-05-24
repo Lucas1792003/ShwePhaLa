@@ -369,6 +369,27 @@ admin. Shop creation lives **only** in the Shops management page
 `shop:create`). No login, bootstrap, `loadData`, dashboard, POS, shift,
 or shop-switcher path creates a shop.
 
+Shop names and shop codes are unique at the database level after
+`lower(trim(...))` normalization. The Shops management form trims name,
+code, and address before saving, blocks duplicate normalized names/codes
+before submit, and maps database unique-index failures to friendly form
+errors. Existing duplicate rows must be renamed manually before migration
+`022_unique_normalized_shops.sql` can be applied; the app must not delete
+or merge shop rows automatically because operational data may reference
+those shop IDs.
+
+Shop deletion is supported only for shops with no operational data. The
+Delete button on `/app/admin/shops` is gated on `shop:delete` (ADMIN by
+default) and pre-checks references across `users`, `inventory`, `shifts`,
+`sales`, `purchase_orders`, `supplier_payments`, `stock_transfers`,
+`price_tiers`, `refund_void_requests`, and `audit_logs` using the loaded
+store data. If any references exist the button is disabled and a
+`References: …` summary is shown. The DB FK constraints on `users`,
+`inventory`, `supplier_payments`, and `price_tiers` are the final guard:
+any leftover reference triggers Postgres `23503`, which the slice maps to
+`This shop is still referenced by operational data.` and the form keeps
+the row. The `currentShopId` is cleared if the deleted shop was selected.
+
 `getEffectiveShopId(user, currentShopId, shops)` returns the admin's
 explicitly-picked shop (or, for non-admins, their assigned `shopId`).
 It returns **`""` when an admin has not picked a shop** — no `shops[0]`

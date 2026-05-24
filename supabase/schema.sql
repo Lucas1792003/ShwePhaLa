@@ -15,6 +15,13 @@ CREATE TABLE IF NOT EXISTS shops (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS shops_unique_normalized_name
+  ON shops ((lower(btrim(name))));
+
+CREATE UNIQUE INDEX IF NOT EXISTS shops_unique_normalized_code
+  ON shops ((lower(btrim(code))))
+  WHERE NULLIF(btrim(code), '') IS NOT NULL;
+
 -- users (staff profiles — linked to Supabase auth.users via auth_id)
 CREATE TABLE IF NOT EXISTS users (
   id text PRIMARY KEY,
