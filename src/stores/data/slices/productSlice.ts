@@ -48,25 +48,17 @@ export const createProductSlice: StateCreator<DataState, [], [], ProductState> =
   },
 
   deleteProduct: async (productId: string) => {
-    // Clear inventory rows first — the FK has no CASCADE so the products
-    // delete would otherwise be blocked. product_barcodes and price_tiers
-    // cascade automatically.
-    const { error: invError } = await supabase
-      .from("inventory")
-      .delete()
-      .eq("product_id", productId);
-    if (invError) {
-      console.error("[DB] deleteProduct inventory failed:", invError);
-      throw new Error(invError.message);
-    }
-
-    const { error: prodError } = await supabase
-      .from("products")
-      .delete()
-      .eq("id", productId);
-    if (prodError) {
-      console.error("[DB] deleteProduct failed:", prodError);
-      throw new Error(prodError.message);
+    // Direct deletes against `products` and `inventory` are blocked by
+    // RLS (no DELETE policy on products; inventory writes revoked from
+    // authenticated). The SECURITY DEFINER RPC checks `product:delete`,
+    // clears inventory rows, then deletes the product — barcodes and
+    // price tiers cascade automatically.
+    const { error } = await supabase.rpc("delete_product", {
+      p_product_id: productId,
+    });
+    if (error) {
+      console.error("[DB] deleteProduct failed:", error);
+      throw new Error(error.message);
     }
 
     set((state) => ({
