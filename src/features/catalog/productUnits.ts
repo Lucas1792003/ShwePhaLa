@@ -7,17 +7,32 @@ export interface ProductUnitValidationResult {
 
 export const normalizeUnitName = (name: string) => name.trim().replace(/\s+/g, " ");
 
+const cleanNonNegativeInteger = (raw: number | undefined | null): number => {
+  if (!Number.isFinite(raw ?? NaN)) return 0;
+  return Math.max(0, Math.trunc(raw ?? 0));
+};
+
+const cleanOptionalNonNegativeInteger = (
+  raw: number | undefined | null,
+): number | undefined => {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Number.isFinite(raw)) return undefined;
+  return Math.max(0, Math.trunc(raw));
+};
+
 export const makeDefaultProductUnit = (
   productId: string,
   unitType: string,
-  priceMmk: number,
+  salePriceMmk: number,
+  purchasePriceMmk?: number,
   now = new Date().toISOString(),
 ): ProductUnit => ({
   id: `unit-${productId}-default`,
   productId,
   name: normalizeUnitName(unitType) || "Piece",
   baseQuantity: 1,
-  priceMmk: Math.max(0, Math.trunc(priceMmk || 0)),
+  salePriceMmk: cleanNonNegativeInteger(salePriceMmk),
+  purchasePriceMmk: cleanOptionalNonNegativeInteger(purchasePriceMmk),
   isDefault: true,
   isActive: true,
   sortOrder: 0,
@@ -41,7 +56,13 @@ export const getDefaultProductUnit = (
   return (
     active.find((unit) => unit.isDefault) ??
     active[0] ??
-    makeDefaultProductUnit(product.id, product.unitType, product.priceMmk, product.createdAt)
+    makeDefaultProductUnit(
+      product.id,
+      product.unitType,
+      product.priceMmk,
+      product.costMmk,
+      product.createdAt,
+    )
   );
 };
 
@@ -56,6 +77,17 @@ export const validateProductUnits = (units: ProductUnit[]): ProductUnitValidatio
     return { valid: false, error: "Exactly one active sellable unit must be the default." };
   }
 
+  // The base/default unit must always have base_quantity = 1 — that's what
+  // makes it the "smallest" stock unit other tiers convert to. Without this
+  // rule a Case-as-default would mean inventory is silently counting cases.
+  const defaultUnit = defaultUnits[0];
+  if (defaultUnit.baseQuantity !== 1) {
+    return {
+      valid: false,
+      error: "The default sellable unit must have base quantity 1 (it is the smallest unit).",
+    };
+  }
+
   const seenNames = new Set<string>();
   for (const unit of active) {
     const name = normalizeUnitName(unit.name);
@@ -63,8 +95,14 @@ export const validateProductUnits = (units: ProductUnit[]): ProductUnitValidatio
     if (!Number.isInteger(unit.baseQuantity) || unit.baseQuantity <= 0) {
       return { valid: false, error: `${name} needs a base quantity greater than 0.` };
     }
-    if (!Number.isInteger(unit.priceMmk) || unit.priceMmk < 0) {
-      return { valid: false, error: `${name} needs a non-negative MMK price.` };
+    if (!Number.isInteger(unit.salePriceMmk) || unit.salePriceMmk <= 0) {
+      return { valid: false, error: `${name} needs a Retail price greater than 0.` };
+    }
+    if (
+      unit.purchasePriceMmk !== undefined &&
+      (!Number.isInteger(unit.purchasePriceMmk) || unit.purchasePriceMmk < 0)
+    ) {
+      return { valid: false, error: `${name} purchase price must be zero or a positive integer.` };
     }
     const key = name.toLowerCase();
     if (seenNames.has(key)) {
@@ -83,10 +121,10 @@ export const sanitizeProductUnits = (units: ProductUnit[], productId: string): P
     productId,
     name: normalizeUnitName(unit.name),
     baseQuantity: Math.max(1, Math.trunc(unit.baseQuantity || 1)),
-    priceMmk: Math.max(0, Math.trunc(unit.priceMmk || 0)),
+    salePriceMmk: cleanNonNegativeInteger(unit.salePriceMmk),
+    purchasePriceMmk: cleanOptionalNonNegativeInteger(unit.purchasePriceMmk),
     sortOrder: index,
     updatedAt: now,
     createdAt: unit.createdAt || now,
   }));
 };
-

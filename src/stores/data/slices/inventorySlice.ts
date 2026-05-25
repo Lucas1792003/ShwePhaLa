@@ -18,13 +18,20 @@ export const createInventorySlice: StateCreator<DataState, [], [], InventoryStat
   // RPC. The database validates permission, shop scope, the reason, the type
   // and the resulting stock level, then writes inventory, the movement and the
   // audit row in one transaction.
-  adjustStock: async ({ shopId, productId, type, qtyChange, reason }: AdjustStockInput) => {
+  adjustStock: async ({
+    shopId, productId, type, qtyChange, reason, productUnitId, unitQty,
+  }: AdjustStockInput) => {
     const { data, error } = await supabase.rpc("adjust_stock", {
       p_shop_id: shopId,
       p_product_id: productId,
       p_adjustment_type: type,
+      // When a sellable unit is selected, the server overrides the magnitude
+      // (`unitQty * base_quantity`) but keeps the sign of `qtyChange`. Pass
+      // ±1 from the form as a direction hint in that path.
       p_quantity_delta: qtyChange,
       p_reason: reason,
+      p_product_unit_id: productUnitId ?? null,
+      p_unit_qty: unitQty ?? null,
     });
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Stock adjustment returned no data.");

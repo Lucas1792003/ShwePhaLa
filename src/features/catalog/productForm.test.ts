@@ -36,8 +36,10 @@ const legacyProduct = (overrides: Partial<Product> = {}): Product => ({
 
 describe("product form fields", () => {
   it("does not expose Pack Size in the create/edit field list", () => {
-    expect(PRODUCT_FORM_VISIBLE_FIELDS).toContain("Unit Type");
-    expect(PRODUCT_FORM_VISIBLE_FIELDS).toContain("Sellable Units");
+    expect(PRODUCT_FORM_VISIBLE_FIELDS).toContain("Base Stock Unit");
+    expect(PRODUCT_FORM_VISIBLE_FIELDS).toContain("Units & Prices");
+    expect(PRODUCT_FORM_VISIBLE_FIELDS).not.toContain("Selling Price");
+    expect(PRODUCT_FORM_VISIBLE_FIELDS).not.toContain("Cost Price");
     expect(PRODUCT_FORM_VISIBLE_FIELDS).not.toContain("Package Barcodes");
     expect(PRODUCT_FORM_VISIBLE_FIELDS).not.toContain("Pack Size");
   });

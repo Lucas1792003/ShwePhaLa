@@ -86,8 +86,15 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
     const soldBaseQuantity = item.baseQuantitySold ?? item.qtyUnits;
     const soldUnitQty = baseQuantity > 0 ? soldBaseQuantity / baseQuantity : item.qtyUnits;
     const unitPrice = item.unitPriceMmkSnapshot ?? item.unitPriceMmk;
+    // Append price level (Retail / Wholesale / Special) when the snapshot
+    // captured it. Receipts and the history drawer use the snapshot so
+    // a later admin price edit can never retroactively change a printed
+    // receipt.
+    const levelTag = item.priceLevelNameSnapshot
+      ? ` · ${item.priceLevelNameSnapshot}`
+      : "";
     return {
-      name: `${product?.name ?? item.productId} - ${unitName}`,
+      name: `${product?.name ?? item.productId} - ${unitName}${levelTag}`,
       qtyLabel: `${soldUnitQty} x ${unitName} @ ${formatMmk(unitPrice)} (${soldBaseQuantity} base units)`,
       total: formatMmk(item.lineTotalMmk),
     };

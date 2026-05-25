@@ -17,7 +17,7 @@ the Supabase Auth session.
 
 | Area | Highlights |
 | --- | --- |
-| POS | Barcode scan (with SKU fallback), cart, tier pricing, payment modal, atomic checkout via `complete_sale` RPC. |
+| POS | Sellable-unit selection, unit-linked barcode scan with SKU fallback, cart stock guards, tier pricing for the default unit, payment modal, atomic checkout via `complete_sale` RPC. |
 | Shifts | Open/close with server-side expected cash, live breakdown, variance reason gate. |
 | Inventory | One row per `(shop_id, product_id)`. Adjustments and damage via `adjust_stock` RPC. Movement ledger with before/after qty. |
 | Purchases | Create / approve / receive / cancel POs. `receive_purchase_order` writes inventory, movements, audit, and PO status atomically. |
@@ -37,8 +37,9 @@ the Supabase Auth session.
 - ✅ Product images compressed `<= 100 KB` and uploaded to the Supabase
   Storage bucket `product-images` (no base64 in the row).
 - ✅ Supplier detail moved from drawer to full page with action workspace.
-- ✅ POS barcode scan resolves `product_barcodes.value` → `products.sku`
-  fallback, matching the label printer.
+- ✅ POS barcode scan resolves unit-linked `product_barcodes.value` before
+  `products.sku` fallback; package barcodes add the configured Product Unit
+  and SKU fallback adds the default unit.
 - ✅ Central error utility (`src/lib/errors.ts`) maps Postgres / network /
   storage / domain errors to friendly user-facing strings; bootstrap has a
   retry surface; top-level `ErrorBoundary` is in place.

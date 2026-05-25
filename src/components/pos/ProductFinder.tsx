@@ -151,7 +151,7 @@ export const ProductFinder = ({
                 <div className="flex flex-1 flex-col p-3">
                   <h3 className="line-clamp-2 text-sm font-semibold text-slate-800">{product.name}</h3>
                   <div className="mt-auto flex items-center justify-between pt-2">
-                    <span className="text-base font-bold text-emerald-600">{formatMmk(defaultUnit.priceMmk)}</span>
+                    <span className="text-base font-bold text-emerald-600">{formatMmk(defaultUnit.salePriceMmk)}</span>
                     <button
                       type="button"
                       onClick={(event) => {

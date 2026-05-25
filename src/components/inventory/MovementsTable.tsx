@@ -48,6 +48,18 @@ export const MovementsTable = ({ movements, products }: MovementsTableProps) => 
           const product = products.find((item) => item.id === movement.productId);
           const qtyChange = movement.qtyChange ?? (movement as { qtyBaseUnits?: number }).qtyBaseUnits ?? 0;
           const isPositive = qtyChange > 0;
+          const baseUnitName = product?.unitType || "unit";
+          // Render the snapshot sub-line when migration 028 captured the
+          // user-entered unit. The base-unit number on `qtyChange` is the
+          // authoritative inventory delta; the snapshot is UI-only context.
+          const snapshotName = movement.unitNameSnapshot;
+          const snapshotQty = movement.selectedUnitQuantity;
+          const snapshotBase = movement.unitBaseQuantitySnapshot;
+          const showSnapshot =
+            snapshotName !== undefined &&
+            snapshotQty !== undefined &&
+            snapshotBase !== undefined &&
+            snapshotBase > 1;
           return (
             <TR key={movement.id}>
               <TD>{product?.name}</TD>
@@ -56,8 +68,15 @@ export const MovementsTable = ({ movements, products }: MovementsTableProps) => 
                   {movementTypeLabels[movement.type] ?? movement.type}
                 </Badge>
               </TD>
-              <TD className={isPositive ? "text-green-600" : "text-red-600"}>
-                {isPositive ? "+" : ""}{qtyChange}
+              <TD>
+                <div className={isPositive ? "text-green-600" : "text-red-600"}>
+                  {isPositive ? "+" : ""}{qtyChange} {baseUnitName}
+                </div>
+                {showSnapshot && (
+                  <div className="text-[11px] text-slate-500">
+                    Entered as {snapshotQty} {snapshotName}
+                  </div>
+                )}
               </TD>
               <TD className="text-slate-500 text-xs">
                 {movement.qtyBefore !== undefined && movement.qtyAfter !== undefined

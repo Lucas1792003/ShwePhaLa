@@ -29,6 +29,7 @@ export const InventoryPage = () => {
   const categories = useDataStore((state) => state.categories);
   const inventory = useDataStore((state) => state.inventory);
   const movements = useDataStore((state) => state.movements);
+  const productUnits = useDataStore((state) => state.productUnits);
   const adjustStock = useDataStore((state) => state.adjustStock);
 
   const [search, setSearch] = useState("");
@@ -152,6 +153,7 @@ export const InventoryPage = () => {
           />
           <InventoryTable
             rows={paginatedStockRows}
+            productUnits={productUnits}
             onAdjust={canAdjust ? setAdjustProductId : undefined}
           />
           <div className="flex items-center justify-between">
@@ -198,7 +200,9 @@ export const InventoryPage = () => {
       <AdjustStockModal
         open={!!adjustProductId}
         onClose={() => setAdjustProductId(null)}
-        onSave={async ({ type, qtyChange, reason }) => {
+        product={adjustProductId ? products.find((p) => p.id === adjustProductId) ?? null : null}
+        productUnits={productUnits}
+        onSave={async ({ type, qtyChange, reason, productUnitId, unitQty }) => {
           if (!adjustProductId || !currentUserId) return;
           try {
             await adjustStock({
@@ -208,6 +212,8 @@ export const InventoryPage = () => {
               qtyChange,
               reason: reason || "Manual adjustment",
               actorId: currentUserId,
+              productUnitId,
+              unitQty,
             });
             setAdjustProductId(null);
           } catch (error) {

@@ -99,12 +99,14 @@ the print dialog.
 - The scanner is a keyboard-emulating HID device. The barcode input
   receives keystrokes and an Enter at the end of each scan.
 - POS resolves the scanned code via the **same** rule the label printer
-  uses — `product_barcodes.value` first, `products.sku` fallback — so a
-  label printed from SKU scans back correctly. See [04-features-workflows.md](./04-features-workflows.md).
+  uses: unit-linked `product_barcodes.value` first, then `products.sku`
+  fallback to the default Product Unit. A package barcode adds that exact
+  Product Unit; a SKU-source label scans back as the default unit. See
+  [04-features-workflows.md](./04-features-workflows.md).
 - The input refocuses after every scan (success or failure), so the next
   Enter-terminated burst always lands there even if a click stole focus.
-- A toast confirms each successful add: `Added <product name>`. Misses
-  show `Barcode not found`. Stock guards show
+- A toast confirms each successful add: `Added <product name> - <unit>`.
+  Misses show `Barcode not found`. Stock guards show
   `Only X in stock for this shop.`
 
 ## Product Image Upload / Storage

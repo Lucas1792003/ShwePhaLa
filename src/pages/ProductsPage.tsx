@@ -50,7 +50,7 @@ export const ProductsPage = () => {
               <div className="mt-3 flex flex-wrap gap-2">
                 {units.map((unit) => (
                   <span key={unit.id} className="rounded-full bg-white px-2 py-1 text-xs text-slate-600">
-                    {unit.name}: {unit.baseQuantity} {product.unitType} - {formatMmk(unit.priceMmk)}
+                    {unit.name}: {unit.baseQuantity} {product.unitType} - {formatMmk(unit.salePriceMmk)}
                   </span>
                 ))}
               </div>

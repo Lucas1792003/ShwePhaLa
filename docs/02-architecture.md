@@ -141,8 +141,13 @@ Details and per-role tables: [05-roles-permissions.md](./05-roles-permissions.md
 - `products.unit_type` is the base stock unit label from the Unit Types
   registry. Inventory stays in base units.
 - `product_units` are product-specific sellable units (`Can`, `6 Pack`,
-  `Case`) with `base_quantity`, unit price, default/active flags, and sort
-  order. POS deducts `cart qty * product_units.base_quantity`.
+  `Case`) with `base_quantity`, `sale_price_mmk` (required, ≥ 0),
+  `purchase_price_mmk` (nullable, ≥ 0), default/active flags, and sort
+  order. POS deducts `cart qty * product_units.base_quantity`. The
+  default unit always has `base_quantity = 1` — it is the smallest unit
+  that other tiers convert to and the unit `inventory.qty_base_units`
+  counts. Tier pricing applies only to the default unit (server enforces
+  in `complete_sale`).
 - `product_barcodes.product_unit_id` maps a barcode to an exact sellable
   unit; null means product/default unit.
 - `product_barcodes.value` is the optional scan-code mapping used by POS.

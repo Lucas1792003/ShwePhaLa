@@ -67,9 +67,16 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
       return {
         product_id: item.productId,
         product_unit_id: item.productUnitId,
+        // Forward the cashier's chosen price level — the RPC resolves
+        // the final price server-side via product_unit_prices with the
+        // shop_override → global → retail_fallback → legacy chain.
+        // `unit_price_mmk` is treated by the RPC as a manual override
+        // hint only and ignored unless the caller has
+        // `pos:override_price`.
+        price_level_id: item.priceLevelId ?? null,
         qty: item.qty,
         units_per_item: item.unitBaseQuantity,
-        unit_price_mmk: unitPrice,
+        unit_price_mmk: item.priceOverriddenBy ? unitPrice : null,
         item_discount_pct: item.itemDiscountPct ?? 0,
         unit_label: item.unitName,
         price_overridden: Boolean(item.priceOverriddenBy),

@@ -121,6 +121,7 @@ column-by-column coverage.
 | --- | :-: | :-: | :-: |
 | `product:read` | ✅ | ✅ | ✅ |
 | `product:update` | ✅ | ❌ | ❌ |
+| `product:delete` | ❌ | ❌ | ❌ |
 | `product:edit_price` | ✅ | ❌ | ❌ |
 | `barcode:manage` | ❌ | ❌ | ❌ |
 | `pricing:manage` | ❌ | ❌ | ❌ |
@@ -130,6 +131,11 @@ part of `product:read`, and create/update/deactivate is gated by
 `product:create` or `product:update` plus barcode writes by `barcode:manage`.
 POS uses Product Units read-only to select sellable units and deduct base
 inventory.
+
+**Hard-deleting a product** is ADMIN-only — gated by `product:delete` and
+performed via the `delete_product` RPC (migration `024`). Direct client
+deletes against `products` and `inventory` are blocked at the DB layer
+(no DELETE policy on `products`; all writes revoked on `inventory`).
 
 ### Inventory & Transfers
 

@@ -166,16 +166,77 @@ export interface Product {
  * Product-specific sellable unit. Inventory is still stored in the product's
  * base `unitType`; `baseQuantity` is how many base units one sellable unit
  * deducts in POS.
+ *
+ * `salePriceMmk` is what cashiers ring — required, non-negative integer.
+ * `purchasePriceMmk` is the per-unit cost paid to the supplier — optional,
+ * non-negative integer. Both columns enter the DB in migration 027.
  */
 export interface ProductUnit {
   id: string;
   productId: string;
   name: string;
   baseQuantity: number;
-  priceMmk: number;
+  salePriceMmk: number;
+  purchasePriceMmk?: number;
   isDefault: boolean;
   isActive: boolean;
   sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Shape accepted by Product Unit form rows before they are saved. Permits
+ * the optional `purchasePriceMmk` and the in-form `id` placeholder (an
+ * `ulid`-style string the slice resolves on upsert).
+ */
+export type ProductUnitInput = Omit<ProductUnit, "createdAt" | "updatedAt"> & {
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+/**
+ * Snapshot persisted on `sale_items` so historical receipts and refunds
+ * keep using the prices and base-quantity that were in force at sale
+ * time, even if the registry row is edited later.
+ */
+export interface ProductUnitSnapshot {
+  productUnitId?: string;
+  unitNameSnapshot: string;
+  unitBaseQuantitySnapshot: number;
+  unitPriceMmkSnapshot: number;
+  baseQuantitySold: number;
+}
+
+/**
+ * Manual POS price level (Retail / Wholesale / Special). Cashiers pick
+ * the level at the top of POS; the price for `(product_unit, price_level,
+ * shop)` comes from `product_unit_prices` with the fallback chain
+ * documented in migration 030 + the `resolveProductUnitPrice` helper.
+ */
+export interface PriceLevel {
+  id: string;
+  code: string;
+  name: string;
+  isDefault: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Per-unit, per-level price row. `shopId` null = global price; non-null
+ * = shop-specific override that wins over the global row for the same
+ * unit + level.
+ */
+export interface ProductUnitPrice {
+  id: string;
+  productUnitId: string;
+  priceLevelId: string;
+  shopId?: string;
+  priceMmk: number;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -234,10 +295,20 @@ export interface PurchaseOrderItem {
   id: string;
   purchaseOrderId: string;
   productId: string;
+  /** Always stored in base units. The selected-unit qty (e.g. "10 Package")
+   *  lives in `selectedUnitQuantity` with its `productUnitId` + snapshot. */
   orderedQty: number;
   receivedQty?: number;
   unitCostMmk: number;
   lineTotalMmk: number;
+  // Unit snapshot from migration 028 — populated when the receive UI
+  // picked a sellable unit. `null`/`undefined` on legacy rows received
+  // before the unit-aware RPC was deployed.
+  productUnitId?: string;
+  unitNameSnapshot?: string;
+  unitBaseQuantitySnapshot?: number;
+  selectedUnitQuantity?: number;
+  unitPurchasePriceSnapshot?: number;
 }
 
 export interface SupplierPayment {
@@ -282,6 +353,14 @@ export interface StockTransferItem {
   requestedQty: number;
   approvedQty?: number;
   transferredQty?: number;
+  // Reserved for the next phase — `complete_stock_transfer` (migration 028)
+  // already propagates these into the movement rows when they are set on
+  // the item, so the transfer-create UI can start populating them without
+  // another migration.
+  productUnitId?: string;
+  unitNameSnapshot?: string;
+  unitBaseQuantitySnapshot?: number;
+  selectedUnitQuantity?: number;
 }
 
 export interface ProductBarcode {
@@ -307,7 +386,7 @@ export interface InventoryMovement {
   shopId: string;
   productId: string;
   type: StockMovementType;
-  qtyChange: number; // Positive = IN, Negative = OUT
+  qtyChange: number; // Positive = IN, Negative = OUT — always in base units
   qtyBefore: number; // Stock level before this movement
   qtyAfter: number;  // Stock level after this movement
   reason: string;
@@ -315,6 +394,15 @@ export interface InventoryMovement {
   referenceId?: string; // ID of related sale/transfer/purchase
   createdBy: string;
   createdAt: string;
+  // Unit snapshot from migration 028 — present when the action came from
+  // a unit-aware workflow (e.g. "received 10 Package", "damaged 1 Case").
+  // The base-unit total is still on `qtyChange`; these fields are
+  // additional UI context so the ledger can render
+  // "+240 Can (entered as 10 Package)".
+  productUnitId?: string;
+  unitNameSnapshot?: string;
+  unitBaseQuantitySnapshot?: number;
+  selectedUnitQuantity?: number;
 }
 
 // Legacy movement type alias for backward compatibility
@@ -367,6 +455,10 @@ export interface SaleItem {
   unitPriceMmkSnapshot?: number;
   baseQuantitySold?: number;
   stockOverrideBy?: string;
+  // Price-level snapshot (migration 030). NULL on pre-030 rows.
+  priceLevelId?: string;
+  priceLevelNameSnapshot?: string;
+  priceSourceSnapshot?: string;
 }
 
 export interface ReprintLog {
@@ -406,7 +498,8 @@ export interface CartItem {
   name: string;
   unitName: string;
   qty: number;
-  /** Price for one selected sellable unit. */
+  /** Price for one selected sellable unit (resolved from the active
+   *  price level — see resolveProductUnitPrice). */
   unitPriceMmk: number;
   itemDiscountPct?: number;
   /** Legacy display alias kept for older components/tests. */
@@ -416,6 +509,11 @@ export interface CartItem {
   unitBaseQuantity: number;
   priceOverriddenBy?: string;
   stockOverrideBy?: string;
+  // Price-level selection (migration 030). Cart uniqueness key widened
+  // to `productId + productUnitId + priceLevelId` so the same product
+  // can appear as Retail + Wholesale on the same receipt.
+  priceLevelId?: string;
+  priceLevelName?: string;
   // Display fields
   imageUrl?: string;
   category?: ProductCategory;

@@ -49,7 +49,12 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
       p_from_shop_id: fromShopId,
       p_to_shop_id: toShopId,
       p_notes: notes ?? null,
-      p_items: items.map((i) => ({ product_id: i.productId, requested_qty: i.requestedQty })),
+      p_items: items.map((i) => ({
+        product_id: i.productId,
+        requested_qty: i.requestedQty ?? null,
+        product_unit_id: i.productUnitId ?? null,
+        selected_unit_quantity: i.selectedUnitQuantity ?? null,
+      })),
     });
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Create transfer returned no data.");

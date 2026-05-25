@@ -11,7 +11,16 @@ import { Modal } from "../components/ui/Modal";
 import { Select } from "../components/ui/Select";
 import { SearchInput } from "../components/forms/SearchInput";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
-import type { TransferStatus } from "../types";
+import { getActiveProductUnits, getDefaultProductUnit } from "../features/catalog/productUnits";
+import { convertToBaseQuantity, formatStockQuantity } from "../features/inventory/stockDisplay";
+import {
+  getMaxTransferUnitQuantity,
+  getTransferLineBaseQuantity,
+  getTransferProductBaseTotal,
+  transferProductExceedsStock,
+  type UnitTransferLine,
+} from "../features/transfers/unitTransfer";
+import type { ProductUnit, StockTransferItem, TransferStatus } from "../types";
 
 const statusColors: Record<TransferStatus, "gray" | "yellow" | "green" | "red" | "blue"> = {
   PENDING: "yellow",
@@ -21,12 +30,32 @@ const statusColors: Record<TransferStatus, "gray" | "yellow" | "green" | "red" |
   REJECTED: "red",
 };
 
+interface TransferFormItem extends UnitTransferLine {
+  lineId: string;
+  productUnitId: string;
+  selectedUnitQuantity: number;
+}
+
+const makeTransferLineId = () =>
+  `transfer-line-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const formatBaseQty = (qty: number | undefined, unitName: string | undefined) =>
+  qty === undefined ? "-" : `${qty} ${unitName || "unit"}`;
+
+const formatEnteredAs = (item: StockTransferItem, fallbackUnit?: ProductUnit) => {
+  const unitName = item.unitNameSnapshot ?? fallbackUnit?.name;
+  const selectedQty = item.selectedUnitQuantity;
+  if (unitName && selectedQty !== undefined) return `${selectedQty} ${unitName}`;
+  return null;
+};
+
 export const TransfersPage = () => {
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) => state.users.find((u) => u.id === currentUserId));
   const { currentShopId } = useAppStore();
   const shops = useDataStore((state) => state.shops);
   const products = useDataStore((state) => state.products);
+  const productUnits = useDataStore((state) => state.productUnits);
   const inventory = useDataStore((state) => state.inventory);
   const transfers = useDataStore((state) => state.stockTransfers);
   const transferItems = useDataStore((state) => state.stockTransferItems);
@@ -47,7 +76,7 @@ export const TransfersPage = () => {
   // Create transfer form state
   const [newTransfer, setNewTransfer] = useState({
     toShopId: "",
-    items: [] as { productId: string; requestedQty: number }[],
+    items: [] as TransferFormItem[],
     notes: "",
   });
 
@@ -74,13 +103,63 @@ export const TransfersPage = () => {
     (t) => t.fromShopId === shopId && t.status === "PENDING"
   );
 
+  const getAvailableBase = (productId: string) =>
+    inventory.find((i) => i.shopId === shopId && i.productId === productId)?.qtyBaseUnits ?? 0;
+
+  const getTransferUnits = (productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    if (!product) return [];
+    const activeUnits = getActiveProductUnits(productId, productUnits);
+    return activeUnits.length > 0 ? activeUnits : [getDefaultProductUnit(product, productUnits)];
+  };
+
+  const getFirstAvailableUnit = (productId: string) => {
+    const used = new Set(
+      newTransfer.items
+        .filter((item) => item.productId === productId)
+        .map((item) => item.productUnitId)
+    );
+    const units = getTransferUnits(productId);
+    const preferred = units.find((unit) => unit.isDefault && !used.has(unit.id));
+    return preferred ?? units.find((unit) => !used.has(unit.id)) ?? null;
+  };
+
+  const getLineUnit = (item: TransferFormItem) =>
+    getTransferUnits(item.productId).find((unit) => unit.id === item.productUnitId);
+
+  const canAddProductToTransfer = (productId: string) => {
+    const availableBase = getAvailableBase(productId);
+    const usedBase = getTransferProductBaseTotal(newTransfer.items, productId, productUnits);
+    const unit = getFirstAvailableUnit(productId);
+    return Boolean(unit && availableBase - usedBase >= unit.baseQuantity);
+  };
+
+  const hasInvalidTransferItems = newTransfer.items.some((item) => {
+    const availableBase = getAvailableBase(item.productId);
+    const lineUnit = getLineUnit(item);
+    return (
+      !lineUnit ||
+      item.selectedUnitQuantity <= 0 ||
+      transferProductExceedsStock(newTransfer.items, item.productId, productUnits, availableBase)
+    );
+  });
+
   const handleCreateTransfer = async () => {
-    if (!currentUserId || !newTransfer.toShopId || newTransfer.items.length === 0) return;
+    if (
+      !currentUserId ||
+      !newTransfer.toShopId ||
+      newTransfer.items.length === 0 ||
+      hasInvalidTransferItems
+    ) return;
     try {
       await createTransfer({
         fromShopId: shopId,
         toShopId: newTransfer.toShopId,
-        items: newTransfer.items,
+        items: newTransfer.items.map((item) => ({
+          productId: item.productId,
+          productUnitId: item.productUnitId,
+          selectedUnitQuantity: item.selectedUnitQuantity,
+        })),
         notes: newTransfer.notes,
         createdBy: currentUserId,
       });
@@ -132,34 +211,73 @@ export const TransfersPage = () => {
   };
 
   const addItemToTransfer = (productId: string) => {
-    if (newTransfer.items.some((i) => i.productId === productId)) return;
-    const inv = inventory.find((i) => i.shopId === shopId && i.productId === productId);
-    const maxQty = inv?.qtyBaseUnits ?? 0;
-    if (maxQty <= 0) {
+    const unit = getFirstAvailableUnit(productId);
+    const availableBase = getAvailableBase(productId);
+    const alreadyRequestedBase = getTransferProductBaseTotal(newTransfer.items, productId, productUnits);
+    if (!unit || availableBase - alreadyRequestedBase < unit.baseQuantity) {
       alert("No stock available for this product");
       return;
     }
     setNewTransfer((prev) => ({
       ...prev,
-      items: [...prev.items, { productId, requestedQty: 1 }],
+      items: [
+        ...prev.items,
+        {
+          lineId: makeTransferLineId(),
+          productId,
+          productUnitId: unit.id,
+          selectedUnitQuantity: 1,
+        },
+      ],
     }));
   };
 
-  const updateItemQty = (productId: string, qty: number) => {
-    const inv = inventory.find((i) => i.shopId === shopId && i.productId === productId);
-    const maxQty = inv?.qtyBaseUnits ?? 0;
+  const updateItemUnit = (lineId: string, unitId: string) => {
     setNewTransfer((prev) => ({
       ...prev,
       items: prev.items.map((i) =>
-        i.productId === productId ? { ...i, requestedQty: Math.min(Math.max(1, qty), maxQty) } : i
+        i.lineId === lineId
+          ? (() => {
+              const unit = getTransferUnits(i.productId).find((u) => u.id === unitId);
+              const previousBase = getTransferLineBaseQuantity(i, productUnits);
+              const nextQty = Math.max(
+                1,
+                Math.floor(previousBase / Math.max(1, unit?.baseQuantity ?? 1))
+              );
+              const nextLine = { ...i, productUnitId: unitId, selectedUnitQuantity: nextQty };
+              const maxQty = getMaxTransferUnitQuantity(
+                prev.items,
+                nextLine,
+                productUnits,
+                getAvailableBase(i.productId)
+              );
+              return { ...nextLine, selectedUnitQuantity: Math.min(nextQty, Math.max(1, maxQty)) };
+            })()
+          : i
       ),
     }));
   };
 
-  const removeItemFromTransfer = (productId: string) => {
+  const updateItemQty = (lineId: string, qty: number) => {
     setNewTransfer((prev) => ({
       ...prev,
-      items: prev.items.filter((i) => i.productId !== productId),
+      items: prev.items.map((i) => {
+        if (i.lineId !== lineId) return i;
+        const maxQty = getMaxTransferUnitQuantity(
+          prev.items,
+          i,
+          productUnits,
+          getAvailableBase(i.productId)
+        );
+        return { ...i, selectedUnitQuantity: Math.min(Math.max(1, qty), Math.max(1, maxQty)) };
+      }),
+    }));
+  };
+
+  const removeItemFromTransfer = (lineId: string) => {
+    setNewTransfer((prev) => ({
+      ...prev,
+      items: prev.items.filter((i) => i.lineId !== lineId),
     }));
   };
 
@@ -310,20 +428,19 @@ export const TransfersPage = () => {
             <Select onChange={(e) => { if (e.target.value) addItemToTransfer(e.target.value); e.target.value = ""; }}>
               <option value="">Select product to add...</option>
               {products
-                .filter((p) => !newTransfer.items.some((i) => i.productId === p.id))
-                .filter((p) => {
-                  const inv = inventory.find((i) => i.shopId === shopId && i.productId === p.id);
-                  return (inv?.qtyBaseUnits ?? 0) > 0;
-                })
+                .filter((p) => canAddProductToTransfer(p.id))
                 .map((product) => {
-                  const inv = inventory.find((i) => i.shopId === shopId && i.productId === product.id);
+                  const availableBase = getAvailableBase(product.id);
                   return (
                     <option key={product.id} value={product.id}>
-                      {product.name} (Available: {inv?.qtyBaseUnits ?? 0})
+                      {product.name} (Available: {formatStockQuantity(availableBase, productUnits, product.id, product.unitType)})
                     </option>
                   );
                 })}
             </Select>
+            <p className="mt-1 text-xs text-slate-500">
+              Choose the sellable unit for each line. The system validates and moves base units internally.
+            </p>
           </div>
 
           {newTransfer.items.length > 0 && (
@@ -332,31 +449,93 @@ export const TransfersPage = () => {
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="px-3 py-2 text-left">Product</th>
+                    <th className="px-3 py-2 text-left">Unit</th>
+                    <th className="px-3 py-2 text-right">Unit Qty</th>
+                    <th className="px-3 py-2 text-right">Moves (base)</th>
                     <th className="px-3 py-2 text-left">Available</th>
-                    <th className="px-3 py-2 text-left">Qty to Transfer</th>
                     <th className="px-3 py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {newTransfer.items.map((item) => {
                     const product = products.find((p) => p.id === item.productId);
-                    const inv = inventory.find((i) => i.shopId === shopId && i.productId === item.productId);
+                    const availableBase = getAvailableBase(item.productId);
+                    const baseUnitName = product?.unitType || "unit";
+                    const units = getTransferUnits(item.productId);
+                    const usedUnitIds = new Set(
+                      newTransfer.items
+                        .filter((line) => line.productId === item.productId && line.lineId !== item.lineId)
+                        .map((line) => line.productUnitId)
+                    );
+                    const selectableUnits = units.filter(
+                      (unit) => unit.id === item.productUnitId || !usedUnitIds.has(unit.id)
+                    );
+                    const selectedUnit = units.find((unit) => unit.id === item.productUnitId);
+                    const maxQty = getMaxTransferUnitQuantity(
+                      newTransfer.items,
+                      item,
+                      productUnits,
+                      availableBase
+                    );
+                    const previewBase = convertToBaseQuantity(item.selectedUnitQuantity, selectedUnit);
+                    const exceedsStock = transferProductExceedsStock(
+                      newTransfer.items,
+                      item.productId,
+                      productUnits,
+                      availableBase
+                    );
                     return (
-                      <tr key={item.productId} className="border-t">
-                        <td className="px-3 py-2">{product?.name}</td>
-                        <td className="px-3 py-2">{inv?.qtyBaseUnits ?? 0}</td>
+                      <tr key={item.lineId} className="border-t align-top">
                         <td className="px-3 py-2">
+                          <div className="font-medium">{product?.name}</div>
+                          {selectedUnit && selectedUnit.baseQuantity > 1 && (
+                            <div className="text-xs text-slate-500">
+                              1 {selectedUnit.name} = {selectedUnit.baseQuantity} {baseUnitName}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <Select
+                            value={item.productUnitId}
+                            onChange={(e) => updateItemUnit(item.lineId, e.target.value)}
+                          >
+                            {selectableUnits.map((unit) => (
+                              <option key={unit.id} value={unit.id}>
+                                {unit.name}{unit.baseQuantity > 1 ? ` (x${unit.baseQuantity})` : ""}
+                              </option>
+                            ))}
+                          </Select>
+                        </td>
+                        <td className="px-3 py-2 text-right">
                           <input
                             type="number"
                             min="1"
-                            max={inv?.qtyBaseUnits ?? 1}
-                            value={item.requestedQty}
-                            onChange={(e) => updateItemQty(item.productId, parseInt(e.target.value) || 1)}
-                            className="w-20 rounded border px-2 py-1"
+                            max={Math.max(1, maxQty)}
+                            value={item.selectedUnitQuantity}
+                            onChange={(e) => updateItemQty(item.lineId, parseInt(e.target.value, 10) || 1)}
+                            className="w-20 rounded border px-2 py-1 text-right"
                           />
+                          <div className="mt-1 text-xs text-slate-500">Max {maxQty}</div>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <div>{previewBase} {baseUnitName}</div>
+                          {selectedUnit && (
+                            <div className="text-xs text-slate-500">
+                              Entered as {item.selectedUnitQuantity} {selectedUnit.name}
+                            </div>
+                          )}
+                          {exceedsStock && (
+                            <div className="text-xs font-medium text-red-600">
+                              Exceeds available base stock
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-slate-600">
+                          <div>{formatStockQuantity(availableBase, productUnits, item.productId, baseUnitName)}</div>
+                          <div>{availableBase} {baseUnitName} base</div>
                         </td>
                         <td className="px-3 py-2">
-                          <Button size="sm" variant="ghost" onClick={() => removeItemFromTransfer(item.productId)}>
+                          <Button size="sm" variant="ghost" onClick={() => removeItemFromTransfer(item.lineId)}>
                             Remove
                           </Button>
                         </td>
@@ -381,7 +560,10 @@ export const TransfersPage = () => {
 
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="secondary" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button onClick={handleCreateTransfer} disabled={!newTransfer.toShopId || newTransfer.items.length === 0}>
+            <Button
+              onClick={handleCreateTransfer}
+              disabled={!newTransfer.toShopId || newTransfer.items.length === 0 || hasInvalidTransferItems}
+            >
               Create Transfer
             </Button>
           </div>
@@ -447,20 +629,33 @@ export const TransfersPage = () => {
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="px-3 py-2 text-left">Product</th>
-                    <th className="px-3 py-2 text-right">Requested</th>
-                    <th className="px-3 py-2 text-right">Approved</th>
-                    <th className="px-3 py-2 text-right">Transferred</th>
+                    <th className="px-3 py-2 text-right">Entered as</th>
+                    <th className="px-3 py-2 text-right">Base requested</th>
+                    <th className="px-3 py-2 text-right">Base approved</th>
+                    <th className="px-3 py-2 text-right">Base transferred</th>
                   </tr>
                 </thead>
                 <tbody>
                   {selectedTransferItems.map((item) => {
                     const product = products.find((p) => p.id === item.productId);
+                    const baseUnitName = product?.unitType || "unit";
+                    const fallbackUnit = productUnits.find((unit) => unit.id === item.productUnitId);
+                    const enteredAs = formatEnteredAs(item, fallbackUnit);
                     return (
                       <tr key={item.id} className="border-t">
                         <td className="px-3 py-2">{product?.name}</td>
-                        <td className="px-3 py-2 text-right">{item.requestedQty}</td>
-                        <td className="px-3 py-2 text-right">{item.approvedQty ?? "-"}</td>
-                        <td className="px-3 py-2 text-right">{item.transferredQty ?? "-"}</td>
+                        <td className="px-3 py-2 text-right">
+                          {enteredAs ?? formatBaseQty(item.requestedQty, baseUnitName)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {formatBaseQty(item.requestedQty, baseUnitName)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {formatBaseQty(item.approvedQty, baseUnitName)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {formatBaseQty(item.transferredQty, baseUnitName)}
+                        </td>
                       </tr>
                     );
                   })}

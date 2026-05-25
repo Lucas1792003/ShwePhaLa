@@ -18,6 +18,8 @@ import type {
   StockTransfer,
   StockTransferItem,
   StockMovementType,
+  PriceLevel,
+  ProductUnitPrice,
   Supplier,
   SupplierPayment,
   SupplierPaymentMethod,
@@ -48,7 +50,13 @@ export interface RefundItemInput {
 export interface CreateTransferInput {
   fromShopId: string;
   toShopId: string;
-  items: { productId: string; requestedQty: number }[];
+  items: {
+    productId: string;
+    /** Legacy base-unit path. New transfer UI sends productUnitId + selectedUnitQuantity. */
+    requestedQty?: number;
+    productUnitId?: string;
+    selectedUnitQuantity?: number;
+  }[];
   notes?: string;
   createdBy: string;
 }
@@ -65,11 +73,19 @@ export interface AdjustStockInput {
   shopId: string;
   productId: string;
   type: StockMovementType;
+  /** Signed base-unit delta. Negative for DAMAGE / ADJUSTMENT-out, positive
+   *  for stock-in. When `productUnitId` is provided, the server replaces
+   *  the magnitude with `unitQty * unit.base_quantity` and keeps the sign
+   *  from this field. Pass ±1 as a direction hint in the unit-aware path. */
   qtyChange: number;
   reason: string;
   actorId: string;
   referenceType?: "sale" | "transfer" | "purchase" | "adjustment" | "damage";
   referenceId?: string;
+  /** Unit-aware adjustment (migration 028). When set, server computes
+   *  base delta from `unitQty * product_unit.base_quantity`. */
+  productUnitId?: string;
+  unitQty?: number;
 }
 
 // ============================================
@@ -99,6 +115,20 @@ export interface UnitTypeState {
   updateUnitType: (unitType: UnitType) => void;
   /** Soft delete — flips is_active to false. Hard delete is not exposed. */
   deactivateUnitType: (unitTypeId: string) => void;
+}
+
+export interface PriceLevelState {
+  priceLevels: PriceLevel[];
+  productUnitPrices: ProductUnitPrice[];
+  /**
+   * Replace the active per-level prices for a product unit. Inactive
+   * legacy rows are flipped to is_active=false. `shopId === undefined`
+   * means a global row.
+   */
+  replaceProductUnitPrices: (
+    productUnitId: string,
+    prices: { priceLevelId: string; shopId?: string; priceMmk: number }[],
+  ) => Promise<void>;
 }
 
 export interface ProductState {
@@ -173,7 +203,22 @@ export interface PurchaseState {
   updateSupplier: (supplier: Supplier) => Promise<void>;
   createPurchaseOrder: (input: CreatePurchaseOrderInput) => Promise<string>;
   approvePurchaseOrder: (input: { purchaseOrderId: string; approverId: string }) => Promise<void>;
-  receivePurchaseOrder: (input: { purchaseOrderId: string; receiverId: string; receivedItems: { productId: string; receivedQty: number }[] }) => Promise<void>;
+  /**
+   * Receive a purchase order. Each item may pass either the legacy
+   * `receivedQty` (base units) OR the unit-aware pair
+   * `{ productUnitId, receivedUnitQty }`. The RPC computes base qty from
+   * the unit pair server-side (migration 028).
+   */
+  receivePurchaseOrder: (input: {
+    purchaseOrderId: string;
+    receiverId: string;
+    receivedItems: {
+      productId: string;
+      receivedQty?: number;
+      productUnitId?: string;
+      receivedUnitQty?: number;
+    }[];
+  }) => Promise<void>;
   cancelPurchaseOrder: (input: { purchaseOrderId: string; actorId: string }) => Promise<void>;
   recordSupplierPayment: (input: {
     purchaseOrderId: string;
@@ -219,6 +264,7 @@ export type DataState = ShopState &
   CategoryState &
   UnitTypeState &
   ProductState &
+  PriceLevelState &
   InventoryState &
   ShiftState &
   SaleState &

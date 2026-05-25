@@ -11,6 +11,7 @@ import { BarcodeSvg } from "./BarcodeSvg";
 interface BarcodeLabelProps {
   product: Pick<Product, "name" | "priceMmk">;
   unitName?: string;
+  priceLevelName?: string;
   unitPriceMmk?: number;
   value: string;
   templateKey?: BarcodeLabelTemplateKey | string;
@@ -58,9 +59,10 @@ const LabelBarcode = ({ value, template }: { value: string; template: BarcodeLab
  * Single barcode label. Used both in preview and inside the print sheet:
  * same DOM, same selected template, same millimeter dimensions.
  */
-export const BarcodeLabel = ({ product, unitName, unitPriceMmk, value, templateKey }: BarcodeLabelProps) => {
+export const BarcodeLabel = ({ product, unitName, priceLevelName, unitPriceMmk, value, templateKey }: BarcodeLabelProps) => {
   const template = getLabelTemplate(templateKey);
-  const labelName = unitName ? `${product.name} - ${unitName}` : product.name;
+  const nameParts = [product.name, unitName, priceLevelName].filter(Boolean);
+  const labelName = nameParts.join(" - ");
   const price = formatMmk(unitPriceMmk ?? product.priceMmk);
 
   if (template.variant === "compact") {

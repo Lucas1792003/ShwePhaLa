@@ -44,6 +44,31 @@ Open work, grouped by area.
       POS deduction by base units. `products.pack_size` remains legacy-only.
       Follow-up: deeper refund UX for mixed units of the same product and
       full browser/real-scanner QA.
+- [x] **Unit-aware purchase receiving + stock adjustment.** Migration
+      `028` extends `receive_purchase_order` and `adjust_stock` to accept
+      `{product_unit_id, unit_qty}`; server validates the unit belongs to
+      the product, computes `base_qty = unit_qty × unit.base_quantity`,
+      and writes a snapshot (`product_unit_id`, `unit_name_snapshot`,
+      `unit_base_quantity_snapshot`, `selected_unit_quantity`) onto the
+      `*_items` row and the `inventory_movements` row. Inventory writes
+      remain in base units. UI: Purchase Receive modal + Adjust Stock
+      modal both render a Unit dropdown with a base-quantity preview.
+- [x] **Unit-aware stock transfer creation.** Migration `029` updates
+      `create_stock_transfer` to accept `{product_unit_id,
+      selected_unit_quantity}` per line, validate active unit ownership,
+      compute base requested quantity server-side, store unit snapshots on
+      `stock_transfer_items`, and validate combined source stock in base
+      units. Transfer completion from migration `028` propagates those
+      snapshots into both movement rows.
+- [x] **Unit-aware barcode label printing.** Barcode Labels can select a
+      Product Unit, print unit name + price, use unit-specific barcodes,
+      and fall back to SKU for default-unit labels only.
+- [x] **Product Units & Prices form UX.** Product create/edit no longer
+      exposes duplicate top-level Selling Price / Cost Price inputs. Pricing
+      lives on unit cards: Purchase Cost, Retail (Sale 1), Wholesale
+      (Sale 2), Special (Sale 3), barcode, and base-unit conversion.
+      Legacy `products.price_mmk` / `cost_mmk` stay synced from the default
+      unit for fallback compatibility.
 - [ ] **Playwright smoke tests** for the workflows enumerated in
       [08-testing-qa.md](./08-testing-qa.md).
 - [ ] **Print + barcode hardware QA.** Test ESC/POS thermal printers at

@@ -59,6 +59,22 @@ describe("BarcodeLabel", () => {
     expect(markup).toContain("Test Product - Case");
     expect(markup).toContain("55,000");
   });
+
+  it("renders selected price level on unit labels", () => {
+    const markup = renderToStaticMarkup(
+      <BarcodeLabel
+        product={product}
+        unitName="Case"
+        priceLevelName="Wholesale"
+        unitPriceMmk={51500}
+        value="CASE-WHOLESALE"
+        templateKey="standard"
+      />
+    );
+
+    expect(markup).toContain("Test Product - Case - Wholesale");
+    expect(markup).toContain("51,500");
+  });
 });
 
 describe("BarcodePrintSheet", () => {

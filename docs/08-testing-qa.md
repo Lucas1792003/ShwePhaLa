@@ -23,17 +23,21 @@ npm run lint         # ESLint
 | `src/lib/productImagePhoneUpload.test.ts` | Phone-upload helper |
 | `src/features/pos/cartStock.test.ts` | Stock guards + clamp, mixed sellable-unit base stock limits |
 | `src/features/pos/service.test.ts` | Cart totals use sellable-unit price, not base-unit multiplication |
-| `src/features/catalog/productUnits.test.ts` | Product Unit defaults, validation, migration SQL guards |
+| `src/features/catalog/productUnits.test.ts` | Product Unit defaults, validation (at least one active, exactly one default, default base_quantity must be 1, duplicate-name rejection, non-negative sale + purchase price), sanitize/normalize, virtual default fallback for legacy products, migration 026 + 027 SQL guards (sale_price_mmk / purchase_price_mmk split, complete_sale uses sale_price_mmk) |
 | `src/features/shifts/workHours.test.ts` | Active/closed duration, monthly attribution rule, formatting, group-by-user |
 | `src/features/admin/userFormErrors.test.ts` | DB constraint → user-friendly message mapping |
 | `src/lib/shopValidation.test.ts` | Shop name/code trimming, duplicate normalized name/code validation, same-row edit allowance, DB unique-index error mapping |
 | `src/lib/shopDelete.test.ts` | Shop reference counting across all shop-bearing tables, friendly reference summary, DB foreign-key (`23503`) error mapping |
 | `src/lib/barcodeValidation.test.ts` | Package barcode normalization (trim + scanner control-char strip), length + whitespace validation, in-form and cross-product duplicate detection, `checkBarcodeAddable` ruleset shared with the scan modal, DB unique-index (`23505` / `product_barcodes_unique_normalized_value`) error mapping |
 | `src/features/dashboard/dashboardMetrics.test.ts` | Scope, net revenue (gross − approved PARTIAL refunds), cost of goods, profit/margin/AOV (no NaN on empty data), Admin daily revenue/cost/profit trend, Sales by Category percentages, inventory value, **per-shop low stock (never sums across shops)**, top products ranking, supplier debt (RECEIVED-only) |
-| `src/features/pos/barcodeLookup.test.ts` | Barcode→SKU fallback + parity with label printer |
+| `src/features/pos/barcodeLookup.test.ts` | Unit-linked barcode lookup, SKU fallback to default unit, and parity with label printer |
 | `src/features/suppliers/debt.test.ts` | Debt math (debt starts on RECEIVED only) |
 | `src/features/suppliers/actions.test.ts` | `getPurchaseOrderActionState(po, user)` matrix |
 | `src/features/inventory/selectors.test.ts` | Per-shop stock isolation + composite PK |
+| `src/features/inventory/stockDisplay.test.ts` | `decomposeBaseQuantity` greedy unit picking (214 cans → 8 Package 22 Can), inactive/other-product unit filtering, `formatStockQuantity` fallback when registry is empty, `convertToBaseQuantity` clamps (10 packages × 24 = 240 cans, 2 cases × 24 = 48 cans) |
+| `src/features/inventory/unitAwareWorkflows.test.ts` | Migration 028 + 029 SQL guards: snapshot columns on `purchase_order_items` / `stock_transfer_items` / `inventory_movements`; `receive_purchase_order`, `adjust_stock`, and `create_stock_transfer` server-side unit-to-base conversion and unit ownership checks; `complete_stock_transfer` propagates the snapshot into both `TRANSFER_OUT` and `TRANSFER_IN` rows |
+| `src/features/transfers/unitTransfer.test.ts` | Transfer-create unit math: 2 Cases = 48 base units, legacy base-unit path, mixed-unit stock totals, max unit qty from remaining base stock |
+| `src/components/inventory/MovementsTable.test.tsx` | Movement history renders base-unit delta plus `Entered as X Unit` snapshots |
 | `src/features/categories/categoryIcons.test.ts` | Icon resolver |
 | `src/features/categories/categoryUsage.test.ts` | Safe-delete block message |
 | `src/features/unitTypes/unitTypeValidation.test.ts` | Unit-type name/abbrev normalization, duplicate name/abbrev rejection (case-insensitive), self-row edit exemption, blank-abbrev guard, sort_order ordering, `resolveProductUnit` active/inactive/legacy branches |
@@ -169,15 +173,33 @@ Receipt content checks (`/app/receipts/:saleId` after a sale):
 
 ## Product Unit / Barcode Linking QA
 
-`/app/admin/products` Add / Edit Product modal — Sellable Units section.
-Confirm there is no `Pack Size` field. Add sellable units (`Can`, `6 Pack`,
-`Case`) with base quantities and prices; save; reopen product; units should
-persist with exactly one default. Scan a barcode into a non-default unit row,
+Current Product modal QA target: `/app/admin/products` Add / Edit Product
+modal - **Units & Prices** cards. Confirm there is no `Pack Size` field and
+no duplicate top-level Selling Price / Cost Price block. Product Unit controls
+stock deduction; Price Level controls the selling price. Retail (Sale 1) is
+required for each active unit, while blank Wholesale/Special fields fall back
+to Retail and are not saved as zero.
+
+`/app/admin/products` Add / Edit Product modal — Units & Prices section.
+Confirm there is no `Pack Size` field. Add product units (`Can`, `6 Pack`,
+`Case`) with base quantities and Retail/Wholesale/Special prices; save;
+reopen product; units should persist with exactly one default. Scan a
+barcode into a non-default unit card,
 save, then scan it in POS and confirm the matching unit is added.
 The page itself is gated on `product:create` (ADMIN-only by default), so
 CASHIER and BUYER never see the barcode editor.
 
 Add / edit flow:
+- [ ] Selecting Base Stock Unit `Can` auto-creates a base unit card:
+      `Can = 1 Can`, and the base quantity input is read-only.
+- [ ] Changing Unit Type from `Piece` to `Can` updates the untouched base
+      unit card name/helper, but does not overwrite a manually renamed unit.
+- [ ] Retail (Sale 1) is required for each active unit. Blank
+      Wholesale/Special fields remain blank after save and fall back to
+      Retail; they are not saved as zero.
+- [ ] Purchase Cost can be left blank and remains nullable.
+- [ ] Deactivating the only active unit or the default base unit is blocked
+      by the UI/validation.
 - [ ] In the product modal, click `Scan barcode` → the scan modal opens
       with `Waiting for scanner...` and the capture input is focused.
 - [ ] Scan the physical package barcode → status flashes
@@ -203,8 +225,9 @@ Add / edit flow:
 - [ ] Save button shows "Saving..." and is disabled during the write.
 
 POS scan:
-- [ ] Open POS, scan the physical package barcode → product is added
-      to the cart, toast shows `Added <product name>`.
+- [ ] Open POS, scan the physical package barcode -> the matching
+      sellable unit is added to the cart, toast shows
+      `Added <product name> - <unit>`.
 - [ ] Scan the same barcode again → cart quantity increases by 1 (up
       to the per-shop stock limit).
 - [ ] Scanning more than stock allows shows
@@ -216,8 +239,10 @@ POS scan:
       barcode resolves to the barcode-owning product (barcode wins).
 
 Barcode Labels (`/app/admin/barcodes`):
-- [ ] Generated labels still print: products with a package barcode
-      use that value; products with only a SKU fall back to the SKU.
+- [ ] Generated labels print the selected sellable unit. Unit-specific
+      barcodes use that value; default units without a barcode fall back
+      to the SKU; non-default units without a barcode cannot print a
+      scannable label.
 - [ ] Printing a label for the package-barcode value, then scanning
       that printed label at POS, finds the same product.
 
@@ -460,7 +485,7 @@ Not yet implemented. Recommended coverage when the harness lands:
 | Shifts | ADMIN opens + closes shift after picking a shop (open is blocked without one); MANAGER opens + closes for assigned shop; CASHIER opens + closes own; second-open attempt by same cashier blocked; non-zero variance requires reason. |
 | Work Hours | ADMIN sees rows across all shops + filters; MANAGER sees assigned shop only; CASHIER sees own only; live "Active" duration updates after a minute; switching months reloads totals. |
 | Purchasing | Create PO → approve → receive → record payment (PARTIAL then full); supplier debt updates after each step. |
-| Transfers | Create + approve + complete; insufficient source stock blocked. |
+| Transfers | Create with default and non-default Product Units, preview base quantity, approve + complete; insufficient source stock blocked by combined base-unit total. |
 | Refund/Void | Cashier requests refund + void; manager approves; inventory restock visible. |
 | Roles | Cashier cannot reach `/app/suppliers/*`; manager cannot approve a PO; buyer cannot record a payment. |
 | Errors | Network drop during `loadData` shows Retry; failed payment keeps cart intact. |

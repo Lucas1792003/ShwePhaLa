@@ -34,7 +34,17 @@ for the full RPC list.
 - Stock validation is in base units. Example: 1 Case with `base_quantity=24`
   reserves 24 base units; with 25 base units in stock, only 1 single base
   unit remains available.
-- Per-line item discount %.
+- **Cart row UI is minimal by design** (`src/components/pos/CartItemRow.tsx`):
+  thumbnail, name (+ unit name suffix), unit price (with override pencil
+  when permitted), qty -/input/+, Remove, and a compact
+  `Deducts N base units` hint for non-base sellable units. The red
+  over-quantity warning is still rendered inline when
+  `stockStatus.exceedsStock` so cashiers see the problem without leaving
+  the cart.
+- Per-line item discount input is **hidden in the cart**. The cart-level
+  Discount % below the bill totals is the only discount input cashiers
+  reach. `sale_items.item_discount_pct` is still serialized when present
+  on historical rows so old receipts/refunds render unchanged.
 - Cart discount % applies after item discounts.
 - Price override requires `pos:override_price`.
 - Selling below stock requires `pos:override_stock`.
@@ -206,6 +216,20 @@ DOWN to the minute, with padded minutes once hours are present (`0h 12m`,
 
 - Stock is per-shop. The `inventory` table has composite PK
   `(shop_id, product_id)` — exactly one row per shop per product.
+- **The DB stores base units only.** `inventory.qty_base_units` is an integer
+  count of the smallest configured unit (Can, Sachet, Piece, ...) — never
+  packages or cases. RPCs `complete_sale`, `receive_purchase_order`,
+  `complete_stock_transfer`, and `adjust_stock` all write base units.
+- **Display layer decomposes** to a human-friendly multi-tier label.
+  `src/features/inventory/stockDisplay.ts` provides
+  `decomposeBaseQuantity(baseQty, productUnits, productId)`,
+  `formatStockQuantity(...)`, and `convertToBaseQuantity(qty, unit)`.
+  Headline example: with units `[Package=24, Can=1]` and 214 base units in
+  stock, `formatStockQuantity` returns `"8 Package 22 Can"`. The Inventory
+  page renders the raw base-unit count as the primary line (`214 Can`) and
+  the decomposed label as a faint secondary line — both come from the same
+  214 in the DB. If the registry is empty for a product, the helper falls
+  back to `<n> <product.unitType>`.
 - Every stock change writes an `inventory_movements` row with
   `qty_before`, `qty_change`, `qty_after`. Movements are immutable.
 
@@ -228,6 +252,15 @@ Movement types:
   `inventory:damage`), and shop scope. It blocks negative stock unless the
   caller holds `inventory:override_negative` (NOT `pos:override_stock` —
   that's the POS-side override).
+- **Unit-aware adjustment** (migration `028`). The RPC accepts optional
+  `p_product_unit_id` + `p_unit_qty`; when set, server resolves the
+  unit (must belong to the product and be active), computes
+  `base_delta = sign(p_quantity_delta) × p_unit_qty × unit.base_quantity`,
+  and writes that base delta to inventory plus the unit snapshot
+  (`product_unit_id`, `unit_name_snapshot`, `unit_base_quantity_snapshot`,
+  `selected_unit_quantity`) onto the `inventory_movements` row. Legacy
+  callers that pass only the base-unit delta still work. The Adjust
+  Stock modal renders a Unit dropdown when product_units are configured.
 - Low-stock badge: `qtyBaseUnits <= lowStockThreshold`.
 - Out-of-stock: `qtyBaseUnits <= 0` blocks POS sale unless
   `pos:override_stock`.
@@ -237,6 +270,12 @@ Movement types:
 - `/app/inventory` Movements tab requires `inventory:view_movements`. A
   cashier with only `inventory:view_stock` sees current stock but not
   movement history. The SELECT RLS enforces this server-side as well.
+- Movement rows render the base-unit delta as the primary line
+  (`+240 Can`) and the snapshot as a faint sub-line (`Entered as 10
+  Package`) when migration 028's snapshot columns are populated. Pre-028
+  rows render just the base line — never recomputed from the live
+  `product_units` registry, so old history stays accurate even if a
+  unit's `base_quantity` is later edited.
 
 ## Purchase Orders + Supplier Debt
 
@@ -252,6 +291,15 @@ available from non-terminal states.
    p_received_items)` — gated by `purchase:receive`. Records received qty
    (partial supported), increases inventory, writes `PURCHASE_IN`
    movements, writes audit, sets PO `RECEIVED`. All in one transaction.
+   **Unit-aware path** (migration `028`): each item in `p_received_items`
+   may pass either `received_qty` (legacy base) or
+   `{product_unit_id, received_unit_qty}` — the server resolves the
+   sellable unit, validates it belongs to the product and is active,
+   then computes `received_qty = received_unit_qty × unit.base_quantity`.
+   The chosen unit + selected qty + base_quantity snapshot is persisted
+   on `purchase_order_items` and `inventory_movements` so the ledger can
+   render `+240 Can (entered as 10 Package)`. Inventory writes stay in
+   base units.
 4. **Cancel.** `cancel_purchase_order(...)` — non-terminal POs only.
 
 ### Supplier debt rule
@@ -311,6 +359,20 @@ approved / canceled POs add no debt.
 Lifecycle: `PENDING → APPROVED → COMPLETED`, with `CANCELED` and `REJECTED`
 exits.
 
+Transfer creation is unit-aware. The UI lets the user choose a Product
+Unit (`Can`, `Case`, `Package`, ...) and enter a quantity in that unit.
+The preview shows the resulting base-unit quantity, but
+`create_stock_transfer` (migration `029`) is the source of truth: it
+validates the unit belongs to the product and is active, computes
+`requested_qty = selected_unit_quantity x product_units.base_quantity`,
+stores that base quantity, and snapshots `product_unit_id`,
+`unit_name_snapshot`, `unit_base_quantity_snapshot`, and
+`selected_unit_quantity` on `stock_transfer_items`.
+
+Creation validates source stock in base units, aggregated by product
+across all transfer lines. Example: with 25 cans available, `1 Case`
+(`24`) plus `1 Can` is allowed, but `2 Case` (`48`) is rejected.
+
 - **Create** at the source shop — `transfer:create`.
 - **Approve / reject** at the destination shop — `transfer:approve`. Can
   adjust quantities (partial approval).
@@ -321,6 +383,10 @@ exits.
   shops' stock, writes audit — all atomically. Sorted per-shop advisory
   locks prevent transfer-vs-transfer deadlocks.
 - **Cancel** pending transfers — `transfer:cancel`.
+
+Completion moves the stored base quantities and propagates the stored unit
+snapshots into movement history, so the ledger can show `-48 Can` with
+`Entered as 2 Case`.
 
 ## Refund / Void
 
@@ -346,9 +412,10 @@ exits.
   `BarcodePrintSheet` and calls `window.print()`.
 - Templates: Compact 50×25mm, Standard 60×30mm (default), Price-focused
   60×30mm, Large 70×40mm — see `src/features/barcodes/labelTemplates.ts`.
-- Barcode value: first `product_barcodes.value` → fall back to
-  `product.sku` → otherwise the product cannot print a label. Same rule
-  as the POS scanner (see POS Barcode Scan above).
+- Barcode value: selected Product Unit barcode first; for the default unit
+  only, fall back to `product.sku`; otherwise the selected unit cannot
+  print a scannable label. Same rule as the POS scanner (see POS Barcode
+  Scan above).
 - Renderer: CODE128 via `BarcodeSvg`.
 
 ## Products / Categories / Pricing
@@ -367,9 +434,10 @@ exits.
   it returns the normalized value to the page handler, which runs
   `checkBarcodeAddable` (in-form duplicate → cross-product duplicate)
   and either rejects (modal stays open, inline error) or appends to
-  the target unit barcode field and toasts `Barcode added`. On save the page calls
-  `replaceProductBarcodes(productId, rows)` — a delete-then-insert
-  reconcile that throws on the DB unique index
+  the target unit barcode field and toasts `Barcode added`. On save the
+  page calls `replaceProductBarcodes(productId, rows)` to reconcile
+  barcode rows with their `product_unit_id`; the write still throws on the
+  DB unique index
   `product_barcodes_unique_normalized_value` (migration 023) and shows
   `A barcode with this value is already linked to another product.`
   inline. Validation is normalize → trim + scanner control-char strip,
@@ -378,10 +446,18 @@ exits.
   never reach this editor.
 - Product Units now replace fixed package-size behavior. Each product must
   have one active default sellable unit and may have more active units such
-  as `6 Pack`, `Case`, or `Package`. Each unit stores base quantity, unit
-  price, default/active flags, and an optional barcode. Default-unit
-  barcodes have `product_unit_id = null`; non-default barcodes store the
-  unit id.
+  as `6 Pack`, `Case`, or `Package`. Each unit stores base quantity,
+  `sale_price_mmk` (Retail/default fallback, required to be positive in
+  the form), an optional `purchase_price_mmk`
+  (nullable, ≥ 0; used for per-unit cost / supplier debt as soon as the
+  unit-aware purchase flow ships), default/active flags, and an optional
+  barcode. Default-unit barcodes have `product_unit_id = null`; non-default
+  barcodes store the unit id. The default unit must always have
+  `base_quantity = 1` — that's what makes it the "smallest" stock unit
+  every other tier converts to. `validateProductUnits` enforces this on
+  the form. Migration `027` is what split prices into two columns and
+  backfilled `purchase_price_mmk` for default units from the legacy
+  `products.cost_mmk`.
 - Product images compressed `<= 100 KB` and uploaded to the
   `product-images` Storage bucket; the row stores only the public URL.
 - A phone QR upload flow uses temporary one-time tokens — see
@@ -393,6 +469,28 @@ exits.
 - The old single `Pack Size` field is no longer shown in the Product
   create/edit modal. Existing `products.pack_size` / `Product.packSize`
   data is legacy-only; new package selling uses Product Units.
+- The Product create/edit modal now groups product-specific unit conversion,
+  purchase cost, Retail (Sale 1), Wholesale (Sale 2), Special (Sale 3),
+  and barcode fields inside **Units & Prices** cards. The top-level
+  product section no longer shows separate Selling Price / Cost Price
+  inputs; legacy `products.price_mmk` and `products.cost_mmk` are synced
+  from the default unit's Retail price and Purchase Cost for backward
+  compatibility.
+- The base/default unit card is locked to `base_quantity = 1` and explains
+  `Base unit always equals 1 <unit type>`. Retail/default price is required
+  for every active unit. Blank Wholesale/Special fields are intentionally
+  not saved as `0`; they fall back to Retail during price resolution.
+- **Hard delete** for products goes through the `delete_product(p_product_id)`
+  RPC (migration `024`). Direct client deletes are blocked: `products`
+  has no DELETE RLS policy, and `inventory` has all writes revoked
+  from `authenticated` (see migration `010`). The RPC runs
+  `SECURITY DEFINER`, checks `app_has_perm('product:delete')` (ADMIN
+  by default), clears inventory rows for the product (the FK has no
+  CASCADE), then deletes the product. `product_barcodes`, `price_tiers`,
+  and `product_units` cascade automatically. The delete button is shown
+  for both active and inactive rows in the admin Products page. Sale
+  history (`sale_items`) keeps the loose `product_id` reference; historical
+  reports still render the saved name/price snapshot.
 
 ### Categories
 
@@ -403,6 +501,13 @@ exits.
   it. Both the UI and the `deleteCategory` store action enforce the rule
   via `getCategoryDeleteBlockMessage`. Products are never deleted or
   auto-reassigned.
+- **Duplicate look check.** Creating or editing a category is blocked
+  when another active category already uses the **same icon and the
+  same color**. The check compares the *effective* icon key
+  (`resolveCategoryIcon(iconKey, name)`), so an icon-less category that
+  resolves its icon from its name still participates in the rule. The
+  duplicate-name check still runs first. See
+  `handleSaveCategory` in `src/pages/ProductsManagePage.tsx`.
 - POS filter buttons and other selectors are store-driven; no hardcoded
   category list anywhere.
 
@@ -430,6 +535,23 @@ exits.
 - Unit type is the base stock unit label. Product Units are separate,
   product-specific sellable units. Inventory, purchases, transfers, and
   adjustments continue to use base units.
+
+### Price Levels
+
+- Product Unit controls stock deduction; Price Level controls the selling
+  price for that unit. Example: selling `1 Package` at `Wholesale` deducts
+  the package's base quantity but charges the Package / Wholesale price.
+- Migration `030` adds `price_levels` and `product_unit_prices`. Seeded
+  active levels are Retail (Sale 1, default), Wholesale (Sale 2), and
+  Special (Sale 3). Product Unit cards render active levels dynamically as
+  price columns.
+- Retail/default price is required for every active unit. Wholesale and
+  Special are optional; a blank optional price is not saved as `0` and
+  falls back to Retail during price resolution.
+- POS previews use the frontend resolver, but `complete_sale` is the final
+  source of truth. It resolves shop-specific price, global price, default
+  Retail fallback, then legacy `product_units.sale_price_mmk`, and writes
+  price-level snapshots to `sale_items` for receipts/history.
 
 ### Price tiers
 

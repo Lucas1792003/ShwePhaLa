@@ -28,7 +28,8 @@ const unit = (overrides: Partial<ProductUnit> = {}): ProductUnit => ({
   productId: "prod-1",
   name: "Can",
   baseQuantity: 1,
-  priceMmk: 1000,
+  salePriceMmk: 1000,
+  purchasePriceMmk: undefined,
   isDefault: true,
   isActive: true,
   sortOrder: 0,
@@ -93,7 +94,7 @@ describe("findProductForScan", () => {
       productId: "p1",
       name: "Case",
       baseQuantity: 24,
-      priceMmk: 55000,
+      salePriceMmk: 55000,
       isDefault: false,
     });
     const result = findProductForScan(

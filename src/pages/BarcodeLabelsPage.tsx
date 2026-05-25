@@ -209,7 +209,7 @@ export const BarcodeLabelsPage = () => {
                   ) : (
                     <div className="mt-auto pt-1 text-xs text-amber-700">No barcode/SKU</div>
                   )}
-                  <div className="text-sm font-bold text-emerald-700">{formatMmk(defaultUnit.priceMmk)}</div>
+                  <div className="text-sm font-bold text-emerald-700">{formatMmk(defaultUnit.salePriceMmk)}</div>
                 </div>
               </button>
             );
@@ -245,7 +245,7 @@ export const BarcodeLabelsPage = () => {
                     <div className="mt-2 text-xs uppercase tracking-wide text-slate-500">SKU</div>
                     <div className="mt-0.5 font-medium text-slate-800">{selected.sku ?? "-"}</div>
                     <div className="mt-2 text-xs uppercase tracking-wide text-slate-500">Price</div>
-                    <div className="mt-0.5 font-bold text-emerald-700">{formatMmk(selectedUnit.priceMmk)}</div>
+                    <div className="mt-0.5 font-bold text-emerald-700">{formatMmk(selectedUnit.salePriceMmk)}</div>
                   </div>
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
@@ -277,7 +277,7 @@ export const BarcodeLabelsPage = () => {
                     >
                       {selectedUnits.map((unit) => (
                         <option key={unit.id} value={unit.id}>
-                          {unit.name} - {formatMmk(unit.priceMmk)}
+                          {unit.name} - {formatMmk(unit.salePriceMmk)}
                         </option>
                       ))}
                     </Select>
@@ -367,7 +367,7 @@ export const BarcodeLabelsPage = () => {
                       <BarcodeLabel
                         product={selected}
                         unitName={selectedUnit.name}
-                        unitPriceMmk={selectedUnit.priceMmk}
+                        unitPriceMmk={selectedUnit.salePriceMmk}
                         value={selectedBarcode.value}
                         templateKey={selectedTemplate.key}
                       />
@@ -414,7 +414,7 @@ export const BarcodeLabelsPage = () => {
                         <BarcodeLabel
                           product={selected}
                           unitName={selectedUnit.name}
-                          unitPriceMmk={selectedUnit.priceMmk}
+                          unitPriceMmk={selectedUnit.salePriceMmk}
                           value={selectedBarcode.value}
                           templateKey={selectedTemplate.key}
                         />
@@ -437,7 +437,7 @@ export const BarcodeLabelsPage = () => {
         <BarcodePrintSheet
           product={printing.product}
           unitName={printing.unit.name}
-          unitPriceMmk={printing.unit.priceMmk}
+          unitPriceMmk={printing.unit.salePriceMmk}
           value={printing.value}
           quantity={printing.quantity}
           templateKey={printing.templateKey}

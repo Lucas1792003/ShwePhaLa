@@ -4,8 +4,8 @@ import { supabase } from "../../lib/supabase";
 import { reportError } from "../../lib/errors";
 import { useAppStore } from "../appStore";
 import type {
-  AuditLog, Category, Inventory, InventoryMovement, PriceTier,
-  Product, ProductBarcode, ProductUnit, PurchaseOrder, PurchaseOrderItem,
+  AuditLog, Category, Inventory, InventoryMovement, PriceLevel, PriceTier,
+  Product, ProductBarcode, ProductUnit, ProductUnitPrice, PurchaseOrder, PurchaseOrderItem,
   Refund, Sale, SaleItem, Shift, Shop, StockTransfer, StockTransferItem,
   Supplier, SupplierPayment, UnitType, User,
 } from "../../types";
@@ -14,6 +14,7 @@ import type {
 import { createShopSlice } from "./slices/shopSlice";
 import { createCategorySlice } from "./slices/categorySlice";
 import { createUnitTypeSlice } from "./slices/unitTypeSlice";
+import { createPriceLevelSlice } from "./slices/priceLevelSlice";
 import { createProductSlice } from "./slices/productSlice";
 import { createInventorySlice } from "./slices/inventorySlice";
 import { createShiftSlice } from "./slices/shiftSlice";
@@ -80,10 +81,39 @@ const mapProductUnit = (r: any): ProductUnit => ({
   productId: r.product_id,
   name: r.name,
   baseQuantity: r.base_quantity,
-  priceMmk: r.price_mmk,
+  // `price_mmk` is the legacy column read once after migration 027 ships
+  // (kept here only to survive a partial deploy where the column briefly
+  // overlaps both names). After the migration runs everywhere, the
+  // `price_mmk` branch never matches.
+  salePriceMmk: r.sale_price_mmk ?? r.price_mmk,
+  purchasePriceMmk: r.purchase_price_mmk ?? undefined,
   isDefault: r.is_default,
   isActive: r.is_active,
   sortOrder: r.sort_order,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapPriceLevel = (r: any): PriceLevel => ({
+  id: r.id,
+  code: r.code,
+  name: r.name,
+  isDefault: r.is_default,
+  isActive: r.is_active,
+  sortOrder: r.sort_order,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapProductUnitPrice = (r: any): ProductUnitPrice => ({
+  id: r.id,
+  productUnitId: r.product_unit_id,
+  priceLevelId: r.price_level_id,
+  shopId: r.shop_id ?? undefined,
+  priceMmk: r.price_mmk,
+  isActive: r.is_active,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -107,6 +137,10 @@ const mapMovement = (r: any): InventoryMovement => ({
   qtyChange: r.qty_change, qtyBefore: r.qty_before, qtyAfter: r.qty_after,
   reason: r.reason, referenceType: r.reference_type ?? undefined,
   referenceId: r.reference_id ?? undefined, createdBy: r.created_by, createdAt: r.created_at,
+  productUnitId: r.product_unit_id ?? undefined,
+  unitNameSnapshot: r.unit_name_snapshot ?? undefined,
+  unitBaseQuantitySnapshot: r.unit_base_quantity_snapshot ?? undefined,
+  selectedUnitQuantity: r.selected_unit_quantity ?? undefined,
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -135,6 +169,11 @@ const mapPurchaseOrderItem = (r: any): PurchaseOrderItem => ({
   id: r.id, purchaseOrderId: r.purchase_order_id, productId: r.product_id,
   orderedQty: r.ordered_qty, receivedQty: r.received_qty ?? undefined,
   unitCostMmk: r.unit_cost_mmk, lineTotalMmk: r.line_total_mmk,
+  productUnitId: r.product_unit_id ?? undefined,
+  unitNameSnapshot: r.unit_name_snapshot ?? undefined,
+  unitBaseQuantitySnapshot: r.unit_base_quantity_snapshot ?? undefined,
+  selectedUnitQuantity: r.selected_unit_quantity ?? undefined,
+  unitPurchasePriceSnapshot: r.unit_purchase_price_snapshot ?? undefined,
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -161,6 +200,10 @@ const mapStockTransferItem = (r: any): StockTransferItem => ({
   id: r.id, transferId: r.transfer_id, productId: r.product_id,
   requestedQty: r.requested_qty, approvedQty: r.approved_qty ?? undefined,
   transferredQty: r.transferred_qty ?? undefined,
+  productUnitId: r.product_unit_id ?? undefined,
+  unitNameSnapshot: r.unit_name_snapshot ?? undefined,
+  unitBaseQuantitySnapshot: r.unit_base_quantity_snapshot ?? undefined,
+  selectedUnitQuantity: r.selected_unit_quantity ?? undefined,
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -193,6 +236,9 @@ const mapSaleItem = (r: any): SaleItem => ({
   unitPriceMmkSnapshot: r.unit_price_mmk_snapshot ?? undefined,
   baseQuantitySold: r.base_quantity_sold ?? undefined,
   stockOverrideBy: r.stock_override_by ?? undefined,
+  priceLevelId: r.price_level_id ?? undefined,
+  priceLevelNameSnapshot: r.price_level_name_snapshot ?? undefined,
+  priceSourceSnapshot: r.price_source_snapshot ?? undefined,
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -224,6 +270,7 @@ export const useDataStore = create<DataState>()((...args) => {
     ...createShopSlice(...args),
     ...createCategorySlice(...args),
     ...createUnitTypeSlice(...args),
+    ...createPriceLevelSlice(...args),
     ...createProductSlice(...args),
     ...createInventorySlice(...args),
     ...createShiftSlice(...args),
@@ -248,6 +295,7 @@ export const useDataStore = create<DataState>()((...args) => {
       try {
         const [
           shops, users, categories, unitTypes, products, productUnits, barcodes, priceTiers,
+          priceLevels, productUnitPrices,
           inventory, movements, suppliers, purchaseOrders, purchaseOrderItems, supplierPayments,
           stockTransfers, stockTransferItems, shifts, sales, saleItems,
           reprintLogs, refunds, auditLogs,
@@ -260,6 +308,8 @@ export const useDataStore = create<DataState>()((...args) => {
           supabase.from("product_units").select("*").order("sort_order", { ascending: true }),
           supabase.from("product_barcodes").select("*"),
           supabase.from("price_tiers").select("*"),
+          supabase.from("price_levels").select("*").order("sort_order", { ascending: true }),
+          supabase.from("product_unit_prices").select("*"),
           supabase.from("inventory").select("*"),
           supabase.from("inventory_movements").select("*").order("created_at", { ascending: false }).limit(500),
           supabase.from("suppliers").select("*"),
@@ -280,7 +330,9 @@ export const useDataStore = create<DataState>()((...args) => {
         // The arrays default to [] otherwise — that would render an empty
         // shop with no error indication, hiding the real cause.
         const failedRead = [
-          shops, users, categories, unitTypes, products, productUnits, barcodes, priceTiers, inventory, movements,
+          shops, users, categories, unitTypes, products, productUnits, barcodes, priceTiers,
+          priceLevels, productUnitPrices,
+          inventory, movements,
           suppliers, purchaseOrders, purchaseOrderItems, supplierPayments,
           stockTransfers, stockTransferItems, shifts, sales, saleItems,
           reprintLogs, refunds, auditLogs,
@@ -309,6 +361,8 @@ export const useDataStore = create<DataState>()((...args) => {
           productUnits: (productUnits.data ?? []).map(mapProductUnit),
           barcodes: (barcodes.data ?? []).map(mapBarcode),
           priceTiers: (priceTiers.data ?? []).map(mapPriceTier),
+          priceLevels: (priceLevels.data ?? []).map(mapPriceLevel),
+          productUnitPrices: (productUnitPrices.data ?? []).map(mapProductUnitPrice),
           inventory: (inventory.data ?? []).map(mapInventory),
           movements: (movements.data ?? []).map(mapMovement),
           suppliers: (suppliers.data ?? []).map(mapSupplier),

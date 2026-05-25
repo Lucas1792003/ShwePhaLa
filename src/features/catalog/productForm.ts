@@ -5,13 +5,11 @@ export const PRODUCT_FORM_VISIBLE_FIELDS = [
   "Product Name",
   "Product Image",
   "Category",
-  "Unit Type",
-  "Selling Price",
-  "Cost Price",
+  "Base Stock Unit",
   "Low Stock Threshold",
   "Expiry Date",
   "Active",
-  "Sellable Units",
+  "Units & Prices",
 ] as const;
 
 export interface ProductFormValues {

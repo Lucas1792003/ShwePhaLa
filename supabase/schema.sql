@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS product_units (
   product_id text NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   name text NOT NULL,
   base_quantity integer NOT NULL CHECK (base_quantity > 0),
-  price_mmk integer NOT NULL CHECK (price_mmk >= 0),
+  sale_price_mmk integer NOT NULL CHECK (sale_price_mmk >= 0),
+  purchase_price_mmk integer CHECK (purchase_price_mmk IS NULL OR purchase_price_mmk >= 0),
   is_default boolean NOT NULL DEFAULT false,
   is_active boolean NOT NULL DEFAULT true,
   sort_order integer NOT NULL DEFAULT 0,
@@ -137,7 +138,11 @@ CREATE TABLE IF NOT EXISTS inventory_movements (
   reference_type text,
   reference_id text,
   created_by text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  product_unit_id text REFERENCES product_units(id) ON DELETE SET NULL,
+  unit_name_snapshot text,
+  unit_base_quantity_snapshot integer,
+  selected_unit_quantity integer
 );
 
 -- suppliers
@@ -185,7 +190,12 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
   ordered_qty integer NOT NULL,
   received_qty integer,
   unit_cost_mmk integer NOT NULL,
-  line_total_mmk integer NOT NULL
+  line_total_mmk integer NOT NULL,
+  product_unit_id text REFERENCES product_units(id) ON DELETE SET NULL,
+  unit_name_snapshot text,
+  unit_base_quantity_snapshot integer,
+  selected_unit_quantity integer,
+  unit_purchase_price_snapshot integer
 );
 
 -- supplier_payments
@@ -231,7 +241,11 @@ CREATE TABLE IF NOT EXISTS stock_transfer_items (
   product_id text NOT NULL,
   requested_qty integer NOT NULL,
   approved_qty integer,
-  transferred_qty integer
+  transferred_qty integer,
+  product_unit_id text REFERENCES product_units(id) ON DELETE SET NULL,
+  unit_name_snapshot text,
+  unit_base_quantity_snapshot integer,
+  selected_unit_quantity integer
 );
 
 -- shifts

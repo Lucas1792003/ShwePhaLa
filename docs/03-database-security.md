@@ -51,6 +51,10 @@ Apply in numeric order. The current ordered list:
 | `024_delete_product_rpc.sql` | Permission-checked product delete RPC |
 | `025_unit_types.sql` | Dynamic Unit Types registry for base stock unit labels |
 | `026_product_sellable_units.sql` | `product_units`, unit-linked barcodes, sale item unit snapshots, and `complete_sale` validation/deduction by base units |
+| `027_product_unit_prices.sql` | Splits `product_units.price_mmk` into `sale_price_mmk` (NOT NULL, ≥ 0) and `purchase_price_mmk` (nullable, ≥ 0); backfills purchase price for default units from `products.cost_mmk`; updates `complete_sale` to read `sale_price_mmk` |
+| `028_unit_aware_stock_workflows.sql` | Unit-aware purchase receiving + stock adjustment. Adds optional `product_unit_id` + snapshot columns to `purchase_order_items`, `stock_transfer_items`, `inventory_movements`. Updates `receive_purchase_order` to accept `{product_unit_id, received_unit_qty}` per line (server multiplies by `base_quantity`). Updates `adjust_stock` to accept optional `p_product_unit_id` + `p_unit_qty`. `complete_stock_transfer` propagates any snapshot already on `stock_transfer_items` into both movement rows. Inventory writes stay in base units. |
+| `029_unit_aware_transfer_creation.sql` | Updates `create_stock_transfer` so transfer lines may pass `{product_unit_id, selected_unit_quantity}`. The RPC validates active unit ownership, computes requested base quantity server-side, stores unit snapshots on `stock_transfer_items`, validates combined source stock in base units, and keeps approval responses from dropping snapshots. |
+| `030_price_levels.sql` | Manual POS price levels (Retail / Wholesale / Special). Adds `price_levels` registry + `product_unit_prices` (unit × level × optional shop). Backfills Retail rows from `product_units.sale_price_mmk`. Adds price-level snapshot columns (`price_level_id`, `price_level_name_snapshot`, `price_source_snapshot`) to `sale_items`. Updates `complete_sale` to accept `price_level_id` per item and resolve the final price server-side via the chain: shop-specific → global at level → default-level (shop then global) → legacy `sale_price_mmk`. |
 
 > **Migration order warning.** Some later migrations depend on identity
 > helpers from `003` and the audit-write lockdown from `013`. Always apply
@@ -97,12 +101,12 @@ the audit row — all in one transaction.
 | `approve_void_request(p_request_id)` | Manager approves a void; restocks all items |
 | `reject_refund_void_request(p_request_id, p_reason)` | Reject a pending request |
 | `receive_purchase_order(p_purchase_order_id, p_received_items)` | Receive a PO: PO status, received qty, inventory, `PURCHASE_IN` movements, audit |
-| `complete_stock_transfer(p_transfer_id)` | Complete a transfer: source `TRANSFER_OUT` + destination `TRANSFER_IN` + audit |
+| `complete_stock_transfer(p_transfer_id)` | Complete a transfer: source `TRANSFER_OUT` + destination `TRANSFER_IN` + audit; moves base units and propagates stored unit snapshots into movements |
 | `adjust_stock(...)` | Manual adjustment / damage; checks `inventory:override_negative` if delta drives stock negative |
 | `open_shift(p_shop_id, p_opening_cash_mmk)` | Open a shift; rejects concurrent open shifts per cashier |
 | `close_shift(p_shift_id, p_closing_cash_mmk, p_variance_reason)` | Close a shift; recomputes expected cash; requires reason on non-zero variance |
 | `create_purchase_order(...)`, `approve_purchase_order(p_purchase_order_id)`, `cancel_purchase_order(p_purchase_order_id, p_reason)` | PO lifecycle (non-receiving steps) |
-| `create_stock_transfer(...)`, `approve_stock_transfer(p_transfer_id)`, `reject_stock_transfer(p_transfer_id, p_reason)`, `cancel_stock_transfer(p_transfer_id, p_reason)` | Transfer lifecycle (non-completion steps) |
+| `create_stock_transfer(...)`, `approve_stock_transfer(p_transfer_id)`, `reject_stock_transfer(p_transfer_id, p_reason)`, `cancel_stock_transfer(p_transfer_id, p_reason)` | Transfer lifecycle (non-completion steps). Create accepts unit-aware lines but stores requested/approved quantity as base units. |
 | `record_supplier_payment(p_purchase_order_id, p_amount_mmk, p_payment_method, p_reference_no, p_notes)` | Supplier payment against a RECEIVED PO; updates `paid_mmk` + `payment_status` |
 | `log_receipt_reprint(p_sale_id)` | Reprint log + audit row |
 | `log_audit_event(...)` | Generic audit writer for admin/reference events; forces `actor_id` to `current_app_user()` |

@@ -30,7 +30,8 @@ const unit = (overrides: Partial<ProductUnit> = {}): ProductUnit => ({
   productId: "prod-1",
   name: "Sachet",
   baseQuantity: 1,
-  priceMmk: 1000,
+  salePriceMmk: 1000,
+  purchasePriceMmk: undefined,
   isDefault: true,
   isActive: true,
   sortOrder: 0,
@@ -69,7 +70,7 @@ describe("ProductFinder", () => {
         onSearch={() => undefined}
         onCategory={() => undefined}
         inventoryById={{ "prod-1": 100 }}
-        productUnits={[unit(), unit({ id: "unit-case", name: "Case", baseQuantity: 24, priceMmk: 22000, isDefault: false })]}
+        productUnits={[unit(), unit({ id: "unit-case", name: "Case", baseQuantity: 24, salePriceMmk: 22000, isDefault: false })]}
         onAdd={() => undefined}
       />
     );

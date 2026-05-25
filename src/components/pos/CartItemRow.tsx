@@ -71,6 +71,13 @@ export const CartItemRow = ({
         <h4 className="truncate text-sm font-semibold text-slate-800">
           {item.name} {item.unitName ? `- ${item.unitName}` : ""}
         </h4>
+        {item.priceLevelName && (
+          // Show the price level chip next to the price so cashiers can
+          // see at a glance which level the line was rung up at.
+          <p className="text-[10px] font-medium uppercase tracking-wide text-emerald-700">
+            {item.priceLevelName}
+          </p>
+        )}
         <div className="flex items-center gap-2">
           <p className="text-sm font-bold text-emerald-600">{formatMmk(item.unitPriceMmk)}</p>
           {onOverridePrice && (

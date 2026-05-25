@@ -15,6 +15,12 @@ import { CartPanel } from "../components/pos/CartPanel";
 import { PaymentModal } from "../components/pos/PaymentModal";
 import { calculateCartTotals } from "../features/pos/service";
 import {
+  getActivePriceLevels,
+  getDefaultPriceLevel,
+  resolveProductUnitPrice,
+} from "../features/pricing/priceLevels";
+import { Select } from "../components/ui/Select";
+import {
   STOCK_OVERRIDE_REQUIRED_MESSAGE,
   STOCK_OVERRIDE_UI_REQUIRED_MESSAGE,
   clampCartItemQuantity,
@@ -40,6 +46,10 @@ export const PosPage = () => {
   const [overridePrice, setOverridePrice] = useState(0);
   const [showBarcodeInput, setShowBarcodeInput] = useState(false);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  // Selected POS price level. Newly added cart lines use this level.
+  // Existing lines keep whatever level they were rung up at (per spec
+  // — switching POS-level should not silently re-price a started cart).
+  const [activePriceLevelId, setActivePriceLevelId] = useState<string>("");
 
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) => state.users.find((user) => user.id === currentUserId));
@@ -47,11 +57,22 @@ export const PosPage = () => {
   const shops = useDataStore((state) => state.shops);
   const products = useDataStore((state) => state.products);
   const productUnits = useDataStore((state) => state.productUnits);
+  const priceLevels = useDataStore((state) => state.priceLevels);
+  const productUnitPrices = useDataStore((state) => state.productUnitPrices);
   const categories = useDataStore((state) => state.categories);
   const getInventoryQty = useDataStore((state) => state.getInventoryQty);
   const getProductByBarcode = useDataStore((state) => state.getProductByBarcode);
   const createSale = useDataStore((state) => state.createSale);
   const shifts = useDataStore((state) => state.shifts);
+
+  const activePriceLevels = useMemo(() => getActivePriceLevels(priceLevels), [priceLevels]);
+  // Pin the dropdown to the default (Retail) level whenever it loads /
+  // becomes available. Cashier can still switch it manually.
+  useEffect(() => {
+    if (activePriceLevelId) return;
+    const next = getDefaultPriceLevel(priceLevels) ?? activePriceLevels[0];
+    if (next) setActivePriceLevelId(next.id);
+  }, [activePriceLevelId, activePriceLevels, priceLevels]);
 
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
   const currentShop = shops.find((s) => s.id === shopId);
@@ -131,21 +152,41 @@ export const PosPage = () => {
       });
       return false;
     }
+    // Resolve the price for the CURRENT POS price level. The server
+    // re-resolves in `complete_sale` so even a stale value here can't
+    // result in an under- or over-charge.
+    const resolved = resolveProductUnitPrice({
+      unit,
+      priceLevelId: activePriceLevelId,
+      shopId: shopId ?? undefined,
+      priceLevels,
+      productUnitPrices,
+    });
     setCartItems((items) => {
-      const existing = items.find((item) => item.productId === product.id && item.productUnitId === unit.id);
+      // Cart uniqueness is now `productId + productUnitId + priceLevelId`
+      // so the same product+unit can appear once at Retail and once at
+      // Wholesale on the same receipt.
+      const existing = items.find(
+        (item) =>
+          item.productId === product.id &&
+          item.productUnitId === unit.id &&
+          item.priceLevelId === resolved.priceLevelId,
+      );
       if (existing) {
         return items.map((item) => (item.id === existing.id ? { ...item, qty: item.qty + 1 } : item));
       }
       return [
         ...items,
         {
-          id: `${product.id}-${unit.id}`,
+          id: `${product.id}-${unit.id}-${resolved.priceLevelId}`,
           productId: product.id,
           productUnitId: unit.id,
           name: product.name,
           unitName: unit.name,
           qty: 1,
-          unitPriceMmk: unit.priceMmk,
+          unitPriceMmk: resolved.priceMmk,
+          priceLevelId: resolved.priceLevelId,
+          priceLevelName: resolved.priceLevelName,
           unitBaseQuantity: unit.baseQuantity,
           unitsPerItem,
           unitLabel: unit.name,
@@ -355,6 +396,25 @@ export const PosPage = () => {
             autoFocus
           />
           <Button onClick={handleBarcodeSubmit}>Add</Button>
+        </div>
+      )}
+
+      {/* Price-level selector — applies to NEWLY added cart lines.
+          Existing lines keep whatever level they were rung up at. */}
+      {activePriceLevels.length > 1 && (
+        <div className="flex items-center gap-2 px-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Price level</span>
+          <Select
+            value={activePriceLevelId}
+            onChange={(event) => setActivePriceLevelId(event.target.value)}
+            className="max-w-[180px]"
+          >
+            {activePriceLevels.map((level) => (
+              <option key={level.id} value={level.id}>
+                {level.name}{level.isDefault ? " (default)" : ""}
+              </option>
+            ))}
+          </Select>
         </div>
       )}
 

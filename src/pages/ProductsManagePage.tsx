@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useForm, Controller } from "react-hook-form";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuthStore } from "../stores/authStore";
@@ -44,10 +44,19 @@ import {
   sanitizeProductUnits,
   validateProductUnits,
 } from "../features/catalog/productUnits";
+import { getActivePriceLevels } from "../features/pricing/priceLevels";
 
 type CategoryColor = "amber" | "red" | "green" | "blue" | "purple" | "slate" | "pink" | "teal" | "indigo" | "yellow" | "orange" | "cyan";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+const getPriceLevelFormLabel = (code: string, name: string): string => {
+  const normalized = code.toLowerCase();
+  if (normalized === "retail") return `${name} Price (Sale 1)`;
+  if (normalized === "wholesale") return `${name} Price (Sale 2)`;
+  if (normalized === "special") return `${name} Price (Sale 3)`;
+  return `${name} Price`;
+};
 
 export const ProductsManagePage = () => {
   const toast = useToast();
@@ -65,6 +74,9 @@ export const ProductsManagePage = () => {
   const updateProduct = useDataStore((state) => state.updateProduct);
   const deleteProduct = useDataStore((state) => state.deleteProduct);
   const replaceProductUnits = useDataStore((state) => state.replaceProductUnits);
+  const priceLevels = useDataStore((state) => state.priceLevels);
+  const productUnitPrices = useDataStore((state) => state.productUnitPrices);
+  const replaceProductUnitPrices = useDataStore((state) => state.replaceProductUnitPrices);
   const replaceProductBarcodes = useDataStore((state) => state.replaceProductBarcodes);
   const addCategory = useDataStore((state) => state.addCategory);
   const updateCategory = useDataStore((state) => state.updateCategory);
@@ -74,6 +86,7 @@ export const ProductsManagePage = () => {
   // Product modal state
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const previousUnitTypeRef = useRef("");
   // The product id used for BOTH the storage image path and the saved row.
   // Generated up-front on "Add" so the image can be uploaded before submit.
   const [formProductId, setFormProductId] = useState("");
@@ -82,6 +95,10 @@ export const ProductsManagePage = () => {
   // because the list is multi-row and capture is driven by a separate modal.
   const [formUnits, setFormUnits] = useState<ProductUnit[]>([]);
   const [unitBarcodes, setUnitBarcodes] = useState<Record<string, string>>({});
+  // formUnitLevelPrices[unitId][priceLevelId] = price (blank string = "no
+  // explicit price; fall back to default level"). Mirrors the price-level
+  // chain on the server — see resolveProductUnitPrice + migration 030.
+  const [formUnitLevelPrices, setFormUnitLevelPrices] = useState<Record<string, Record<string, string>>>({});
   const [scanUnitId, setScanUnitId] = useState<string | null>(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [productSaveError, setProductSaveError] = useState<string | null>(null);
@@ -124,7 +141,9 @@ export const ProductsManagePage = () => {
       // must either match an active unit type OR be the row's existing
       // legacy value (handled at submit time — see handleSubmit).
       unitType: z.string().min(1, "Unit type is required"),
-      priceMmk: z.number().min(1, "Price must be greater than 0"),
+      // Hidden legacy fallback field. Visible pricing now lives in Units &
+      // Prices; submit syncs this from the default unit's Retail price.
+      priceMmk: z.number().min(0, "Price must be 0 or greater"),
       costMmk: z.number().optional(),
       lowStockThreshold: z.number().min(0, "Threshold must be 0 or greater"),
       expiryDate: z.string().optional(),
@@ -196,21 +215,41 @@ export const ProductsManagePage = () => {
   const resetUnitEditor = () => {
     setFormUnits([]);
     setUnitBarcodes({});
+    setFormUnitLevelPrices({});
     setScanUnitId(null);
     setScanModalOpen(false);
     setProductSaveError(null);
   };
 
-  const buildInitialUnit = (productId: string, unitType: string, priceMmk: number) =>
-    makeDefaultProductUnit(productId, unitType || activeUnitTypes[0]?.name || "Piece", priceMmk);
+  // Active price levels are dynamic — admins can add a fourth tier later.
+  // Unit cards render one input per active level.
+  const activePriceLevels = useMemo(() => getActivePriceLevels(priceLevels), [priceLevels]);
+  const defaultPriceLevel = useMemo(
+    () => activePriceLevels.find((level) => level.isDefault) ?? activePriceLevels[0],
+    [activePriceLevels],
+  );
+
+  const buildInitialUnit = (
+    productId: string,
+    unitType: string,
+    salePriceMmk: number,
+    purchasePriceMmk?: number,
+  ) =>
+    makeDefaultProductUnit(
+      productId,
+      unitType || activeUnitTypes[0]?.name || "Piece",
+      salePriceMmk,
+      purchasePriceMmk,
+    );
 
   // Open modal for adding new product
   const handleAddProduct = () => {
+    const initialUnitType = activeUnitTypes[0]?.name ?? "Piece";
     form.reset({
       sku: "",
       name: "",
       category: activeCategories[0]?.name ?? "",
-      unitType: activeUnitTypes[0]?.name ?? "",
+      unitType: initialUnitType,
       priceMmk: 0,
       costMmk: undefined,
       lowStockThreshold: 10,
@@ -221,8 +260,14 @@ export const ProductsManagePage = () => {
     setEditingId(null);
     const productId = `prod-${Date.now()}`;
     setFormProductId(productId);
+    previousUnitTypeRef.current = initialUnitType;
     resetUnitEditor();
-    setFormUnits([buildInitialUnit(productId, activeUnitTypes[0]?.name ?? "Piece", 0)]);
+    const seedUnit = buildInitialUnit(productId, initialUnitType, 0, undefined);
+    setFormUnits([seedUnit]);
+    // Seed empty per-level prices so the inputs render immediately.
+    setFormUnitLevelPrices({
+      [seedUnit.id]: Object.fromEntries(activePriceLevels.map((level) => [level.id, ""])),
+    });
     setShowProductModal(true);
   };
 
@@ -243,13 +288,14 @@ export const ProductsManagePage = () => {
     });
     setEditingId(product.id);
     setFormProductId(product.id);
+    previousUnitTypeRef.current = product.unitType;
     resetUnitEditor();
     const savedUnits = productUnits
       .filter((unit) => unit.productId === product.id)
       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
     const units = savedUnits.length > 0
       ? savedUnits
-      : [buildInitialUnit(product.id, product.unitType, product.priceMmk)];
+      : [buildInitialUnit(product.id, product.unitType, product.priceMmk, product.costMmk)];
     setFormUnits(units);
     setUnitBarcodes(Object.fromEntries(
       units.map((unit) => {
@@ -260,12 +306,32 @@ export const ProductsManagePage = () => {
         return [unit.id, barcode?.value ?? ""];
       })
     ));
+    // Hydrate existing per-level prices. Only show **global** rows in the
+    // form — shop-specific overrides are managed separately and never
+    // reach this editor.
+    const nextLevelPrices: Record<string, Record<string, string>> = {};
+    for (const unit of units) {
+      const perLevel: Record<string, string> = {};
+      for (const level of priceLevels) {
+        const row = productUnitPrices.find(
+          (p) =>
+            p.productUnitId === unit.id &&
+            p.priceLevelId === level.id &&
+            p.shopId == null &&
+            p.isActive,
+        );
+        perLevel[level.id] = row ? String(row.priceMmk) : level.isDefault ? String(unit.salePriceMmk || "") : "";
+      }
+      nextLevelPrices[unit.id] = perLevel;
+    }
+    setFormUnitLevelPrices(nextLevelPrices);
     setShowProductModal(true);
   };
 
   const handleCloseProductModal = () => {
     setShowProductModal(false);
     setEditingId(null);
+    previousUnitTypeRef.current = "";
     resetUnitEditor();
     form.reset();
   };
@@ -304,6 +370,38 @@ export const ProductsManagePage = () => {
     );
   };
 
+  const updateUnitLevelPrice = (unitId: string, priceLevelId: string, rawValue: string) => {
+    const next = rawValue.replace(/[^\d]/g, "");
+    const isDefaultLevel = defaultPriceLevel?.id === priceLevelId;
+    const unit = formUnits.find((row) => row.id === unitId);
+
+    setFormUnitLevelPrices((prev) => ({
+      ...prev,
+      [unitId]: { ...(prev[unitId] ?? {}), [priceLevelId]: next },
+    }));
+
+    if (!isDefaultLevel) return;
+
+    const parsed = Number(next || 0);
+    const salePriceMmk = Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
+    updateFormUnit(unitId, { salePriceMmk });
+    if (unit?.isDefault) {
+      form.setValue("priceMmk", salePriceMmk, { shouldValidate: true });
+    }
+  };
+
+  const updateUnitPurchaseCost = (unitId: string, value: number | undefined) => {
+    const unit = formUnits.find((row) => row.id === unitId);
+    const purchasePriceMmk =
+      value === undefined || value === null || !Number.isFinite(value)
+        ? undefined
+        : Math.max(0, Math.trunc(value));
+    updateFormUnit(unitId, { purchasePriceMmk });
+    if (unit?.isDefault) {
+      form.setValue("costMmk", purchasePriceMmk, { shouldValidate: true });
+    }
+  };
+
   const addSellableUnit = () => {
     const id = `unit-${formProductId || Date.now()}-${Date.now()}`;
     const now = new Date().toISOString();
@@ -314,7 +412,8 @@ export const ProductsManagePage = () => {
         productId: formProductId,
         name: "",
         baseQuantity: 1,
-        priceMmk: 0,
+        salePriceMmk: 0,
+        purchasePriceMmk: undefined,
         isDefault: false,
         isActive: true,
         sortOrder: units.length,
@@ -322,6 +421,10 @@ export const ProductsManagePage = () => {
         updatedAt: now,
       },
     ]);
+    setFormUnitLevelPrices((prev) => ({
+      ...prev,
+      [id]: Object.fromEntries(activePriceLevels.map((level) => [level.id, ""])),
+    }));
   };
 
   const deactivateSellableUnit = (unitId: string) => {
@@ -343,8 +446,14 @@ export const ProductsManagePage = () => {
         ...unit,
         isDefault: unit.id === unitId,
         isActive: unit.id === unitId ? true : unit.isActive,
+        baseQuantity: unit.id === unitId ? 1 : unit.baseQuantity,
       }))
     );
+    const nextDefault = formUnits.find((unit) => unit.id === unitId);
+    if (nextDefault) {
+      form.setValue("priceMmk", nextDefault.salePriceMmk, { shouldValidate: true });
+      form.setValue("costMmk", nextDefault.purchasePriceMmk, { shouldValidate: true });
+    }
   };
 
   const openUnitScanModal = (unitId: string) => {
@@ -384,15 +493,46 @@ export const ProductsManagePage = () => {
     // Same id used for the storage image path (see formProductId / ProductImageInput).
     const productId = editingId || formProductId || `prod-${Date.now()}`;
     const existingProduct = editingId ? products.find((p) => p.id === editingId) : null;
-    const product = buildProductFromFormValues(values, productId, existingProduct);
-    const nextUnits = sanitizeProductUnits(formUnits.length > 0
+    const rawUnits = sanitizeProductUnits(formUnits.length > 0
       ? formUnits
-      : [buildInitialUnit(productId, values.unitType, values.priceMmk)], productId);
+      : [buildInitialUnit(productId, values.unitType, values.priceMmk, values.costMmk)], productId);
+    const nextUnits = defaultPriceLevel
+      ? rawUnits.map((unit) => {
+          const raw = formUnitLevelPrices[unit.id]?.[defaultPriceLevel.id];
+          if (raw === undefined || raw === "") return unit;
+          const retailPrice = Number(raw);
+          return Number.isFinite(retailPrice)
+            ? { ...unit, salePriceMmk: Math.max(0, Math.trunc(retailPrice)) }
+            : unit;
+        })
+      : rawUnits;
     const unitValidation = validateProductUnits(nextUnits);
     if (!unitValidation.valid) {
-      setProductSaveError(unitValidation.error ?? "Sellable units are invalid.");
+      setProductSaveError(unitValidation.error ?? "Units & Prices are invalid.");
       return;
     }
+    const defaultUnit = nextUnits.find((unit) => unit.isActive && unit.isDefault) ?? nextUnits[0];
+
+    if (defaultPriceLevel) {
+      for (const unit of nextUnits.filter((row) => row.isActive)) {
+        const raw = formUnitLevelPrices[unit.id]?.[defaultPriceLevel.id];
+        const retailPrice = raw === undefined || raw === "" ? unit.salePriceMmk : Number(raw);
+        if (!Number.isFinite(retailPrice) || retailPrice <= 0) {
+          setProductSaveError(`${getPriceLevelFormLabel(defaultPriceLevel.code, defaultPriceLevel.name)} is required for ${unit.name || "each active unit"}.`);
+          return;
+        }
+      }
+    }
+
+    const product = buildProductFromFormValues(
+      {
+        ...values,
+        priceMmk: defaultUnit?.salePriceMmk ?? values.priceMmk,
+        costMmk: defaultUnit?.purchasePriceMmk,
+      },
+      productId,
+      existingProduct,
+    );
 
     // Pre-flight barcode duplicate check against the loaded store data so
     // we fail fast before touching the DB. The DB unique index is the
@@ -423,6 +563,34 @@ export const ProductsManagePage = () => {
       else await addProduct(product, []);
 
       await replaceProductUnits(productId, nextUnits);
+
+      // Persist per-level prices. Blank input means "no row at this level"
+      // and the resolver will fall back to the default level / legacy
+      // sale_price_mmk per migration 030's chain. The default level price
+      // is always written so the legacy column stays in sync.
+      const defaultLevel = activePriceLevels.find((pl) => pl.isDefault) ?? activePriceLevels[0];
+      for (const unit of nextUnits) {
+        const perLevel = formUnitLevelPrices[unit.id] ?? {};
+        const rows: { priceLevelId: string; shopId?: string; priceMmk: number }[] = [];
+        for (const level of activePriceLevels) {
+          const raw = perLevel[level.id];
+          const isDefault = defaultLevel && level.id === defaultLevel.id;
+          if (raw === undefined || raw === "") {
+            // Default level always seeds from the unit's sale price even
+            // when the cashier left the column blank — keeps the legacy
+            // fallback in sync with the user's Retail expectation.
+            if (isDefault) rows.push({ priceLevelId: level.id, priceMmk: unit.salePriceMmk });
+            continue;
+          }
+          const n = Number(raw);
+          if (!Number.isFinite(n) || n < 0) {
+            setProductSaveError(`Invalid ${level.name} price for ${unit.name}.`);
+            throw new Error("invalid price-level input");
+          }
+          rows.push({ priceLevelId: level.id, priceMmk: Math.trunc(n) });
+        }
+        await replaceProductUnitPrices(unit.id, rows);
+      }
 
       // Then reconcile barcode rows. This call throws on DB unique-index
       // violation so a duplicate barcode is surfaced inline; the form
@@ -476,22 +644,32 @@ export const ProductsManagePage = () => {
   // Auto-generate SKU when category changes (new product only)
   const watchedCategory = form.watch("category");
   const watchedUnitType = form.watch("unitType");
-  const watchedPriceMmk = form.watch("priceMmk");
   useEffect(() => {
     if (!editingId && watchedCategory) generateSku(watchedCategory);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchedCategory, editingId]);
 
+  // Keep the untouched base unit row aligned with the selected base stock
+  // unit. Once an admin renames the row to something custom, leave it alone.
+  // running — we don't want to clobber manual edits.
   useEffect(() => {
-    if (editingId || formUnits.length !== 1 || !formUnits[0]?.isDefault) return;
+    const nextUnitType = watchedUnitType || "";
+    const previousUnitType = previousUnitTypeRef.current;
+    previousUnitTypeRef.current = nextUnitType || previousUnitType;
+    if (!nextUnitType) return;
+
     setFormUnits((units) =>
-      units.map((unit) => ({
-        ...unit,
-        name: watchedUnitType || unit.name,
-        priceMmk: Math.max(0, Math.trunc(watchedPriceMmk || 0)),
-      }))
+      units.map((unit, index) => {
+        if (!unit.isDefault) return unit;
+        const nameWasUntouched =
+          !unit.name ||
+          unit.name === previousUnitType ||
+          (!previousUnitType && index === 0);
+        if (!nameWasUntouched) return unit;
+        return { ...unit, name: nextUnitType, baseQuantity: 1 };
+      })
     );
-  }, [editingId, formUnits.length, watchedPriceMmk, watchedUnitType]);
+  }, [watchedUnitType]);
 
   // Category management functions
   const handleSaveCategory = () => {
@@ -918,7 +1096,7 @@ export const ProductsManagePage = () => {
               </Select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Unit Type *</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Base Stock Unit *</label>
               {(() => {
                 // Resolve the saved value so we can still render it for legacy
                 // or deactivated rows when editing an existing product.
@@ -972,49 +1150,12 @@ export const ProductsManagePage = () => {
                         {form.formState.errors.unitType.message}
                       </p>
                     )}
+                    <p className="mt-1 text-xs text-slate-500">
+                      Choose the smallest unit you count in inventory, such as Can, Bottle, or Sachet.
+                    </p>
                   </>
                 );
               })()}
-            </div>
-          </div>
-
-          {/* Price & Cost */}
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Selling Price (MMK) *</label>
-              <Controller
-                control={form.control}
-                name="priceMmk"
-                render={({ field }) => (
-                  <MoneyInput
-                    value={field.value}
-                    onChange={(next) => field.onChange(next ?? 0)}
-                    onBlur={field.onBlur}
-                    name={field.name}
-                    placeholder="0"
-                  />
-                )}
-              />
-              {form.formState.errors.priceMmk && (
-                <p className="mt-1 text-xs text-red-500">{form.formState.errors.priceMmk.message}</p>
-              )}
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Cost Price (MMK)</label>
-              <Controller
-                control={form.control}
-                name="costMmk"
-                render={({ field }) => (
-                  <MoneyInput
-                    value={field.value}
-                    onChange={field.onChange}
-                    onBlur={field.onBlur}
-                    name={field.name}
-                    allowEmpty
-                    placeholder="0"
-                  />
-                )}
-              />
             </div>
           </div>
 
@@ -1046,114 +1187,205 @@ export const ProductsManagePage = () => {
             </div>
           </div>
 
-          {/* Sellable Units */}
+          {/* Units & Prices */}
           <div className="rounded-xl border border-slate-200/70 bg-slate-50/40 p-3">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <label className="block text-sm font-medium text-slate-700">
-                  Sellable Units
+                  Units & Prices
                 </label>
                 <p className="mt-1 text-xs text-slate-500">
-                  Product-specific selling options. Quantity is in base units:
-                  {" "}{form.watch("unitType") || "unit"}.
+                  Set how this product is counted, bought, and sold. Stock is stored in base units.
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Base unit: {form.watch("unitType") || "base unit"}. Larger units like Package or Case convert back to {form.watch("unitType") || "the base unit"}.
                 </p>
               </div>
-              <Button type="button" variant="secondary" onClick={addSellableUnit}>
+              <Button type="button" variant="secondary" onClick={addSellableUnit} className="min-h-10">
                 <span className="material-symbols-rounded mr-1 text-sm">add</span>
-                Add unit
+                Add Unit
               </Button>
             </div>
 
             <div className="mt-3 space-y-3">
-              {formUnits.map((unit) => (
-                <div key={unit.id} className="rounded-xl border border-slate-200 bg-white p-3">
-                  <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr_1fr_1.2fr_auto]">
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-500">Unit name</span>
-                      <Input
-                        value={unit.name}
-                        onChange={(event) => updateFormUnit(unit.id, { name: event.target.value })}
-                        placeholder="Can, 6 Pack, Case"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-500">Base qty</span>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        value={unit.baseQuantity}
-                        onChange={(event) => updateFormUnit(unit.id, {
-                          baseQuantity: Math.max(1, Number(event.target.value.replace(/\D/g, "") || 1)),
-                        })}
-                        placeholder="1"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-500">Price (MMK)</span>
-                      <MoneyInput
-                        value={unit.priceMmk}
-                        onChange={(next) => updateFormUnit(unit.id, { priceMmk: next ?? 0 })}
-                        placeholder="0"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-500">Barcode</span>
-                      <div className="flex gap-2">
-                        <Input
-                          value={unitBarcodes[unit.id] ?? ""}
-                          onChange={(event) => setUnitBarcodes((rows) => ({
-                            ...rows,
-                            [unit.id]: normalizeBarcodeValue(event.target.value),
-                          }))}
-                          placeholder={unit.isDefault ? "Optional, SKU fallback" : "Optional unit barcode"}
-                        />
-                        <Button type="button" variant="secondary" onClick={() => openUnitScanModal(unit.id)}>
-                          <span className="material-symbols-rounded text-sm">qr_code_scanner</span>
+              {formUnits.map((unit, index) => {
+                const baseUnitName = form.watch("unitType") || "base unit";
+                const unitName = unit.name.trim() || "New unit";
+                const isBaseUnit = unit.isDefault;
+                const activeUnitCount = formUnits.filter((row) => row.isActive).length;
+                const canDeactivate = !unit.isDefault && (!unit.isActive || activeUnitCount > 1);
+                const duplicateBaseName =
+                  !unit.isDefault &&
+                  unit.name.trim().toLowerCase() === baseUnitName.trim().toLowerCase() &&
+                  unit.baseQuantity !== 1;
+
+                return (
+                  <div
+                    key={unit.id}
+                    className={`rounded-xl border bg-white p-4 shadow-sm ${
+                      unit.isActive ? "border-slate-200" : "border-slate-200 opacity-75"
+                    }`}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-semibold text-slate-800">{unitName}</h3>
+                          {unit.isDefault && <Badge tone="green">Default POS unit</Badge>}
+                          {unit.isActive ? <Badge tone="blue">Active</Badge> : <Badge tone="slate">Inactive</Badge>}
+                          {isBaseUnit && <Badge tone="slate">Base unit</Badge>}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          1 {unitName} equals {isBaseUnit ? 1 : unit.baseQuantity || 1} {baseUnitName}.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={!unit.isActive || unit.isDefault}
+                          onClick={() => setDefaultSellableUnit(unit.id)}
+                        >
+                          Set Default
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={!canDeactivate}
+                          onClick={() => {
+                            if (unit.isActive) deactivateSellableUnit(unit.id);
+                            else updateFormUnit(unit.id, { isActive: true });
+                          }}
+                        >
+                          {unit.isActive ? "Deactivate" : "Reactivate"}
                         </Button>
                       </div>
-                    </label>
-                    <div className="flex items-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setDefaultSellableUnit(unit.id)}
-                        className={`rounded-lg px-3 py-2 text-xs font-medium ${
-                          unit.isDefault
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                        }`}
-                      >
-                        Default
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateFormUnit(unit.id, { isActive: !unit.isActive })}
-                        className={`rounded-lg px-3 py-2 text-xs font-medium ${
-                          unit.isActive
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        {unit.isActive ? "Active" : "Inactive"}
-                      </button>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)]">
+                      <div className="space-y-3">
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-slate-500">Unit name</span>
+                          <Input
+                            value={unit.name}
+                            onChange={(event) => updateFormUnit(unit.id, { name: event.target.value })}
+                            placeholder={index === 0 ? baseUnitName : "Package, Case, 6 Pack"}
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-slate-500">Base quantity</span>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            value={isBaseUnit ? 1 : unit.baseQuantity}
+                            readOnly={isBaseUnit}
+                            className={isBaseUnit ? "bg-slate-50 text-slate-500 cursor-not-allowed" : undefined}
+                            onChange={(event) => {
+                              if (isBaseUnit) return;
+                              updateFormUnit(unit.id, {
+                                baseQuantity: Math.max(1, Number(event.target.value.replace(/\D/g, "") || 1)),
+                              });
+                            }}
+                            placeholder="1"
+                          />
+                          <p className="mt-1 text-xs text-slate-500">
+                            {isBaseUnit
+                              ? `Base unit always equals 1 ${baseUnitName}.`
+                              : `POS deducts ${unit.baseQuantity || 1} ${baseUnitName} per ${unitName}.`}
+                          </p>
+                        </label>
+
+                        {duplicateBaseName && (
+                          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                            This unit has the same name as the base unit but does not equal 1 {baseUnitName}. Rename it to avoid cashier confusion.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Pricing
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              Blank Wholesale/Special uses {defaultPriceLevel?.name ?? "Retail"} price.
+                            </span>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <label className="block">
+                              <span className="mb-1 block text-xs font-medium text-slate-500">Purchase Cost</span>
+                              <MoneyInput
+                                value={unit.purchasePriceMmk}
+                                onChange={(next) => updateUnitPurchaseCost(unit.id, next ?? undefined)}
+                                allowEmpty
+                                placeholder="Optional"
+                              />
+                            </label>
+
+                            {activePriceLevels.length > 0 ? (
+                              activePriceLevels.map((level) => {
+                                const raw = formUnitLevelPrices[unit.id]?.[level.id] ?? "";
+                                const isDefaultLevel = defaultPriceLevel?.id === level.id;
+                                return (
+                                  <label key={level.id} className="block">
+                                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                                      {getPriceLevelFormLabel(level.code, level.name)}
+                                    </span>
+                                    <Input
+                                      type="text"
+                                      inputMode="numeric"
+                                      placeholder={isDefaultLevel ? "Required" : "Use Retail"}
+                                      value={raw}
+                                      onChange={(event) => updateUnitLevelPrice(unit.id, level.id, event.target.value)}
+                                    />
+                                  </label>
+                                );
+                              })
+                            ) : (
+                              <label className="block">
+                                <span className="mb-1 block text-xs font-medium text-slate-500">Retail Price (Sale 1)</span>
+                                <MoneyInput
+                                  value={unit.salePriceMmk}
+                                  onChange={(next) => {
+                                    const salePriceMmk = next ?? 0;
+                                    updateFormUnit(unit.id, { salePriceMmk });
+                                    if (unit.isDefault) form.setValue("priceMmk", salePriceMmk, { shouldValidate: true });
+                                  }}
+                                  placeholder="Required"
+                                />
+                              </label>
+                            )}
+                          </div>
+                        </div>
+
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-medium text-slate-500">Barcode for this unit</span>
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Input
+                              value={unitBarcodes[unit.id] ?? ""}
+                              onChange={(event) => setUnitBarcodes((rows) => ({
+                                ...rows,
+                                [unit.id]: normalizeBarcodeValue(event.target.value),
+                              }))}
+                              placeholder={unit.isDefault ? "Optional, SKU fallback" : "Optional unit barcode"}
+                            />
+                            <Button type="button" variant="secondary" onClick={() => openUnitScanModal(unit.id)} className="min-h-10">
+                              <span className="material-symbols-rounded mr-1 text-sm">qr_code_scanner</span>
+                              Scan
+                            </Button>
+                            {unitBarcodes[unit.id] && (
+                              <Button type="button" variant="secondary" onClick={() => handleRemoveBarcode(unit.id)} className="min-h-10">
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                        </label>
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-500">
-                    <span>
-                      POS deducts {unit.baseQuantity || 1} {form.watch("unitType") || "base units"} per {unit.name || "unit"}.
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (unitBarcodes[unit.id]) handleRemoveBarcode(unit.id);
-                        else deactivateSellableUnit(unit.id);
-                      }}
-                      className="font-medium text-rose-500 hover:text-rose-700"
-                    >
-                      {unitBarcodes[unit.id] ? "Clear barcode" : "Deactivate"}
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

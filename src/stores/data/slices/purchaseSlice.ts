@@ -120,9 +120,15 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
   receivePurchaseOrder: async ({ purchaseOrderId, receivedItems }) => {
     const { data, error } = await supabase.rpc("receive_purchase_order", {
       p_purchase_order_id: purchaseOrderId,
+      // Forward whichever shape the caller provided. The RPC accepts either
+      // `received_qty` (base) or `{product_unit_id, received_unit_qty}`
+      // (unit-aware path) per line; the server computes the base total when
+      // unit fields are present.
       p_received_items: receivedItems.map((r) => ({
         product_id: r.productId,
-        received_qty: r.receivedQty,
+        received_qty: r.receivedQty ?? null,
+        product_unit_id: r.productUnitId ?? null,
+        received_unit_qty: r.receivedUnitQty ?? null,
       })),
     });
     if (error) throw new Error(error.message);
