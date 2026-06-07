@@ -1,5 +1,6 @@
 import type {
   AuditLog,
+  Brand,
   CartItem,
   Category,
   Inventory,
@@ -107,6 +108,17 @@ export interface CategoryState {
   addCategory: (category: Category) => void;
   updateCategory: (category: Category) => void;
   deleteCategory: (categoryId: string) => void;
+}
+
+export interface BrandState {
+  brands: Brand[];
+  addBrand: (brand: Brand) => Promise<void>;
+  updateBrand: (brand: Brand) => Promise<void>;
+  /**
+   * Soft delete — flips is_active=false. Throws a friendly error if any
+   * product still references the brand so callers can surface it inline.
+   */
+  deactivateBrand: (brandId: string) => Promise<void>;
 }
 
 export interface UnitTypeState {
@@ -262,6 +274,7 @@ export interface LoadingState {
 
 export type DataState = ShopState &
   CategoryState &
+  BrandState &
   UnitTypeState &
   ProductState &
   PriceLevelState &

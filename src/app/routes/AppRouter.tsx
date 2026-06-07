@@ -17,6 +17,7 @@ import { ApprovalsPage } from "../../features/approvals/pages/ApprovalsPage";
 import { ShopsAdminPage } from "../../features/admin/pages/ShopsAdminPage";
 import { UsersAdminPage } from "../../features/admin/pages/UsersAdminPage";
 import { ProductsAdminPage } from "../../features/admin/pages/ProductsAdminPage";
+import { ProductFormPage } from "../../pages/ProductFormPage";
 import { UnitTypesAdminPage } from "../../features/admin/pages/UnitTypesAdminPage";
 import { BarcodesAdminPage } from "../../features/admin/pages/BarcodesAdminPage";
 import { SuppliersPage } from "../../features/admin/pages/SuppliersPage";
@@ -192,8 +193,24 @@ export const AppRouter = () => (
       <Route
         path="admin/products"
         element={
-          <RequireRole permission={ROUTE_PERMISSIONS.adminProducts}>
+          <RequireRole allowed={["ADMIN", "MANAGER"]} permission={ROUTE_PERMISSIONS.adminProducts}>
             <ProductsAdminPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path="admin/products/new"
+        element={
+          <RequireRole permission={ROUTE_PERMISSIONS.adminProductCreate}>
+            <ProductFormPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path="admin/products/:productId/edit"
+        element={
+          <RequireRole allowed={["ADMIN", "MANAGER"]} permission={ROUTE_PERMISSIONS.adminProductEdit}>
+            <ProductFormPage />
           </RequireRole>
         }
       />

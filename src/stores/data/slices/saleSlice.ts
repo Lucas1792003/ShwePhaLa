@@ -64,19 +64,26 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
         : productUnit?.isDefault && item.unitBaseQuantity === 1
           ? get().getProductPrice(item.productId, shopId, baseQuantitySold) || item.unitPriceMmk
           : item.unitPriceMmk;
+      // Open Price items always submit their cashier-entered unit price
+      // — the server requires a price for is_open_price=true products
+      // because there's no fixed/level price to fall back to.
+      const sendUnitPrice = item.isOpenPrice
+        ? item.unitPriceMmk
+        : item.priceOverriddenBy
+          ? unitPrice
+          : null;
       return {
         product_id: item.productId,
         product_unit_id: item.productUnitId,
         // Forward the cashier's chosen price level — the RPC resolves
         // the final price server-side via product_unit_prices with the
         // shop_override → global → retail_fallback → legacy chain.
-        // `unit_price_mmk` is treated by the RPC as a manual override
-        // hint only and ignored unless the caller has
-        // `pos:override_price`.
+        // For Open Price items the level is captured for the receipt
+        // label only; the server takes the client price as authoritative.
         price_level_id: item.priceLevelId ?? null,
         qty: item.qty,
         units_per_item: item.unitBaseQuantity,
-        unit_price_mmk: item.priceOverriddenBy ? unitPrice : null,
+        unit_price_mmk: sendUnitPrice,
         item_discount_pct: item.itemDiscountPct ?? 0,
         unit_label: item.unitName,
         price_overridden: Boolean(item.priceOverriddenBy),

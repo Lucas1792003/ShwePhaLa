@@ -21,7 +21,7 @@ npm run lint         # ESLint
 | `src/lib/compressProductImage.test.ts` | Image compression branches |
 | `src/lib/productImageStorage.test.ts` | Storage path helper |
 | `src/lib/productImagePhoneUpload.test.ts` | Phone-upload helper |
-| `src/features/pos/cartStock.test.ts` | Stock guards + clamp, mixed sellable-unit base stock limits |
+| `src/features/pos/cartStock.test.ts` | Stock guards + clamp, mixed sellable-unit base stock limits, Non Stock bypass |
 | `src/features/pos/service.test.ts` | Cart totals use sellable-unit price, not base-unit multiplication |
 | `src/features/catalog/productUnits.test.ts` | Product Unit defaults, validation (at least one active, exactly one default, default base_quantity must be 1, duplicate-name rejection, non-negative sale + purchase price), sanitize/normalize, virtual default fallback for legacy products, migration 026 + 027 SQL guards (sale_price_mmk / purchase_price_mmk split, complete_sale uses sale_price_mmk) |
 | `src/features/shifts/workHours.test.ts` | Active/closed duration, monthly attribution rule, formatting, group-by-user |
@@ -94,6 +94,8 @@ Per-RPC scripts (archived but still useful):
 For each role (ADMIN, MANAGER, CASHIER, BUYER):
 
 - [ ] Sidebar shows only the expected nav entries.
+- [ ] Sidebar can be collapsed and reopened; collapsed mode shows only the
+      logo, nav icons, logout icon, and toggle button.
 - [ ] Hitting a forbidden route by URL bounces / redirects.
 - [ ] Action buttons that require missing permissions are hidden (not
       disabled-but-visible).
@@ -173,21 +175,24 @@ Receipt content checks (`/app/receipts/:saleId` after a sale):
 
 ## Product Unit / Barcode Linking QA
 
-Current Product modal QA target: `/app/admin/products` Add / Edit Product
-modal - **Units & Prices** cards. Confirm there is no `Pack Size` field and
+Current Product form QA targets: `/app/admin/products/new` and
+`/app/admin/products/:productId/edit` - **Units & Prices** cards. Confirm
+there is no `Pack Size` field and
 no duplicate top-level Selling Price / Cost Price block. Product Unit controls
 stock deduction; Price Level controls the selling price. Retail (Sale 1) is
 required for each active unit, while blank Wholesale/Special fields fall back
 to Retail and are not saved as zero.
 
-`/app/admin/products` Add / Edit Product modal — Units & Prices section.
+`/app/admin/products/new` and `/app/admin/products/:productId/edit` -
+Units & Prices section.
 Confirm there is no `Pack Size` field. Add product units (`Can`, `6 Pack`,
 `Case`) with base quantities and Retail/Wholesale/Special prices; save;
 reopen product; units should persist with exactly one default. Scan a
 barcode into a non-default unit card,
 save, then scan it in POS and confirm the matching unit is added.
-The page itself is gated on `product:create` (ADMIN-only by default), so
-CASHIER and BUYER never see the barcode editor.
+The product admin page is gated to ADMIN/MANAGER. New product requires
+`product:create`; edit requires `product:update`; CASHIER and BUYER never see
+the barcode editor by default.
 
 Add / edit flow:
 - [ ] Selecting Base Stock Unit `Can` auto-creates a base unit card:
@@ -200,7 +205,7 @@ Add / edit flow:
 - [ ] Purchase Cost can be left blank and remains nullable.
 - [ ] Deactivating the only active unit or the default base unit is blocked
       by the UI/validation.
-- [ ] In the product modal, click `Scan barcode` → the scan modal opens
+- [ ] In the product form, click `Scan barcode` → the scan modal opens
       with `Waiting for scanner...` and the capture input is focused.
 - [ ] Scan the physical package barcode → status flashes
       `Captured: <value>` then the modal closes, a chip is added to the
@@ -250,6 +255,19 @@ Migration:
 - [ ] `023_unique_normalized_product_barcodes.sql` aborts on existing
       duplicate barcode values, listing each conflicting `(id, product_id)`
       pair; it does not delete or merge barcodes.
+
+Product CSV import/export:
+- [ ] Export Products downloads the visible product data with quick fields,
+      brand, active price-level columns, and default-unit barcode.
+- [ ] Import Products shows a dry-run preview with create/update/error counts
+      before any write.
+- [ ] Invalid category, brand, unit type, barcode duplicate, negative price,
+      invalid Open Price/Non Stock boolean, or missing required field marks
+      the row as an error and blocks applying that row.
+- [ ] A valid create row creates the product, default unit, default barcode,
+      and active price-level rows.
+- [ ] A valid update row updates the product and default unit without deleting
+      non-default product units.
 
 ## Dashboard QA
 
@@ -396,6 +414,19 @@ Work Hours tab:
 - [ ] Cashier scans a label printed from SKU only → still adds.
 - [ ] Cashier scans an unknown code → "Barcode not found".
 - [ ] Out-of-stock product → "Only 0 in stock for this shop."
+- [ ] Product card unit buttons stay readable when unavailable: red border
+      and red text, not greyed out.
+- [ ] Add an Open Price product → POS prompts for a positive unit price
+      before adding the cart line.
+- [ ] Add a Non Stock product with no inventory row / zero stock → cart add
+      succeeds and checkout does not write inventory movements for it.
+- [ ] Bills header shows the item count plus `All`; clicking `All` opens a
+      modal with every cart line.
+- [ ] Cart line product name and unit render on separate lines; delete is an
+      icon, not "Remove" text.
+- [ ] There is no page-level POS price-level dropdown. A permitted manager
+      changes a fixed-price cart line through the pencil selector only.
+- [ ] CASHIER does not see the cart-line price-level pencil.
 - [ ] Cashier without open shift → checkout disabled with helper.
 - [ ] Pay = total → confirm enabled; payment succeeds; receipt opens at
       `/app/sales/:saleId`.
@@ -450,6 +481,9 @@ Quick spot-checks at the three target sizes:
       breakdown wraps cleanly.
 - [ ] **1920 × 1080** — sidebar 270 px; POS grid 4 cols; Supplier Detail
       summary cards on one row.
+- [ ] Collapse sidebar at each desktop size → content remains usable and the
+      rail shows only logo/nav/logout/toggle icons. Refresh keeps the chosen
+      collapsed/open state.
 - [ ] Viewport < 768 px renders `SmallScreenGuard` instead of the app.
 
 ## Error Handling QA

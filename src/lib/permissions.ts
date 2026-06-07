@@ -44,10 +44,12 @@ export const ROUTE_PERMISSIONS = {
   catalog: "product:read",
   adminShops: "shop:create",
   adminUsers: "user:create",
-  adminProducts: "product:create",
-  // Unit Types settings: same permission gate as adminProducts so the same
-  // admins who manage products can manage the registry that feeds the
-  // Product form's Unit Type dropdown.
+  // Reading the admin products page only requires product:read. The router
+  // layers an ADMIN/MANAGER role gate on this route, then the list/form gate
+  // Add, Save, and Delete on product:create / product:update / product:delete.
+  adminProducts: "product:read",
+  adminProductCreate: "product:create",
+  adminProductEdit: "product:update",
   adminUnitTypes: "product:create",
   adminBarcodes: "barcode:manage",
   adminSuppliers: "supplier:read",

@@ -132,6 +132,12 @@ part of `product:read`, and create/update/deactivate is gated by
 POS uses Product Units read-only to select sellable units and deduct base
 inventory.
 
+`/app/admin/products` is reachable for ADMIN and MANAGER with
+`product:read`, so managers can reach their product-edit workflow. The Add
+Product route/action requires `product:create`; the edit route/action requires
+`product:update`; delete buttons require `product:delete`. CASHIER and BUYER
+use `/app/catalog` for read-only product browsing.
+
 **Hard-deleting a product** is ADMIN-only — gated by `product:delete` and
 performed via the `delete_product` RPC (migration `024`). Direct client
 deletes against `products` and `inventory` are blocked at the DB layer
@@ -164,6 +170,12 @@ deletes against `products` and `inventory` are blocked at the DB layer
 | `sale:view` | ✅ | ❌ | ❌ |
 | `sales:view_own_shift` | ✅ | ✅ | ❌ |
 | `receipt:reprint` | ✅ | ✅ | ❌ |
+
+Price-level changes in POS happen from the Bills cart line pencil and require
+`pos:override_price`. The modal is selector-only: Retail / Wholesale / Special
+or whatever active price levels exist. Open Price products are different:
+they prompt for a cashier-entered price because the product itself opts into
+manual pricing.
 
 ### Suppliers & Purchasing
 
@@ -242,8 +254,12 @@ deletes against `products` and `inventory` are blocked at the DB layer
 ## Route / Sidebar Access (summary)
 
 The router and sidebar both consult `ROUTE_PERMISSIONS`. Sidebar entries
-are filtered by the same permission; a user with no `supplier:read` will
-not see the Suppliers nav item.
+are filtered by the same permission plus any route-specific role gate; a user
+with no `supplier:read` will not see the Suppliers nav item.
+
+The sidebar itself can be opened or collapsed at will. The collapsed state is
+stored in localStorage and renders an icon-only rail with the shop logo,
+navigation icons, logout icon, and toggle button.
 
 | Route | Permission |
 | --- | --- |
@@ -259,7 +275,10 @@ not see the Suppliers nav item.
 | `/app/reports`, `/app/reports/profit` | `report:shop_sales` / `report:shop_profit` |
 | `/app/catalog` | `product:read` |
 | `/app/barcode-labels` | `product:read` + ADMIN/MANAGER role gate |
-| `/app/admin/unit-types` | `product:create` (`ROUTE_PERMISSIONS.adminUnitTypes`) — same gate as `/app/admin/products` |
+| `/app/admin/products` | `product:read` + ADMIN/MANAGER role gate (`ROUTE_PERMISSIONS.adminProducts`) |
+| `/app/admin/products/new` | `product:create` (`ROUTE_PERMISSIONS.adminProductCreate`) |
+| `/app/admin/products/:productId/edit` | `product:update` + ADMIN/MANAGER role gate (`ROUTE_PERMISSIONS.adminProductEdit`) |
+| `/app/admin/unit-types` | `product:create` (`ROUTE_PERMISSIONS.adminUnitTypes`) |
 | `/app/admin/*` | each gated by its admin permission |
 
 ## Helpers

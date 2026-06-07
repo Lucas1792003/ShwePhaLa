@@ -21,6 +21,11 @@ wider screen for POS operations."*
 
 Tailwind breakpoints used: `lg` 1024, `xl` 1280, `2xl` 1536.
 
+The sidebar has a persisted open/closed toggle. Open width is 220 px below
+`xl` and 270 px at `xl+`; collapsed width is 76 px below `xl` and 84 px at
+`xl+`. In collapsed mode only the logo, nav icons, logout icon, and toggle
+remain visible.
+
 Per-page expectations and a wide manual checklist live in
 [`archive/32-responsive-testing-checklist.md`](./archive/32-responsive-testing-checklist.md).
 Highlights:
@@ -28,6 +33,9 @@ Highlights:
 - **POS** — product grid 2 / 3 / 4 columns at `lg` / `xl` / `2xl`; cart
   width `320px` below `xl`, `380px` at `xl+`. Top bar and category
   filters wrap; no horizontal scroll.
+- **POS Bills** — each cart line keeps the product name and unit on
+  separate lines, uses icon-only delete, stacks quantity controls, and has an
+  `All` button beside the item count to open the full cart modal.
 - **Tables** (Sales, Inventory, Movements, Shifts, Audit) — wrappers use
   `overflow-x-auto` with `min-w-*` so they scroll horizontally if needed
   rather than clipping.

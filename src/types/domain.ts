@@ -15,6 +15,23 @@ export interface Category {
   isActive: boolean;
   createdAt: string;
 }
+
+/**
+ * Brand entity — child of Category (see migration 031). A Brand groups
+ * products under a Category (e.g. WHISKY → GRAND ROYAL, ROYAL CLUB).
+ * `color` is optional; brands without one inherit their category color
+ * in the UI.
+ */
+export interface Brand {
+  id: string;
+  categoryId: string;
+  name: string;
+  color?: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
 export type PaymentMethod = "CASH" | "OTHER";
 export type SaleStatus = "NORMAL" | "VOID" | "REFUNDED";
 export type ApprovalStatus = "REQUESTED" | "APPROVED" | "REJECTED";
@@ -136,11 +153,28 @@ export interface UnitType {
   updatedAt: string;
 }
 
+/**
+ * Default purchase terms recorded against a product (migration 032).
+ * Carried through to new purchase orders as the supplier-default term.
+ * `null` / undefined means "ask each time" — never assume a default.
+ */
+export type ProductPurchaseType = "COD" | "CREDIT";
+
 export interface Product {
   id: string;
   sku?: string;
+  /** Optional secondary identifier (e.g. supplier code, barcode-as-text). */
+  aliasCode?: string;
   name: string;
+  /** Compact display name for tight UI (POS tile, receipt). */
+  shortName?: string;
   category: ProductCategory;
+  /**
+   * Optional brand FK (migration 031). Required for products created
+   * after the brand rollout — enforced at the form layer, NOT the DB,
+   * so legacy products keep working without a backfill.
+   */
+  brandId?: string;
   /**
    * Base stock unit name. Free-form string for backward compatibility with
    * pre-registry products. New products select from `UnitType.name` values;
@@ -156,6 +190,14 @@ export interface Product {
    */
   packSize?: number;
   lowStockThreshold: number;
+  /** Reorder ceiling (migration 032). NULL = no ceiling. */
+  maxQty?: number;
+  /** When true, POS prompts cashier for price at cart-add. */
+  isOpenPrice?: boolean;
+  /** When true, sales of this product skip inventory deduction. */
+  isNonStock?: boolean;
+  /** Default purchase terms used when creating a new PO. */
+  purchaseType?: ProductPurchaseType;
   expiryDate?: string; // Optional expiry tracking
   imageUrl?: string; // Product image URL
   isActive: boolean;
@@ -514,6 +556,14 @@ export interface CartItem {
   // can appear as Retail + Wholesale on the same receipt.
   priceLevelId?: string;
   priceLevelName?: string;
+  /** Snapshot of `products.is_open_price` at add-time. Skips the cashier
+   *  price-override audit log because the cashier was the price source
+   *  from the start, not overriding a fixed price. */
+  isOpenPrice?: boolean;
+  /** Snapshot of `products.is_non_stock`. The cart stock helpers, the
+   *  checkout validator, and `complete_sale` all bypass inventory
+   *  checks / movements for items carrying this flag. */
+  isNonStock?: boolean;
   // Display fields
   imageUrl?: string;
   category?: ProductCategory;

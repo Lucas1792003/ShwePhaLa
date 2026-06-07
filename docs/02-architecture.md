@@ -67,8 +67,9 @@ localStorage holds only the three lightweight items above.
 
 ## Data Loading
 
-`stores/data/index.ts` composes the domain slices (shop, category, unit type, product,
-inventory, shift, sale, transfer, purchase, pricing, audit). `loadData()`
+`stores/data/index.ts` composes the domain slices (shop, category, brand,
+unit type, product, inventory, shift, sale, transfer, purchase, pricing,
+audit). `loadData()`
 fetches all relevant tables in parallel and exposes:
 
 - `isLoading`, `isLoaded`, `loadError`
@@ -102,14 +103,16 @@ Writes split cleanly into two paths:
    `supabase.from(...).insert / update` writes via `dbWrite` (fire-and-forget
    + friendly toast on failure) or `dbExec` (awaited; throws a friendly
    `Error` on failure). Applies to: `shops`, `users`, `categories`,
-   `products`, `product_units`, `product_barcodes`, `price_tiers`, `suppliers`. RLS still
-   gates by permission server-side.
+   `brands`, `products`, `product_units`, `product_barcodes`,
+   `product_unit_prices`, `price_tiers`, `suppliers`. RLS still gates by
+   permission server-side.
 
 ## Multi-Shop Model
 
 - The `inventory` table has a composite primary key `(shop_id, product_id)`
   — stock is per-shop. Products, barcodes, categories, suppliers, and
-  pricing are global / catalog-level.
+  pricing are global / catalog-level. Brands are category-scoped catalog
+  metadata used by product management, catalog browse, and POS filters.
 - Every stock lookup is keyed by `(shopId, productId)` — never `productId`
   alone. The Product Management "Stock" column shows on-hand units for the
   **selected shop only**.
@@ -138,6 +141,12 @@ Details and per-role tables: [05-roles-permissions.md](./05-roles-permissions.md
 ## Product / Inventory / Image Model
 
 - `products.sku` is the primary catalog code (required in the admin UI).
+- Product quick fields include `alias_code`, `short_name`, `max_qty`,
+  `is_open_price`, `is_non_stock`, and `purchase_type`. `is_open_price`
+  makes POS prompt for a cashier-entered unit price; `is_non_stock`
+  bypasses inventory deduction and movement writes in `complete_sale`.
+- `products.brand_id` links to `brands.id`; brands are active/inactive and
+  category-scoped.
 - `products.unit_type` is the base stock unit label from the Unit Types
   registry. Inventory stays in base units.
 - `product_units` are product-specific sellable units (`Can`, `6 Pack`,
@@ -151,6 +160,10 @@ Details and per-role tables: [05-roles-permissions.md](./05-roles-permissions.md
 - `product_barcodes.product_unit_id` maps a barcode to an exact sellable
   unit; null means product/default unit.
 - `product_barcodes.value` is the optional scan-code mapping used by POS.
+- `product_unit_prices` stores active price-level values by
+  `(product_unit_id, price_level_id, optional shop_id)`. The POS cart line
+  stores the chosen price level and `complete_sale` resolves the final
+  server-authoritative price.
 - POS barcode scan resolves: trim → exact `product_barcodes.value` match →
   case-insensitive `products.sku` fallback. This mirrors the label
   printer's selection rule, so a SKU-source label scans back correctly.

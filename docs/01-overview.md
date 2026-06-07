@@ -17,14 +17,14 @@ the Supabase Auth session.
 
 | Area | Highlights |
 | --- | --- |
-| POS | Sellable-unit selection, unit-linked barcode scan with SKU fallback, cart stock guards, tier pricing for the default unit, payment modal, atomic checkout via `complete_sale` RPC. |
+| POS | Sellable-unit selection, unit-linked barcode scan with SKU fallback, cart stock guards, line-level price levels from Bills, Open Price prompts, Non Stock sales, payment modal, atomic checkout via `complete_sale` RPC. |
 | Shifts | Open/close with server-side expected cash, live breakdown, variance reason gate. |
 | Inventory | One row per `(shop_id, product_id)`. Adjustments and damage via `adjust_stock` RPC. Movement ledger with before/after qty. |
 | Purchases | Create / approve / receive / cancel POs. `receive_purchase_order` writes inventory, movements, audit, and PO status atomically. |
 | Suppliers | Supplier list + full detail page (`/app/suppliers/:supplierId`) with Overview / Purchase Orders / Payments tabs. Debt starts only when a PO is RECEIVED; payments via `record_supplier_payment`. |
 | Transfers | Inter-shop transfers via `complete_stock_transfer`. Source/destination ledger rows and audit row in one transaction. |
 | Refund / Void | Cashier requests, manager approves via `approve_refund_request` / `approve_void_request`. Inventory restocked atomically. |
-| Catalog | Products, categories (icon-based with safe delete), barcodes, pricing tiers, product images in Supabase Storage. |
+| Catalog | Products, categories, brands, barcodes, product CSV import/export with dry-run preview, pricing tiers, price levels, product images in Supabase Storage. |
 | Reports | Dashboard, shop sales, profit (ADMIN by default), inventory health, supplier debt. |
 | Audit | Every operational write inserts an `audit_logs` row through an RPC; direct authenticated writes to `audit_logs` are blocked. |
 
@@ -40,6 +40,10 @@ the Supabase Auth session.
 - ✅ POS barcode scan resolves unit-linked `product_barcodes.value` before
   `products.sku` fallback; package barcodes add the configured Product Unit
   and SKU fallback adds the default unit.
+- ✅ POS enforces Open Price and Non Stock product flags in both the cart UI
+  and `complete_sale`.
+- ✅ Sidebar can be toggled between the full navigation and an icon-only rail;
+  the collapsed state is persisted in localStorage.
 - ✅ Central error utility (`src/lib/errors.ts`) maps Postgres / network /
   storage / domain errors to friendly user-facing strings; bootstrap has a
   retry surface; top-level `ErrorBoundary` is in place.

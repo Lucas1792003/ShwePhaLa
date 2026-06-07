@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { Select } from "../ui/Select";
+import { Badge } from "../ui/Badge";
 import { useToast } from "../ui/Toast";
 import { getErrorMessage } from "../../lib/errors";
 import { useDataStore } from "../../stores/dataStore";
@@ -154,7 +155,9 @@ export const PurchaseOrderCreateModal = ({
             <option value="">Select product to add…</option>
             {eligibleProducts.map((product) => (
               <option key={product.id} value={product.id}>
-                {product.name} (Cost: MMK {product.costMmk?.toLocaleString() ?? 0})
+                {product.name}
+                {product.purchaseType ? ` [${product.purchaseType}]` : ""}
+                {" "}(Cost: MMK {product.costMmk?.toLocaleString() ?? 0})
               </option>
             ))}
           </Select>
@@ -177,7 +180,16 @@ export const PurchaseOrderCreateModal = ({
                   const product = products.find((p) => p.id === item.productId);
                   return (
                     <tr key={item.productId} className="border-t">
-                      <td className="px-3 py-2">{product?.name ?? item.productId}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{product?.name ?? item.productId}</span>
+                          {product?.purchaseType && (
+                            <Badge tone={product.purchaseType === "COD" ? "amber" : "blue"}>
+                              {product.purchaseType}
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-3 py-2">
                         <input
                           type="number"

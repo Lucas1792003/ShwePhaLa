@@ -30,7 +30,7 @@ import {
   validatePosCart,
 } from "../features/pos/cartStock";
 import { hasShopPermission } from "../lib/permissions";
-import { getEffectiveShopId, toNumber } from "../lib/utils";
+import { getEffectiveShopId } from "../lib/utils";
 
 export const PosPage = () => {
   const navigate = useNavigate();
@@ -38,12 +38,21 @@ export const PosPage = () => {
   const [barcodeInput, setBarcodeInput] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
+  // Brand sub-filter, scoped to whichever category is currently selected.
+  // Reset to empty whenever the category changes — see the effect below.
+  const [brandId, setBrandId] = useState<string>("");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [cartDiscountPct, setCartDiscountPct] = useState(0);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [overrideItem, setOverrideItem] = useState<CartItem | null>(null);
-  const [overridePrice, setOverridePrice] = useState(0);
+  const [overridePriceLevelId, setOverridePriceLevelId] = useState("");
+  // Open Price prompt — fires when an Open-Price product is added to the
+  // cart. Holds the product + selected unit until the cashier confirms
+  // the price, then completes the add. The prompt is the only entry path
+  // for Open Price items; we never accept the resolved price for them.
+  const [openPricePrompt, setOpenPricePrompt] = useState<{ product: Product; unit: ProductUnit } | null>(null);
+  const [openPriceInput, setOpenPriceInput] = useState<string>("");
   const [showBarcodeInput, setShowBarcodeInput] = useState(false);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   // Selected POS price level. Newly added cart lines use this level.
@@ -60,6 +69,7 @@ export const PosPage = () => {
   const priceLevels = useDataStore((state) => state.priceLevels);
   const productUnitPrices = useDataStore((state) => state.productUnitPrices);
   const categories = useDataStore((state) => state.categories);
+  const brands = useDataStore((state) => state.brands);
   const getInventoryQty = useDataStore((state) => state.getInventoryQty);
   const getProductByBarcode = useDataStore((state) => state.getProductByBarcode);
   const createSale = useDataStore((state) => state.createSale);
@@ -90,15 +100,22 @@ export const PosPage = () => {
   const canOverridePrice = hasShopPermission(currentUser, "pos:override_price", shopId);
   const canOverrideStock = hasShopPermission(currentUser, "pos:override_stock", shopId);
 
+  // Reset the brand sub-filter whenever the category changes so a stale
+  // brand never silently constrains a different category's results.
+  useEffect(() => {
+    setBrandId("");
+  }, [category]);
+
   const filteredProducts = useMemo(() => {
     return products
       .filter((product) => product.isActive)
       .filter((product) => {
         const matchesSearch = product.name.toLowerCase().includes(search.toLowerCase());
         const matchesCategory = category === "all" || product.category === category;
-        return matchesSearch && matchesCategory;
+        const matchesBrand = !brandId || product.brandId === brandId;
+        return matchesSearch && matchesCategory && matchesBrand;
       });
-  }, [products, search, category]);
+  }, [products, search, category, brandId]);
 
   const inventoryById = useMemo(() => {
     const map: Record<string, number> = {};
@@ -141,8 +158,78 @@ export const PosPage = () => {
     [firstCartError, toast]
   );
 
+  // Inner helper: actually push the row into the cart. Split out so the
+  // Open Price prompt can call it with the cashier-supplied price after
+  // confirmation, without the prompt being part of the public callable
+  // surface for barcode scans and the product-grid Add button.
+  const addLineToCart = (
+    product: Product,
+    unit: ProductUnit,
+    unitPriceMmk: number,
+    options: {
+      priceLevelId: string;
+      priceLevelName: string;
+      unitsPerItem: number;
+      isOpenPrice: boolean;
+      isNonStock: boolean;
+    },
+  ) => {
+    setCartItems((items) => {
+      // Cart uniqueness is `productId + productUnitId + priceLevelId` for
+      // fixed-price items so the same product+unit can appear once at
+      // Retail and once at Wholesale. Open Price items get a unique id
+      // every time so two cashier-entered prices for the same product
+      // don't merge into one line.
+      const sharedKey = options.isOpenPrice
+        ? `${product.id}-${unit.id}-open-${Date.now()}`
+        : `${product.id}-${unit.id}-${options.priceLevelId}`;
+      if (!options.isOpenPrice) {
+        const existing = items.find(
+          (item) =>
+            item.productId === product.id &&
+            item.productUnitId === unit.id &&
+            item.priceLevelId === options.priceLevelId,
+        );
+        if (existing) {
+          return items.map((item) =>
+            item.id === existing.id ? { ...item, qty: item.qty + 1 } : item,
+          );
+        }
+      }
+      return [
+        ...items,
+        {
+          id: sharedKey,
+          productId: product.id,
+          productUnitId: unit.id,
+          name: product.name,
+          unitName: unit.name,
+          qty: 1,
+          unitPriceMmk,
+          priceLevelId: options.priceLevelId,
+          priceLevelName: options.priceLevelName,
+          unitBaseQuantity: unit.baseQuantity,
+          unitsPerItem: options.unitsPerItem,
+          unitLabel: unit.name,
+          isOpenPrice: options.isOpenPrice,
+          isNonStock: options.isNonStock,
+          imageUrl: product.imageUrl,
+          category: product.category,
+        },
+      ];
+    });
+  };
+
   const handleAddToCart = (product: Product, unit: ProductUnit): boolean => {
-    const addStatus = getCartAddStockStatus(product, unit, cartItems, inventoryById);
+    const isNonStock = Boolean(product.isNonStock);
+    const isOpenPrice = Boolean(product.isOpenPrice);
+
+    // Non-stock items skip stock checks entirely. Stock-tracked items go
+    // through the usual stock-availability gate before we even ask the
+    // cashier for a price (no point prompting if it can't be added).
+    const addStatus = getCartAddStockStatus(product, unit, cartItems, inventoryById, {
+      isNonStock,
+    });
     const unitsPerItem = addStatus.unitsPerItem;
     if (!addStatus.canAdd) {
       toast({
@@ -152,9 +239,20 @@ export const PosPage = () => {
       });
       return false;
     }
-    // Resolve the price for the CURRENT POS price level. The server
-    // re-resolves in `complete_sale` so even a stale value here can't
-    // result in an under- or over-charge.
+
+    // Open Price branch — defer the add until the cashier confirms the
+    // price in the modal. The actual cart push happens in
+    // `handleOpenPriceConfirm`. The default level metadata is used for
+    // labelling only; the server treats Open Price as its own source.
+    if (isOpenPrice) {
+      setOpenPricePrompt({ product, unit });
+      setOpenPriceInput("");
+      return true;
+    }
+
+    // Standard path: resolve the price for the current POS price level.
+    // The server re-resolves in `complete_sale` so a stale value here
+    // can't cause an under- or over-charge.
     const resolved = resolveProductUnitPrice({
       unit,
       priceLevelId: activePriceLevelId,
@@ -162,41 +260,41 @@ export const PosPage = () => {
       priceLevels,
       productUnitPrices,
     });
-    setCartItems((items) => {
-      // Cart uniqueness is now `productId + productUnitId + priceLevelId`
-      // so the same product+unit can appear once at Retail and once at
-      // Wholesale on the same receipt.
-      const existing = items.find(
-        (item) =>
-          item.productId === product.id &&
-          item.productUnitId === unit.id &&
-          item.priceLevelId === resolved.priceLevelId,
-      );
-      if (existing) {
-        return items.map((item) => (item.id === existing.id ? { ...item, qty: item.qty + 1 } : item));
-      }
-      return [
-        ...items,
-        {
-          id: `${product.id}-${unit.id}-${resolved.priceLevelId}`,
-          productId: product.id,
-          productUnitId: unit.id,
-          name: product.name,
-          unitName: unit.name,
-          qty: 1,
-          unitPriceMmk: resolved.priceMmk,
-          priceLevelId: resolved.priceLevelId,
-          priceLevelName: resolved.priceLevelName,
-          unitBaseQuantity: unit.baseQuantity,
-          unitsPerItem,
-          unitLabel: unit.name,
-          // Display fields
-          imageUrl: product.imageUrl,
-          category: product.category,
-        },
-      ];
+    addLineToCart(product, unit, resolved.priceMmk, {
+      priceLevelId: resolved.priceLevelId,
+      priceLevelName: resolved.priceLevelName,
+      unitsPerItem,
+      isOpenPrice: false,
+      isNonStock,
     });
     return true;
+  };
+
+  const handleOpenPriceConfirm = () => {
+    if (!openPricePrompt) return;
+    const value = Number(openPriceInput.replace(/[^\d]/g, ""));
+    if (!Number.isFinite(value) || value <= 0) {
+      toast({
+        title: "Invalid price",
+        description: "Enter a price greater than 0.",
+        variant: "error",
+      });
+      return;
+    }
+    const { product, unit } = openPricePrompt;
+    // For labelling only. The price level snapshot keeps a sensible
+    // default-level name on the receipt; complete_sale never resolves a
+    // fallback price for is_open_price items.
+    const defaultLevel = getDefaultPriceLevel(priceLevels) ?? priceLevels[0];
+    addLineToCart(product, unit, Math.trunc(value), {
+      priceLevelId: defaultLevel?.id ?? "",
+      priceLevelName: defaultLevel?.name ?? "Open",
+      unitsPerItem: unit.baseQuantity,
+      isOpenPrice: true,
+      isNonStock: Boolean(product.isNonStock),
+    });
+    setOpenPricePrompt(null);
+    setOpenPriceInput("");
   };
 
   // Keep the scan input ready for the next scan: clear value and refocus so
@@ -317,15 +415,66 @@ export const PosPage = () => {
   };
 
   const handleOverrideSave = () => {
-    if (!overrideItem || !currentUserId) return;
-    setCartItems((items) =>
-      items.map((item) =>
+    if (!overrideItem) return;
+    const unit = productUnits.find((item) => item.id === overrideItem.productUnitId);
+    if (!unit) {
+      toast({
+        title: "Price level unavailable",
+        description: "Could not find this product unit. Remove and add the item again.",
+        variant: "error",
+      });
+      return;
+    }
+
+    const resolved = resolveProductUnitPrice({
+      unit,
+      priceLevelId: overridePriceLevelId || overrideItem.priceLevelId || activePriceLevelId,
+      shopId: shopId ?? undefined,
+      priceLevels,
+      productUnitPrices,
+    });
+
+    setCartItems((items) => {
+      const duplicate = items.find(
+        (item) =>
+          item.id !== overrideItem.id &&
+          !item.isOpenPrice &&
+          item.productId === overrideItem.productId &&
+          item.productUnitId === overrideItem.productUnitId &&
+          item.priceLevelId === resolved.priceLevelId,
+      );
+
+      if (duplicate) {
+        return items
+          .filter((item) => item.id !== overrideItem.id)
+          .map((item) =>
+            item.id === duplicate.id
+              ? {
+                  ...item,
+                  qty: item.qty + overrideItem.qty,
+                  unitPriceMmk: resolved.priceMmk,
+                  priceLevelId: resolved.priceLevelId,
+                  priceLevelName: resolved.priceLevelName,
+                  priceOverriddenBy: undefined,
+                }
+              : item,
+          );
+      }
+
+      return items.map((item) =>
         item.id === overrideItem.id
-          ? { ...item, unitPriceMmk: overridePrice, priceOverriddenBy: currentUserId }
-          : item
-      )
-    );
+          ? {
+              ...item,
+              unitPriceMmk: resolved.priceMmk,
+              priceLevelId: resolved.priceLevelId,
+              priceLevelName: resolved.priceLevelName,
+              priceOverriddenBy: undefined,
+            }
+          : item,
+      );
+    });
     setOverrideItem(null);
+    setOverridePriceLevelId("");
   };
 
   if (!hasShop) {
@@ -399,25 +548,6 @@ export const PosPage = () => {
         </div>
       )}
 
-      {/* Price-level selector — applies to NEWLY added cart lines.
-          Existing lines keep whatever level they were rung up at. */}
-      {activePriceLevels.length > 1 && (
-        <div className="flex items-center gap-2 px-1">
-          <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Price level</span>
-          <Select
-            value={activePriceLevelId}
-            onChange={(event) => setActivePriceLevelId(event.target.value)}
-            className="max-w-[180px]"
-          >
-            {activePriceLevels.map((level) => (
-              <option key={level.id} value={level.id}>
-                {level.name}{level.isDefault ? " (default)" : ""}
-              </option>
-            ))}
-          </Select>
-        </div>
-      )}
-
       {/* Main Content */}
       <div className="flex flex-1 gap-4 overflow-hidden">
         {/* Products Section */}
@@ -425,10 +555,13 @@ export const PosPage = () => {
           <ProductFinder
             products={filteredProducts}
             categories={categories.filter((c) => c.isActive)}
+            brands={brands}
             search={search}
             category={category}
+            brandId={brandId}
             onSearch={setSearch}
             onCategory={setCategory}
+            onBrand={setBrandId}
             inventoryById={inventoryById}
             cartUnitsByProductId={cartUnitsByProductId}
             productUnits={productUnits}
@@ -453,7 +586,14 @@ export const PosPage = () => {
             onRemove={(id) => setCartItems((items) => items.filter((item) => item.id !== id))}
             onCartDiscountChange={setCartDiscountPct}
             onCheckout={handleCheckout}
-            onOverridePrice={canOverridePrice ? (item) => { setOverrideItem(item); setOverridePrice(item.unitPriceMmk); } : undefined}
+            onOverridePrice={
+              canOverridePrice
+                ? (item) => {
+                    setOverrideItem(item);
+                    setOverridePriceLevelId(item.priceLevelId || activePriceLevelId);
+                  }
+                : undefined
+            }
             stockStatuses={cartValidation.itemStatuses}
             checkoutDisabled={!cartValidation.canCheckout || submitting}
             checkoutHelper={checkoutHelper}
@@ -472,23 +612,86 @@ export const PosPage = () => {
 
       <Modal
         open={!!overrideItem}
-        onClose={() => setOverrideItem(null)}
-        title="Price override"
-        description="Managers and admins can override unit price."
+        onClose={() => {
+          setOverrideItem(null);
+          setOverridePriceLevelId("");
+        }}
+        title="Change price level"
+        description="Choose one of the configured price levels for this cart line."
         footer={
           <>
-            <Button variant="secondary" onClick={() => setOverrideItem(null)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setOverrideItem(null);
+                setOverridePriceLevelId("");
+              }}
+            >
               Cancel
             </Button>
-            <Button onClick={handleOverrideSave}>Apply override</Button>
+            <Button onClick={handleOverrideSave} disabled={activePriceLevels.length === 0}>
+              Apply price level
+            </Button>
+          </>
+        }
+      >
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Price level</label>
+          <Select
+            value={overridePriceLevelId}
+            onChange={(event) => setOverridePriceLevelId(event.target.value)}
+            autoFocus
+          >
+            {activePriceLevels.map((level) => (
+              <option key={level.id} value={level.id}>
+                {level.name}{level.isDefault ? " (default)" : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!openPricePrompt}
+        onClose={() => {
+          setOpenPricePrompt(null);
+          setOpenPriceInput("");
+        }}
+        title="Enter price"
+        description={
+          openPricePrompt
+            ? `${openPricePrompt.product.name} (${openPricePrompt.unit.name}) is an Open Price item. Enter the price the customer is paying for this unit.`
+            : ""
+        }
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setOpenPricePrompt(null);
+                setOpenPriceInput("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleOpenPriceConfirm}>Add to cart</Button>
           </>
         }
       >
         <Input
-          type="number"
-          value={overridePrice}
-          onChange={(event) => setOverridePrice(toNumber(event.target.value))}
-          placeholder="New unit price"
+          autoFocus
+          inputMode="numeric"
+          value={openPriceInput}
+          onChange={(event) =>
+            setOpenPriceInput(event.target.value.replace(/[^\d]/g, ""))
+          }
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              handleOpenPriceConfirm();
+            }
+          }}
+          placeholder="Unit price (MMK)"
         />
       </Modal>
 

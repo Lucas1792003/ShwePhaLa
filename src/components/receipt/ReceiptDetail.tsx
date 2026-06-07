@@ -11,7 +11,7 @@ import { RefundModal } from "../sales/RefundModal";
 import { VoidModal } from "../sales/VoidModal";
 import { buildRefundItems } from "../../features/sales/service";
 import { hasPermission } from "../../lib/permissions";
-import { formatDateTime, formatMmk } from "../../lib/utils";
+import { formatDateTime } from "../../lib/utils";
 
 interface ReceiptDetailProps {
   saleId: string;
@@ -86,17 +86,17 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
     const soldBaseQuantity = item.baseQuantitySold ?? item.qtyUnits;
     const soldUnitQty = baseQuantity > 0 ? soldBaseQuantity / baseQuantity : item.qtyUnits;
     const unitPrice = item.unitPriceMmkSnapshot ?? item.unitPriceMmk;
-    // Append price level (Retail / Wholesale / Special) when the snapshot
-    // captured it. Receipts and the history drawer use the snapshot so
-    // a later admin price edit can never retroactively change a printed
-    // receipt.
-    const levelTag = item.priceLevelNameSnapshot
-      ? ` · ${item.priceLevelNameSnapshot}`
-      : "";
     return {
-      name: `${product?.name ?? item.productId} - ${unitName}${levelTag}`,
-      qtyLabel: `${soldUnitQty} x ${unitName} @ ${formatMmk(unitPrice)} (${soldBaseQuantity} base units)`,
-      total: formatMmk(item.lineTotalMmk),
+      // Receipt rows split into proper columns (Description / Qty / Price /
+      // Amount) so cashiers and customers can scan the figures the way
+      // they're used to on a paper roll. Price level snapshot is rendered
+      // separately by ReceiptPreview, not concatenated into the name.
+      name: product?.name ?? item.productId,
+      qty: soldUnitQty,
+      unitLabel: unitName,
+      unitPriceMmk: unitPrice,
+      lineTotalMmk: item.lineTotalMmk,
+      priceLevelName: item.priceLevelNameSnapshot,
     };
   });
 

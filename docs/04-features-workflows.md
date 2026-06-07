@@ -23,31 +23,41 @@ for the full RPC list.
 - On hit: cart adds 1 selected sellable unit, success toast
   `Added <name> - <unit>`.
 - On miss: error toast `Barcode not found`.
-- Stock guards apply: out of stock / at max cart units shows
-  `Only X in stock for this shop.`
+- Stock guards apply to stock-tracked products: out of stock / at max cart
+  units shows `Only X in stock for this shop.` Non Stock products bypass
+  these add-to-cart guards.
 
 ### Cart
 
 - Quantity changes via scan, +/-, or direct edit.
-- Cart lines are unique by `productId + productUnitId`, so a product can
-  appear once as `Can` and once as `Case`.
+- Fixed-price cart lines are unique by `productId + productUnitId +
+  priceLevelId`, so a product can appear once as `Can/Retail` and once as
+  `Can/Wholesale`. Open Price products may appear as separate lines with
+  different cashier-entered prices.
 - Stock validation is in base units. Example: 1 Case with `base_quantity=24`
   reserves 24 base units; with 25 base units in stock, only 1 single base
   unit remains available.
 - **Cart row UI is minimal by design** (`src/components/pos/CartItemRow.tsx`):
-  thumbnail, name (+ unit name suffix), unit price (with override pencil
-  when permitted), qty -/input/+, Remove, and a compact
-  `Deducts N base units` hint for non-base sellable units. The red
-  over-quantity warning is still rendered inline when
+  thumbnail, name on one line, unit name on its own line, price-level label,
+  unit price, a price-level pencil when permitted, stacked qty controls, and
+  a delete icon. The red over-quantity warning is still rendered inline when
   `stockStatus.exceedsStock` so cashiers see the problem without leaving
   the cart.
+- Bills shows the item count plus an `All` button. `All` opens a modal with
+  every cart line, useful when the bill panel is scrolled.
 - Per-line item discount input is **hidden in the cart**. The cart-level
   Discount % below the bill totals is the only discount input cashiers
   reach. `sale_items.item_discount_pct` is still serialized when present
   on historical rows so old receipts/refunds render unchanged.
 - Cart discount % applies after item discounts.
-- Price override requires `pos:override_price`.
+- Changing a fixed-price cart line's price level requires
+  `pos:override_price`. The override modal only lets the user choose one of
+  the configured active price levels; it does not accept arbitrary prices.
+- Open Price products prompt for a positive unit price when added to cart.
+  That cashier-entered price is sent to `complete_sale` and is required by
+  the RPC.
 - Selling below stock requires `pos:override_stock`.
+- Non Stock products skip stock limits and do not require stock override.
 - Tier pricing applies only to the default/base sellable unit. Non-default
   product units use their configured Product Unit price.
 
@@ -57,9 +67,10 @@ for the full RPC list.
 2. Payment modal opens with `Amount received` defaulted to 0; Confirm is
    disabled until paid ≥ total.
 3. Confirm calls `complete_sale(...)` — one atomic, permission-checked RPC.
-   It validates auth, shop access, shift, products, inventory, stock, and
-   override permissions; then inserts sale + sale items, decrements
-   inventory, writes `SALE_OUT` movements, and writes the audit row.
+   It validates auth, shop access, shift, products, price levels, Open Price
+   client prices, inventory, stock, and override permissions; then inserts
+   sale + sale items, decrements inventory for stock-tracked items, writes
+   `SALE_OUT` movements for stock-tracked items, and writes the audit row.
 4. The cart clears and the receipt page (`/app/sales/:saleId`) opens only
    after RPC success.
 
@@ -422,8 +433,22 @@ snapshots into movement history, so the ledger can show `-48 Can` with
 
 ### Products
 
+- `/app/admin/products` is gated by `product:read` plus an ADMIN/MANAGER
+  role gate. MANAGER can reach the page and edit products by default; Add
+  Product is hidden without `product:create`, and Delete is hidden without
+  `product:delete`.
+- Product create/edit uses the full page form routes
+  `/app/admin/products/new` (`product:create`) and
+  `/app/admin/products/:productId/edit` (`product:update`).
 - `products.sku` is required in the admin UI and is generated from the
   category prefix + sequential number (e.g. `BEE-001`) and read-only.
+- Product quick fields include alias code, short name, max quantity, Open
+  Price, Non Stock, and purchase type. Purchase type is surfaced as the
+  default term hint in the PO create form.
+- Product CSV export downloads the current product list with the active price
+  level columns. Product CSV import parses the file, validates references and
+  duplicates, shows a dry-run preview with create/update/error counts, then
+  applies only valid rows.
 - Sellable-unit barcodes are managed in the Product Unit rows via a dedicated
   `Scan barcode` button that opens `BarcodeScanModal`
   (`src/components/forms/BarcodeScanModal.tsx`). The scan modal auto-
@@ -442,8 +467,9 @@ snapshots into movement history, so the ledger can show `-48 Can` with
   `A barcode with this value is already linked to another product.`
   inline. Validation is normalize → trim + scanner control-char strip,
   length 4–64, no internal whitespace, case-insensitive uniqueness.
-  The page is gated on `product:create` (ADMIN), so CASHIER / BUYER
-  never reach this editor.
+  The Product admin page is reachable with `product:read` plus the
+  ADMIN/MANAGER role gate; save actions still require `product:create` or
+  `product:update`, so CASHIER / BUYER use the catalog route instead.
 - Product Units now replace fixed package-size behavior. Each product must
   have one active default sellable unit and may have more active units such
   as `6 Pack`, `Case`, or `Package`. Each unit stores base quantity,
@@ -467,9 +493,9 @@ snapshots into movement history, so the ledger can show `-48 Can` with
   path) so cache invalidation is automatic. Orphan cleanup is a known
   follow-up.
 - The old single `Pack Size` field is no longer shown in the Product
-  create/edit modal. Existing `products.pack_size` / `Product.packSize`
+  create/edit form. Existing `products.pack_size` / `Product.packSize`
   data is legacy-only; new package selling uses Product Units.
-- The Product create/edit modal now groups product-specific unit conversion,
+- The Product create/edit form now groups product-specific unit conversion,
   purchase cost, Retail (Sale 1), Wholesale (Sale 2), Special (Sale 3),
   and barcode fields inside **Units & Prices** cards. The top-level
   product section no longer shows separate Selling Price / Cost Price
@@ -488,7 +514,8 @@ snapshots into movement history, so the ledger can show `-48 Can` with
   by default), clears inventory rows for the product (the FK has no
   CASCADE), then deletes the product. `product_barcodes`, `price_tiers`,
   and `product_units` cascade automatically. The delete button is shown
-  for both active and inactive rows in the admin Products page. Sale
+  only to callers with `product:delete` and appears for both active and
+  inactive rows in the admin Products page. Sale
   history (`sale_items`) keeps the loose `product_id` reference; historical
   reports still render the saved name/price snapshot.
 
@@ -510,6 +537,15 @@ snapshots into movement history, so the ledger can show `-48 Can` with
   `handleSaveCategory` in `src/pages/ProductsManagePage.tsx`.
 - POS filter buttons and other selectors are store-driven; no hardcoded
   category list anywhere.
+
+### Brands
+
+- Brands are category-scoped rows from migration `031`. The Product admin
+  page manages brands alongside categories.
+- Products can store `brand_id`; product forms only show active brands for
+  the selected category.
+- Product Management, Catalog, and POS support brand sub-filters after a
+  category is selected.
 
 ### Unit Types
 
@@ -552,6 +588,9 @@ snapshots into movement history, so the ledger can show `-48 Can` with
   source of truth. It resolves shop-specific price, global price, default
   Retail fallback, then legacy `product_units.sale_price_mmk`, and writes
   price-level snapshots to `sale_items` for receipts/history.
+- POS no longer has a page-level price-level selector. New cart lines start
+  at the default level, and authorized users change a line from Bills with
+  the pencil selector.
 
 ### Price tiers
 

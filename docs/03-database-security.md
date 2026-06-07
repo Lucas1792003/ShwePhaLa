@@ -7,7 +7,7 @@ writes are RPC-only, and `audit_logs` direct writes are blocked.
 
 | Group | Tables |
 | --- | --- |
-| Core / reference | `shops`, `users`, `categories`, `products`, `product_units`, `product_barcodes`, `price_tiers`, `suppliers`, `product_image_upload_sessions` |
+| Core / reference | `shops`, `users`, `categories`, `brands`, `products`, `product_units`, `product_barcodes`, `price_levels`, `product_unit_prices`, `price_tiers`, `suppliers`, `product_image_upload_sessions` |
 | Inventory | `inventory` (PK `(shop_id, product_id)`), `inventory_movements` |
 | Sales / POS | `shifts`, `sales`, `sale_items`, `refund_void_requests`, `reprint_logs` |
 | Purchasing | `purchase_orders`, `purchase_order_items`, `supplier_payments` |
@@ -55,6 +55,9 @@ Apply in numeric order. The current ordered list:
 | `028_unit_aware_stock_workflows.sql` | Unit-aware purchase receiving + stock adjustment. Adds optional `product_unit_id` + snapshot columns to `purchase_order_items`, `stock_transfer_items`, `inventory_movements`. Updates `receive_purchase_order` to accept `{product_unit_id, received_unit_qty}` per line (server multiplies by `base_quantity`). Updates `adjust_stock` to accept optional `p_product_unit_id` + `p_unit_qty`. `complete_stock_transfer` propagates any snapshot already on `stock_transfer_items` into both movement rows. Inventory writes stay in base units. |
 | `029_unit_aware_transfer_creation.sql` | Updates `create_stock_transfer` so transfer lines may pass `{product_unit_id, selected_unit_quantity}`. The RPC validates active unit ownership, computes requested base quantity server-side, stores unit snapshots on `stock_transfer_items`, validates combined source stock in base units, and keeps approval responses from dropping snapshots. |
 | `030_price_levels.sql` | Manual POS price levels (Retail / Wholesale / Special). Adds `price_levels` registry + `product_unit_prices` (unit × level × optional shop). Backfills Retail rows from `product_units.sale_price_mmk`. Adds price-level snapshot columns (`price_level_id`, `price_level_name_snapshot`, `price_source_snapshot`) to `sale_items`. Updates `complete_sale` to accept `price_level_id` per item and resolve the final price server-side via the chain: shop-specific → global at level → default-level (shop then global) → legacy `sale_price_mmk`. |
+| `031_brands.sql` | Adds category-scoped `brands`, product `brand_id`, brand RLS policies, and data-store support for catalog/POS brand filtering. |
+| `032_product_quick_fields.sql` | Adds product quick fields: `alias_code`, `short_name`, `max_qty`, `is_open_price`, `is_non_stock`, and `purchase_type`. |
+| `033_complete_sale_open_price_non_stock.sql` | Updates `complete_sale` so Open Price items require client `unit_price_mmk`, Non Stock items skip inventory checks/deductions/movements, and price-level snapshots still record the selected level. |
 
 > **Migration order warning.** Some later migrations depend on identity
 > helpers from `003` and the audit-write lockdown from `013`. Always apply
@@ -95,7 +98,7 @@ the audit row — all in one transaction.
 
 | RPC | Purpose |
 | --- | --- |
-| `complete_sale(...)` | POS checkout: validates product units/prices/stock, writes sale + items + inventory + movements + audit |
+| `complete_sale(...)` | POS checkout: validates product units/prices/stock, requires cashier-supplied prices for Open Price items, skips inventory writes for Non Stock items, writes sale + items + inventory + movements + audit |
 | `create_refund_void_request(...)` | Cashier raises a refund or void request |
 | `approve_refund_request(p_request_id)` | Manager approves a refund; restores stock, writes movements + audit |
 | `approve_void_request(p_request_id)` | Manager approves a void; restocks all items |

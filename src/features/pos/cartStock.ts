@@ -90,10 +90,30 @@ export const getCartItemStockStatus = (
   items: CartItem[],
   stockByProductId: StockByProductId
 ): CartItemStockStatus => {
-  const stockQty = cleanNonNegativeInteger(stockByProductId[item.productId] ?? 0);
   const unitsPerItem = getCartItemUnitsPerItem(item);
   const requestedQty = cleanNonNegativeInteger(item.qty);
   const requestedUnits = requestedQty * unitsPerItem;
+
+  // Non-stock items (services, pass-through) never touch inventory. Return
+  // a status that mirrors "stock is fine, no warnings" so the cart row UI
+  // (quantity caps, low-stock badges) stays out of the way.
+  if (item.isNonStock) {
+    return {
+      stockQty: Number.POSITIVE_INFINITY,
+      requestedQty,
+      requestedUnits,
+      otherRequestedUnits: 0,
+      remainingUnitsAfterItem: Number.POSITIVE_INFINITY,
+      unitsPerItem,
+      maxQty: Number.POSITIVE_INFINITY,
+      canIncrease: true,
+      atMax: false,
+      nearStock: false,
+      exceedsStock: false,
+    };
+  }
+
+  const stockQty = cleanNonNegativeInteger(stockByProductId[item.productId] ?? 0);
   const otherRequestedUnits = items
     .filter((cartItem) => cartItem.productId === item.productId && cartItem.id !== item.id)
     .reduce((sum, cartItem) => sum + getCartItemRequestedUnits(cartItem), 0);
@@ -160,15 +180,29 @@ export const getCartAddStockStatus = (
   product: Pick<CartItem, "productId"> | { id: string },
   unitOrUsePack: Pick<ProductUnit, "baseQuantity"> | boolean | undefined,
   items: CartItem[],
-  stockByProductId: StockByProductId
+  stockByProductId: StockByProductId,
+  options?: { isNonStock?: boolean }
 ): CartAddStockStatus => {
   const productId = "id" in product ? product.id : product.productId;
-  const stockQty = cleanNonNegativeInteger(stockByProductId[productId] ?? 0);
-  const requestedUnits = getRequestedUnitsByProduct(items)[productId] ?? 0;
-  const remainingUnits = stockQty - requestedUnits;
   const unitsPerItem = typeof unitOrUsePack === "object"
     ? getProductUnitsPerAdd(unitOrUsePack)
     : getProductUnitsPerAdd();
+
+  // Non-stock products always allow add. Return an infinite-stock status
+  // so the cart row's stock badges / quantity clamps don't fire.
+  if (options?.isNonStock) {
+    return {
+      canAdd: true,
+      stockQty: Number.POSITIVE_INFINITY,
+      requestedUnits: 0,
+      remainingUnits: Number.POSITIVE_INFINITY,
+      unitsPerItem,
+    };
+  }
+
+  const stockQty = cleanNonNegativeInteger(stockByProductId[productId] ?? 0);
+  const requestedUnits = getRequestedUnitsByProduct(items)[productId] ?? 0;
+  const remainingUnits = stockQty - requestedUnits;
   const canAdd = remainingUnits >= unitsPerItem;
 
   return {

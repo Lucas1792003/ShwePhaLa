@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { useAppStore } from "../../stores/appStore";
@@ -24,7 +24,6 @@ interface NavItem {
 interface NavSection {
   titleKey?: string;
   items: NavItem[];
-  adminOnly?: boolean;
 }
 
 const navSections: NavSection[] = [
@@ -55,11 +54,10 @@ const navSections: NavSection[] = [
   },
   {
     titleKey: "settings",
-    adminOnly: true,
     items: [
       { to: "/app/admin/shops", labelKey: "shops", permission: ROUTE_PERMISSIONS.adminShops, icon: "store" },
       { to: "/app/admin/users", labelKey: "users", permission: ROUTE_PERMISSIONS.adminUsers, icon: "group" },
-      { to: "/app/admin/products", labelKey: "products", permission: ROUTE_PERMISSIONS.adminProducts, icon: "inventory" },
+      { to: "/app/admin/products", labelKey: "products", permission: ROUTE_PERMISSIONS.adminProducts, icon: "inventory", allowedRoles: ["ADMIN", "MANAGER"] },
       { to: "/app/admin/unit-types", labelKey: "unitTypes", permission: ROUTE_PERMISSIONS.adminUnitTypes, icon: "straighten" },
       { to: "/app/admin/pricing", labelKey: "pricing", permission: ROUTE_PERMISSIONS.adminPricing, icon: "sell" },
       { to: "/app/admin/audit", labelKey: "auditLog", permission: ROUTE_PERMISSIONS.adminAudit, icon: "policy" },
@@ -67,13 +65,32 @@ const navSections: NavSection[] = [
   },
 ];
 
+const SIDEBAR_COLLAPSED_KEY = "retails-shop.sidebarCollapsed";
+
+const readSidebarCollapsed = (): boolean => {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+};
+
 export const Sidebar = () => {
   const navigate = useNavigate();
   const { currentUserId, logout } = useAuthStore();
   const setShopId = useAppStore((state) => state.setShopId);
   const currentUser = useDataStore((state) => state.users.find((user) => user.id === currentUserId));
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed);
   const { t } = useTranslation();
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isSidebarCollapsed));
+    } catch {
+      // Ignore storage failures; the toggle still works for this session.
+    }
+  }, [isSidebarCollapsed]);
 
   const toggleSection = (title: string) => {
     setCollapsedSections((prev) => {
@@ -93,16 +110,25 @@ export const Sidebar = () => {
     navigate("/login");
   };
 
-  const isAdmin = currentUser?.role === "ADMIN";
-
   return (
-    <aside className="sidebar print-hidden">
+    <aside className={cn("sidebar print-hidden", isSidebarCollapsed && "sidebar-collapsed")}>
       <div className="sidebar-header">
         <img src={logo} alt="Shwe Pha La logo" className="header-logo" />
-        <div>
+        <div className="sidebar-brand-copy">
           <div className="shopName">Shwe Pha La</div>
           <div className="shop-meta">Multi-shop console</div>
         </div>
+        <button
+          type="button"
+          className="sidebar-toggle"
+          onClick={() => setIsSidebarCollapsed((value) => !value)}
+          aria-label={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
+          title={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
+        >
+          <span className="material-symbols-rounded">
+            {isSidebarCollapsed ? "keyboard_double_arrow_right" : "keyboard_double_arrow_left"}
+          </span>
+        </button>
       </div>
 
       <div className="sidebar-content">
@@ -119,16 +145,16 @@ export const Sidebar = () => {
               return true;
             });
 
-            // Skip section if no visible items or admin-only section for non-admins
+            // Skip section if no visible items.
             if (visibleItems.length === 0) return null;
-            if (section.adminOnly && !isAdmin) return null;
 
             const sectionTitle = section.titleKey ? t("sidebar", section.titleKey) : undefined;
             const isCollapsed = sectionTitle ? collapsedSections.has(sectionTitle) : false;
+            const showItems = isSidebarCollapsed || !isCollapsed;
 
             return (
               <div key={section.titleKey || `section-${sectionIndex}`} className="nav-section">
-                {sectionTitle && (
+                {sectionTitle && !isSidebarCollapsed && (
                   <button
                     type="button"
                     className="section-header"
@@ -140,13 +166,14 @@ export const Sidebar = () => {
                     </span>
                   </button>
                 )}
-                {!isCollapsed && (
+                {showItems && (
                   <ul className="menu-list">
                     {visibleItems.map((item) => (
                       <li key={item.to} className="menu-item">
                         <NavLink
                           to={item.to}
                           className={({ isActive }) => cn("menu-link", isActive && "active")}
+                          title={isSidebarCollapsed ? t("sidebar", item.labelKey) : undefined}
                         >
                           <span className="material-symbols-rounded">{item.icon}</span>
                           <span className="menu-label">{t("sidebar", item.labelKey)}</span>
@@ -162,12 +189,18 @@ export const Sidebar = () => {
       </div>
 
       <div className="sidebar-footer">
-        <LanguageSwitcher className="mb-3" />
+        <LanguageSwitcher className="sidebar-language mb-3" />
         <div className="sidebar-user">
           <div className="user-name">{currentUser?.name ?? "User"}</div>
           <div className="user-role">{currentUser?.role ?? ""}</div>
         </div>
-        <button type="button" className="logout-btn" onClick={handleLogout}>
+        <button
+          type="button"
+          className="logout-btn"
+          onClick={handleLogout}
+          title={isSidebarCollapsed ? t("common", "logout") : undefined}
+          aria-label={t("common", "logout")}
+        >
           <span className="material-symbols-rounded">logout</span>
           <span>{t("common", "logout")}</span>
         </button>

@@ -69,6 +69,18 @@ Open work, grouped by area.
       (Sale 2), Special (Sale 3), barcode, and base-unit conversion.
       Legacy `products.price_mmk` / `cost_mmk` stay synced from the default
       unit for fallback compatibility.
+- [x] **Brands + product quick fields.** Brands are category-scoped catalog
+      rows; products now carry alias code, short name, max quantity,
+      Open Price, Non Stock, and purchase type.
+- [x] **Open Price + Non Stock POS behavior.** POS prompts for Open Price
+      unit prices, bypasses stock guards for Non Stock products, and
+      `complete_sale` enforces both flags server-side.
+- [x] **Product CSV import/export.** Product Management exports the current
+      product data with active price-level columns and imports through a
+      validation + dry-run preview before writes.
+- [x] **POS Bills polish.** Bills has line-level price-level selection,
+      icon-only delete, stacked quantity controls, separate name/unit lines,
+      and an `All` modal for the full cart.
 - [ ] **Playwright smoke tests** for the workflows enumerated in
       [08-testing-qa.md](./08-testing-qa.md).
 - [ ] **Print + barcode hardware QA.** Test ESC/POS thermal printers at
@@ -124,6 +136,9 @@ These were the headline backend hardening milestones; details are in
 - [x] RBAC user-assignment constraints — one admin globally, one active
       manager per shop, cashier-needs-manager, manager-deactivation
       safety (migration `020`).
+- [x] Brand registry (migration `031`), product quick fields
+      (migration `032`), and Open Price / Non Stock `complete_sale`
+      enforcement (migration `033`).
 
 ## Completed Frontend Hardening (for reference)
 
@@ -134,6 +149,7 @@ These were the headline backend hardening milestones; details are in
 - [x] Tablet/desktop responsive overhaul + `SmallScreenGuard`.
 - [x] Barcode label preview + template registry.
 - [x] POS barcode scan SKU fallback + scan UX (success toast, refocus).
+- [x] Collapsible sidebar with persisted icon-only rail.
 - [x] Supplier detail moved to full-page route at
       `/app/suppliers/:supplierId`.
 - [x] System-wide error utility + `useAsyncAction` + top-level

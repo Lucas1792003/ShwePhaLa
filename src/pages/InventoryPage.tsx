@@ -154,6 +154,7 @@ export const InventoryPage = () => {
           <InventoryTable
             rows={paginatedStockRows}
             productUnits={productUnits}
+            categories={categories}
             onAdjust={canAdjust ? setAdjustProductId : undefined}
           />
           <div className="flex items-center justify-between">

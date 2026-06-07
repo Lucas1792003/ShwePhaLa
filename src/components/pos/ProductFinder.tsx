@@ -1,4 +1,5 @@
-import type { Product, Category, ProductUnit } from "../../types";
+import { useMemo } from "react";
+import type { Brand, Product, Category, ProductUnit } from "../../types";
 import { Badge } from "../ui/Badge";
 import { SearchInput } from "../forms/SearchInput";
 import { formatMmk } from "../../lib/utils";
@@ -9,10 +10,15 @@ interface ProductFinderProps {
   products: Product[];
   /** Active categories — drives the icon-based filter buttons. */
   categories: Category[];
+  /** Active brands — used to render the per-category brand dropdown. */
+  brands?: Brand[];
   search: string;
   category: string;
+  /** Selected brand id; "" means "all brands in the selected category". */
+  brandId?: string;
   onSearch: (value: string) => void;
   onCategory: (value: string) => void;
+  onBrand?: (value: string) => void;
   inventoryById: Record<string, number>;
   cartUnitsByProductId?: Record<string, number>;
   productUnits?: ProductUnit[];
@@ -22,10 +28,13 @@ interface ProductFinderProps {
 export const ProductFinder = ({
   products,
   categories,
+  brands = [],
   search,
   category,
+  brandId = "",
   onSearch,
   onCategory,
+  onBrand,
   inventoryById,
   cartUnitsByProductId = {},
   productUnits = [],
@@ -41,6 +50,20 @@ export const ProductFinder = ({
       symbol: resolveCategoryIcon(cat.iconKey, cat.name).symbol,
     })),
   ];
+
+  // Brands that belong to the currently selected category. Empty when "All"
+  // is active (we hide the bar entirely) or when the category has no brands
+  // configured yet — also hide in that case to avoid a useless dropdown.
+  const brandsForCategory = useMemo(() => {
+    if (category === "all") return [];
+    const cat = categories.find((c) => c.name === category);
+    if (!cat) return [];
+    return brands
+      .filter((b) => b.isActive && b.categoryId === cat.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  }, [brands, categories, category]);
+
+  const showBrandBar = brandsForCategory.length > 0 && Boolean(onBrand);
 
   return (
     <div className="flex h-full flex-col">
@@ -67,42 +90,89 @@ export const ProductFinder = ({
             </button>
           ))}
         </div>
+
+        {/* Brand sub-filter — only shown when a specific category with at
+            least one brand is selected. "All Categories" intentionally
+            hides it (per spec) and so does a category with no brands. */}
+        {showBrandBar && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Brand
+            </span>
+            <button
+              type="button"
+              onClick={() => onBrand?.("")}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                brandId === ""
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              All
+            </button>
+            <select
+              value={brandId}
+              onChange={(event) => onBrand?.(event.target.value)}
+              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            >
+              <option value="">Select a brand…</option>
+              {brandsForCategory.map((brand) => (
+                <option key={brand.id} value={brand.id}>
+                  {brand.name}
+                </option>
+              ))}
+            </select>
+            {brandId && (
+              <Badge tone="green">
+                {brandsForCategory.find((b) => b.id === brandId)?.name ?? "Brand"}
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Products Grid - Scrollable */}
       <div className="flex-1 overflow-y-auto">
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-3 2xl:grid-cols-4">
           {products.map((product) => {
+            const isNonStock = Boolean(product.isNonStock);
             const qty = inventoryById[product.id] ?? 0;
             const requestedUnits = cartUnitsByProductId[product.id] ?? 0;
-            const remainingUnits = Math.max(0, qty - requestedUnits);
+            const remainingUnits = isNonStock ? Number.POSITIVE_INFINITY : Math.max(0, qty - requestedUnits);
             const units = getActiveProductUnits(product.id, productUnits);
             const defaultUnit = getDefaultProductUnit(product, productUnits);
             const visibleUnits = units.length > 0 ? units : [defaultUnit];
-            const outOfStock = qty <= 0;
+            const canAddUnit = (unit: ProductUnit) =>
+              isNonStock || remainingUnits >= unit.baseQuantity;
+            const outOfStock = !isNonStock && qty <= 0;
             const fullyReserved = !outOfStock && remainingUnits <= 0;
-            const lowStock = qty > 0 && qty <= product.lowStockThreshold;
-            const unitAddDisabled = outOfStock || remainingUnits < defaultUnit.baseQuantity;
+            const lowStock = !isNonStock && qty > 0 && qty <= product.lowStockThreshold;
+            const defaultAddDisabled = !canAddUnit(defaultUnit);
+            const allUnitsDisabled = !visibleUnits.some(canAddUnit);
 
             return (
               <div
                 key={product.id}
                 role="button"
-                tabIndex={unitAddDisabled ? -1 : 0}
+                tabIndex={defaultAddDisabled ? -1 : 0}
                 aria-label={`Add ${product.name}`}
-                aria-disabled={unitAddDisabled}
+                aria-disabled={allUnitsDisabled}
                 onClick={() => {
-                  if (!unitAddDisabled) onAdd(product, defaultUnit);
+                  if (!defaultAddDisabled) onAdd(product, defaultUnit);
                 }}
                 onKeyDown={(event) => {
-                  if (event.currentTarget !== event.target || unitAddDisabled) return;
+                  if (event.currentTarget !== event.target || defaultAddDisabled) return;
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     onAdd(product, defaultUnit);
                   }
                 }}
                 className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
-                  unitAddDisabled ? "cursor-not-allowed border-red-200 opacity-70" : "cursor-pointer border-slate-200"
+                  allUnitsDisabled
+                    ? "cursor-not-allowed border-red-200 opacity-70"
+                    : defaultAddDisabled
+                      ? "cursor-default border-amber-200"
+                      : "cursor-pointer border-slate-200"
                 }`}
               >
                 {/* Product Image */}
@@ -142,7 +212,11 @@ export const ProductFinder = ({
                   {/* Stock Count */}
                   <div className="absolute bottom-2 left-2">
                     <span className="rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white">
-                      {requestedUnits > 0 ? `${remainingUnits} of ${qty} left` : `${qty} in stock`}
+                      {isNonStock
+                        ? "Non stock"
+                        : requestedUnits > 0
+                          ? `${remainingUnits} of ${qty} left`
+                          : `${qty} in stock`}
                     </span>
                   </div>
                 </div>
@@ -156,10 +230,16 @@ export const ProductFinder = ({
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        if (!unitAddDisabled) onAdd(product, defaultUnit);
+                        if (!defaultAddDisabled) onAdd(product, defaultUnit);
                       }}
-                      disabled={unitAddDisabled}
-                      title={unitAddDisabled ? `Only ${qty} in stock for this shop.` : `Add ${product.name}`}
+                      disabled={defaultAddDisabled}
+                      title={
+                        defaultAddDisabled && !allUnitsDisabled
+                          ? `Only ${remainingUnits} ${product.unitType} left. Choose a smaller unit.`
+                          : defaultAddDisabled
+                            ? `Only ${qty} in stock for this shop.`
+                            : `Add ${product.name}`
+                      }
                       className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
                     >
                       <span className="material-symbols-rounded text-lg">add</span>
@@ -168,7 +248,7 @@ export const ProductFinder = ({
                   {visibleUnits.length > 1 && (
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {visibleUnits.map((unit) => {
-                        const disabled = remainingUnits < unit.baseQuantity;
+                        const disabled = !canAddUnit(unit);
                         return (
                           <button
                             key={unit.id}
@@ -178,7 +258,7 @@ export const ProductFinder = ({
                               if (!disabled) onAdd(product, unit);
                             }}
                             disabled={disabled}
-                            className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-rose-300 disabled:bg-white disabled:text-rose-600 disabled:hover:border-rose-300 disabled:hover:bg-white"
                             title={`${unit.name} deducts ${unit.baseQuantity} ${product.unitType}`}
                           >
                             {unit.name}

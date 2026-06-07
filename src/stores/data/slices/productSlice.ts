@@ -13,9 +13,18 @@ export const createProductSlice: StateCreator<DataState, [], [], ProductState> =
 
   addProduct: async (product: Product, barcodes: ProductBarcode[]) => {
     await dbExec(supabase.from("products").insert({
-      id: product.id, sku: product.sku, name: product.name, category: product.category,
+      id: product.id, sku: product.sku,
+      alias_code: product.aliasCode ?? null,
+      name: product.name,
+      short_name: product.shortName ?? null,
+      category: product.category,
+      brand_id: product.brandId ?? null,
       unit_type: product.unitType, price_mmk: product.priceMmk, cost_mmk: product.costMmk,
       pack_size: product.packSize, low_stock_threshold: product.lowStockThreshold,
+      max_qty: product.maxQty ?? null,
+      is_open_price: product.isOpenPrice ?? false,
+      is_non_stock: product.isNonStock ?? false,
+      purchase_type: product.purchaseType ?? null,
       expiry_date: product.expiryDate, image_url: product.imageUrl,
       is_active: product.isActive, created_at: product.createdAt,
     }), "addProduct");
@@ -38,9 +47,18 @@ export const createProductSlice: StateCreator<DataState, [], [], ProductState> =
 
   updateProduct: async (product: Product, barcodes: ProductBarcode[]) => {
     await dbExec(supabase.from("products").update({
-      sku: product.sku, name: product.name, category: product.category,
+      sku: product.sku,
+      alias_code: product.aliasCode ?? null,
+      name: product.name,
+      short_name: product.shortName ?? null,
+      category: product.category,
+      brand_id: product.brandId ?? null,
       unit_type: product.unitType, price_mmk: product.priceMmk, cost_mmk: product.costMmk,
       pack_size: product.packSize, low_stock_threshold: product.lowStockThreshold,
+      max_qty: product.maxQty ?? null,
+      is_open_price: product.isOpenPrice ?? false,
+      is_non_stock: product.isNonStock ?? false,
+      purchase_type: product.purchaseType ?? null,
       expiry_date: product.expiryDate, image_url: product.imageUrl, is_active: product.isActive,
     }).eq("id", product.id), "updateProduct");
     await dbExec(supabase.from("product_barcodes").delete().eq("product_id", product.id), "updateProduct delete barcodes");

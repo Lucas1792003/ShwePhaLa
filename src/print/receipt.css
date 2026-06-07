@@ -28,6 +28,76 @@
   object-fit: contain;
 }
 
+/* Meta block — stacked label/separator/value rows. The grid layout
+ * pins the colon column to a single character width so every colon
+ * in the block lines up the same way it would on a paper receipt,
+ * regardless of label length. */
+.receipt-meta-row {
+  display: grid;
+  grid-template-columns: 5rem auto 1fr;
+  column-gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.125rem 0;
+}
+
+.receipt-meta-label {
+  font-weight: 500;
+}
+
+.receipt-meta-sep {
+  text-align: center;
+}
+
+.receipt-meta-value {
+  min-width: 0;
+  word-break: break-word;
+}
+
+/* Items table — paper-style column rule above and below the header
+ * row, no zebra. Column widths are tuned for 80mm thermal paper:
+ * Description takes whatever Qty/Price/Amount don't, and the three
+ * numeric columns stay narrow so amounts line up. */
+.receipt-items {
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.receipt-items th {
+  font-weight: 600;
+  padding: 0.25rem 0.25rem;
+  border-top: 1px dashed #94a3b8;
+  border-bottom: 1px dashed #94a3b8;
+}
+
+.receipt-items td {
+  padding: 0.35rem 0.25rem;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+/* Approximate widths — the browser flexes Description to fill the
+ * leftover space. `min-width` keeps the numeric columns wide enough
+ * on screen at the preview's narrower frame. */
+.receipt-items th:nth-child(1),
+.receipt-items td:nth-child(1) {
+  width: auto;
+}
+.receipt-items th:nth-child(2),
+.receipt-items td:nth-child(2) {
+  width: 18%;
+  min-width: 4rem;
+  white-space: nowrap;
+}
+.receipt-items th:nth-child(3),
+.receipt-items td:nth-child(3),
+.receipt-items th:nth-child(4),
+.receipt-items td:nth-child(4) {
+  width: 18%;
+  min-width: 4rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Tell the browser the printed page is an 80mm thermal roll with
  * auto height (page ends as soon as content does — no blank feed).
  * Labels (print/labels.css) declare their own named @page rules
@@ -123,5 +193,27 @@
     margin: 0 auto 2mm;
     filter: grayscale(100%) contrast(1.4);
     -webkit-filter: grayscale(100%) contrast(1.4);
+  }
+
+  /* Print-specific table refinements. Use solid black rules instead of
+   * the slate-400 dashed border so the lines don't dither on thermal
+   * paper. Tighten cell padding to claw back vertical space. */
+  .receipt .receipt-items th {
+    border-top: 1px dashed #000000 !important;
+    border-bottom: 1px dashed #000000 !important;
+    padding: 0.4mm 0.6mm;
+  }
+  .receipt .receipt-items td {
+    padding: 0.6mm 0.6mm;
+  }
+  .receipt .receipt-totals .border-dashed {
+    border-color: #000000 !important;
+  }
+
+  /* Headers use the regular text colour, NOT slate. The forced black on
+   * `.receipt *` already handles this but spell it out so the totals
+   * label/value alignment is unambiguous. */
+  .receipt .text-slate-500 {
+    color: #000000 !important;
   }
 }
