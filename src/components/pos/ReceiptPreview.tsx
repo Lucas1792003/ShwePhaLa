@@ -28,19 +28,37 @@ const fmtAmount = (value: number) => value.toLocaleString("en-US");
 export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: ReceiptPreviewProps) => {
   const itemCount = lines.reduce((sum, line) => sum + line.qty, 0);
 
+  // Collect the distinct price-level names used on this receipt. The
+  // common case (every line at the same level, usually Retail) collapses
+  // into a single meta row, so we don't repeat the same word under every
+  // item. Mixed-level carts keep the per-line label so customers can
+  // still see which line was Wholesale vs Retail.
+  const distinctPriceLevels = Array.from(
+    new Set(lines.map((line) => line.priceLevelName).filter((name): name is string => Boolean(name))),
+  );
+  const singlePriceLevel = distinctPriceLevels.length === 1 ? distinctPriceLevels[0] : null;
+
   return (
     <div className="receipt rounded-2xl border border-slate-200/70 p-4 shadow-card">
       {/* Brand header */}
       <div className="text-center">
         <img
-          src="/logo1.png"
-          alt="Shwe Pha La"
-          className="receipt-logo mx-auto mb-2"
+          src="/logo_real.png"
+          alt="Shwe Pha Lar"
+          // `mix-blend-multiply` is a safety net for white-background
+          // PNGs: it blends white pixels into the white card / thermal
+          // paper. If the PNG is already transparent it's a no-op.
+          // Pure black/dark pixels of the logo remain untouched.
+          className="receipt-logo mx-auto mb-2 mix-blend-multiply"
           onError={(event) => {
             event.currentTarget.style.display = "none";
           }}
         />
-        <div className="text-lg font-semibold">{shop.name}</div>
+        {/* Company brand sits above the per-shop name so customers see
+            both the umbrella brand and the specific store they bought
+            from on the same receipt. */}
+        <div className="text-base font-bold tracking-wide">Shwe Pha Lar</div>
+        <div className="text-sm font-semibold text-slate-700">{shop.name}</div>
         <div className="text-xs text-slate-500">{shop.address}</div>
         <div className="mt-2 text-xs mono">Receipt {sale.receiptNo}</div>
       </div>
@@ -70,6 +88,13 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
           <span className="receipt-meta-sep">:</span>
           <span className="receipt-meta-value">{itemCount}</span>
         </div>
+        {singlePriceLevel && (
+          <div className="receipt-meta-row">
+            <span className="receipt-meta-label">Price</span>
+            <span className="receipt-meta-sep">:</span>
+            <span className="receipt-meta-value">{singlePriceLevel}</span>
+          </div>
+        )}
       </div>
 
       {/* Items — proper 4-column table. Description wraps; Qty / Price /
@@ -89,7 +114,10 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
             <tr key={`${line.name}-${index}`}>
               <td>
                 <div>{line.name}</div>
-                {line.priceLevelName && (
+                {/* Per-line price level shown ONLY when the receipt has
+                    mixed levels — single-level receipts surface the
+                    label once in the meta block to keep rows clean. */}
+                {!singlePriceLevel && line.priceLevelName && (
                   <div className="text-[10px] text-slate-500">
                     {line.priceLevelName}
                   </div>

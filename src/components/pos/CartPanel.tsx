@@ -19,7 +19,10 @@ interface CartPanelProps {
   onQtySet: (id: string, qty: number) => void;
   onRemove: (id: string) => void;
   onCartDiscountChange: (value: number) => void;
-  onCheckout: () => void;
+  /** Called when the cashier confirms the bill. `printAfterSave` is set
+   *  by the "Save & Print" button (F3). The parent owns navigation + the
+   *  print trigger; this component just emits intent. */
+  onCheckout: (printAfterSave: boolean) => void;
   onOverridePrice?: (item: CartItem) => void;
   stockStatuses?: Record<string, CartItemStockStatus>;
   checkoutDisabled?: boolean;
@@ -151,15 +154,27 @@ export const CartPanel = ({
         </div>
       </div>
 
-      {/* Checkout Button */}
-      <Button
-        className="mt-4 w-full bg-emerald-600 py-3 text-base font-semibold hover:bg-emerald-700"
-        onClick={onCheckout}
-        disabled={checkoutDisabled}
-      >
-        <span className="material-symbols-rounded mr-2">point_of_sale</span>
-        Place Order (F2)
-      </Button>
+      {/* Checkout buttons — Place Order is the primary action and takes
+          the remaining width; Print is a compact secondary action so the
+          ratio reflects how often each is used in practice. */}
+      <div className="mt-4 flex gap-2">
+        <Button
+          className="flex-1 whitespace-nowrap bg-emerald-600 py-3 text-sm font-semibold hover:bg-emerald-700"
+          onClick={() => onCheckout(false)}
+          disabled={checkoutDisabled}
+        >
+          <span className="material-symbols-rounded mr-1 text-base">point_of_sale</span>
+          Place Order (F2)
+        </Button>
+        <Button
+          className="whitespace-nowrap bg-emerald-600 py-3 text-sm font-semibold hover:bg-emerald-700"
+          onClick={() => onCheckout(true)}
+          disabled={checkoutDisabled}
+        >
+          <span className="material-symbols-rounded mr-1 text-base">print</span>
+          Print (F3)
+        </Button>
+      </div>
       {checkoutHelper && (
         <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-center text-xs font-medium text-slate-500">
           {checkoutHelper}

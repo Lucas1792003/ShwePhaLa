@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { Brand, Product, Category, ProductUnit } from "../../types";
 import { Badge } from "../ui/Badge";
 import { SearchInput } from "../forms/SearchInput";
@@ -65,6 +65,48 @@ export const ProductFinder = ({
 
   const showBrandBar = brandsForCategory.length > 0 && Boolean(onBrand);
 
+  // Click-and-drag horizontal scroll for the category row. Tracks the
+  // pointer-down x + scrollLeft so onPointerMove can translate cursor
+  // travel into scroll offset. The `dragMovedRef` flag is checked by
+  // each tile's onClick — if the cursor moved more than 5 px during the
+  // drag we treat the gesture as a scroll, not a select.
+  const dragRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<{ startX: number; startScroll: number; pointerId: number } | null>(null);
+  const dragMovedRef = useRef(false);
+  const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    // Ignore right-click / middle-click drags so context menu still works.
+    if (event.button !== 0) return;
+    const el = dragRef.current;
+    if (!el) return;
+    dragStateRef.current = {
+      startX: event.clientX,
+      startScroll: el.scrollLeft,
+      pointerId: event.pointerId,
+    };
+    dragMovedRef.current = false;
+    el.setPointerCapture(event.pointerId);
+  };
+  const updateDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = dragStateRef.current;
+    const el = dragRef.current;
+    if (!state || !el) return;
+    const dx = event.clientX - state.startX;
+    if (Math.abs(dx) > 5) dragMovedRef.current = true;
+    el.scrollLeft = state.startScroll - dx;
+  };
+  const endDrag = () => {
+    const state = dragStateRef.current;
+    if (!state) return;
+    const el = dragRef.current;
+    if (el?.hasPointerCapture(state.pointerId)) {
+      el.releasePointerCapture(state.pointerId);
+    }
+    dragStateRef.current = null;
+    // Leave dragMovedRef true for one tick so the upcoming click event
+    // can read it; clear right after via microtask.
+    queueMicrotask(() => { dragMovedRef.current = false; });
+  };
+
   return (
     <div className="flex h-full flex-col">
       {/* Fixed Header - Search & Categories */}
@@ -72,14 +114,37 @@ export const ProductFinder = ({
         {/* Search Bar */}
         <SearchInput value={search} onChange={onSearch} placeholder="Search items here..." />
 
-        {/* Category Tabs */}
-        <div className="flex flex-wrap gap-2">
+        {/* Category Tabs — horizontal scroll instead of wrap. Supports:
+            * Mouse wheel → translates vertical scroll to horizontal
+            * Click-and-drag → grab anywhere on the row and slide
+            * Native trackpad horizontal swipe (unmodified, works free)
+            Each tile checks `dragMovedRef` in onClick so a drag that
+            crosses a tile doesn't accidentally select it. */}
+        <div
+          ref={dragRef}
+          // Hide the native scrollbar — the row is drag/wheel-scrollable
+          // and the visible bar was just noise. Cross-browser combo:
+          // `scrollbar-width:none` (Firefox) + `::-webkit-scrollbar`
+          // override (Chromium/Safari).
+          className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 cursor-grab select-none active:cursor-grabbing [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          onWheel={(event) => {
+            if (event.deltaY === 0) return;
+            event.currentTarget.scrollLeft += event.deltaY;
+          }}
+          onPointerDown={beginDrag}
+          onPointerMove={updateDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        >
           {categoryButtons.map((cat) => (
             <button
               key={cat.key}
               type="button"
-              onClick={() => onCategory(cat.key)}
-              className={`flex flex-col items-center gap-1 rounded-xl px-4 py-2 text-xs font-medium capitalize transition-all ${
+              onClick={() => {
+                if (dragMovedRef.current) return;
+                onCategory(cat.key);
+              }}
+              className={`flex flex-shrink-0 flex-col items-center gap-1 rounded-xl px-4 py-2 text-xs font-medium capitalize transition-all ${
                 category === cat.key
                   ? "bg-emerald-600 text-white shadow-md"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Role, Shift } from "../../../types";
 import { useAuthStore } from "../../../stores/authStore";
 import { useAppStore } from "../../../stores/appStore";
 import { useDataStore } from "../../../stores/dataStore";
 import { PageHeader } from "../../../components/layout/PageHeader";
 import { Card } from "../../../components/ui/Card";
-import { Modal } from "../../../components/ui/Modal";
 import { Button } from "../../../components/ui/Button";
 import { Badge } from "../../../components/ui/Badge";
 import { Tabs } from "../../../components/ui/Tabs";
@@ -13,14 +13,12 @@ import { Select } from "../../../components/ui/Select";
 import { Input } from "../../../components/ui/Input";
 import { Table, TBody, TD, TH, THead, TR } from "../../../components/ui/Table";
 import { useToast } from "../../../components/ui/Toast";
-import { ShiftDetail } from "../../../components/shifts/ShiftDetail";
 import { ShiftSummary } from "../../../components/shifts/ShiftSummary";
 import { StartShiftCard } from "../../../components/shifts/StartShiftCard";
 import { EndShiftCard } from "../../../components/shifts/EndShiftCard";
 import { buildShiftBreakdown } from "../service";
 import {
   buildShiftCsvRows,
-  canUserCloseShift,
   filterShiftRecords,
   getSalesForShift,
   getVisibleShiftsForUser,
@@ -47,6 +45,7 @@ const statusLabel = (shift: Shift) => (shift.endedAt ? "Closed" : "Open");
 
 export const ShiftsPage = () => {
   const toast = useToast();
+  const navigate = useNavigate();
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) => state.users.find((user) => user.id === currentUserId));
   const { currentShopId } = useAppStore();
@@ -67,10 +66,6 @@ export const ShiftsPage = () => {
   const [closingCash, setClosingCash] = useState<number | undefined>(undefined);
   const [varianceReason, setVarianceReason] = useState("");
   const [closeAttempted, setCloseAttempted] = useState(false);
-  const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null);
-  const [selectedClosingCash, setSelectedClosingCash] = useState<number | undefined>(undefined);
-  const [selectedVarianceReason, setSelectedVarianceReason] = useState("");
-  const [selectedCloseAttempted, setSelectedCloseAttempted] = useState(false);
   const [recordsMonthFilter, setRecordsMonthFilter] = useState<string>("all");
   const [recordsStatusFilter, setRecordsStatusFilter] = useState<ShiftStatusFilter>("all");
   const [recordsShopFilter, setRecordsShopFilter] = useState<string>("all");
@@ -81,12 +76,6 @@ export const ShiftsPage = () => {
     const handle = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(handle);
   }, []);
-
-  useEffect(() => {
-    setSelectedClosingCash(undefined);
-    setSelectedVarianceReason("");
-    setSelectedCloseAttempted(false);
-  }, [selectedShiftId]);
 
   const role = currentUser?.role;
   const canOpenOwn = hasPermission(currentUser, "shift:manage_own");
@@ -241,71 +230,6 @@ export const ShiftsPage = () => {
       }),
     [visibleShifts, recordsMonthFilter, recordsStatusFilter, recordsShopFilter, recordsUserFilter, role]
   );
-
-  const selectedShift = useMemo(
-    () => visibleShifts.find((shift) => shift.id === selectedShiftId),
-    [visibleShifts, selectedShiftId]
-  );
-
-  const selectedShiftSales = useMemo(
-    () => (selectedShift ? getSalesForShift(sales, selectedShift.id) : []),
-    [sales, selectedShift]
-  );
-
-  const selectedBreakdown = useMemo(
-    () => (selectedShift ? buildShiftBreakdown(selectedShift, selectedShiftSales, refundVoidRequests) : null),
-    [selectedShift, selectedShiftSales, refundVoidRequests]
-  );
-
-  const selectedCloseValidation = selectedBreakdown
-    ? validateCloseShift({
-        closingCash: selectedClosingCash,
-        expectedCash: selectedBreakdown.expectedCash,
-        varianceReason: selectedVarianceReason,
-      })
-    : { variance: null, canClose: false, error: null };
-
-  const canCloseSelectedShift = !!selectedShift && canUserCloseShift(currentUser, selectedShift);
-
-  const handleEndSelectedShift = async () => {
-    if (!selectedShift || !selectedBreakdown) return;
-    if (!canCloseSelectedShift) {
-      toast({
-        title: "No permission",
-        description: "You cannot close this shift.",
-        variant: "error",
-      });
-      return;
-    }
-    setSelectedCloseAttempted(true);
-    if (!selectedCloseValidation.canClose) {
-      toast({
-        title: "Cannot close shift",
-        description: selectedCloseValidation.error ?? "Check the closing cash fields.",
-        variant: "error",
-      });
-      return;
-    }
-
-    try {
-      await endShift({
-        shiftId: selectedShift.id,
-        closingCashMmk: selectedClosingCash ?? 0,
-        varianceReason: (selectedCloseValidation.variance ?? 0) !== 0 ? selectedVarianceReason.trim() : undefined,
-      });
-      toast({ title: "Shift closed", variant: "success" });
-      setSelectedShiftId(null);
-      setSelectedClosingCash(undefined);
-      setSelectedVarianceReason("");
-      setSelectedCloseAttempted(false);
-    } catch (error) {
-      toast({
-        title: "Could not close shift",
-        description: getErrorMessage(error, "Failed to close shift."),
-        variant: "error",
-      });
-    }
-  };
 
   const exportShifts = () => {
     downloadCsv(
@@ -572,7 +496,11 @@ export const ShiftsPage = () => {
                           <Badge tone={isClosed ? "slate" : "green"}>{statusLabel(shift)}</Badge>
                         </TD>
                         <TD className="text-right">
-                          <Button variant="secondary" size="sm" onClick={() => setSelectedShiftId(shift.id)}>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => navigate(`/app/shifts/${shift.id}`)}
+                          >
                             View
                           </Button>
                         </TD>
@@ -599,52 +527,6 @@ export const ShiftsPage = () => {
         </div>
       )}
 
-      <Modal
-        open={!!selectedShift}
-        onClose={() => setSelectedShiftId(null)}
-        title="Shift summary"
-        description="Cash, sales, and work-time details for this shift."
-        footer={<Button onClick={() => setSelectedShiftId(null)}>Close</Button>}
-      >
-        {selectedShift && selectedBreakdown && (
-          <div className="space-y-4">
-            <ShiftDetail
-              shift={selectedShift}
-              cashierName={users.find((user) => user.id === selectedShift.cashierId)?.name}
-              cashierRole={users.find((user) => user.id === selectedShift.cashierId)?.role}
-              shopName={shops.find((shop) => shop.id === selectedShift.shopId)?.name}
-              breakdown={selectedBreakdown}
-              sales={selectedShiftSales}
-              now={now}
-            />
-
-            {canCloseSelectedShift && (
-              <div className="border-t border-slate-200 pt-4">
-                <div className="mb-3">
-                  <div className="text-sm font-semibold text-slate-800">Close this shift</div>
-                  <div className="text-xs text-slate-500">
-                    Closing uses the same expected-cash formula shown above. The backend recomputes it again.
-                  </div>
-                </div>
-                <EndShiftCard
-                  idPrefix={`selected-${selectedShift.id}`}
-                  closingCash={selectedClosingCash}
-                  expectedCash={selectedBreakdown.expectedCash}
-                  varianceReason={selectedVarianceReason}
-                  onVarianceReasonChange={setSelectedVarianceReason}
-                  onClosingCashChange={(next) => {
-                    setSelectedClosingCash(next);
-                    setSelectedCloseAttempted(false);
-                  }}
-                  onEnd={handleEndSelectedShift}
-                  error={selectedCloseAttempted ? selectedCloseValidation.error : null}
-                  submitLabel="Close shift"
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
     </Card>
   );
 };

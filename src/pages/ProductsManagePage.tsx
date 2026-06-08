@@ -31,7 +31,7 @@ import {
 
 type CategoryColor = "amber" | "red" | "green" | "blue" | "purple" | "slate" | "pink" | "teal" | "indigo" | "yellow" | "orange" | "cyan";
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const PAGE_SIZE = 10;
 
 export const ProductsManagePage = () => {
   const navigate = useNavigate();
@@ -77,7 +77,6 @@ export const ProductsManagePage = () => {
 
   // Pagination state
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
 
   // Category modal state
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -193,8 +192,8 @@ export const ProductsManagePage = () => {
   }, [products, barcodes, searchQuery, filterCategory, filterBrandId, filterStatus]);
 
   // Pagination
-  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
-  const paginatedProducts = filteredProducts.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+  const paginatedProducts = filteredProducts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   // Inventory is per-shop: stock is shown for the currently selected shop,
   // never summed into a fake global quantity. Switch shops in the sidebar to
@@ -587,22 +586,6 @@ export const ProductsManagePage = () => {
           <option value="active">Active Only</option>
           <option value="inactive">Inactive Only</option>
         </Select>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-sm text-slate-500">Show:</span>
-          <Select
-            value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
-              setPage(1);
-            }}
-          >
-            {PAGE_SIZE_OPTIONS.map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </Select>
-        </div>
       </div>
 
       {/* Category filter — shared icon-chip filter (no native dropdown) */}
@@ -790,8 +773,8 @@ export const ProductsManagePage = () => {
       {/* Pagination */}
       <div className="mt-4 flex items-center justify-between">
         <span className="text-sm text-slate-500">
-          Showing {filteredProducts.length === 0 ? 0 : (page - 1) * pageSize + 1}-
-          {Math.min(page * pageSize, filteredProducts.length)} of {filteredProducts.length} products
+          Showing {filteredProducts.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}-
+          {Math.min(page * PAGE_SIZE, filteredProducts.length)} of {filteredProducts.length} products
         </span>
         <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </div>
@@ -1078,38 +1061,76 @@ export const ProductsManagePage = () => {
 
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700">Color Accent</label>
-            <div className="flex flex-wrap gap-2">
-              {(["amber", "orange", "yellow", "red", "pink", "green", "teal", "cyan", "blue", "indigo", "purple", "slate"] as CategoryColor[]).map((color) => {
-                const colorStyles: Record<CategoryColor, string> = {
-                  amber: "bg-amber-500",
-                  orange: "bg-orange-500",
-                  yellow: "bg-yellow-400",
-                  red: "bg-red-500",
-                  pink: "bg-pink-500",
-                  green: "bg-green-500",
-                  teal: "bg-teal-500",
-                  cyan: "bg-cyan-500",
-                  blue: "bg-blue-500",
-                  indigo: "bg-indigo-500",
-                  purple: "bg-purple-500",
-                  slate: "bg-slate-500",
-                };
-                return (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setNewCategoryColor(color)}
-                    className={`flex h-8 w-8 items-center justify-center rounded-full ${colorStyles[color]} transition-transform ${
-                      newCategoryColor === color ? "scale-110 ring-2 ring-offset-2" : "hover:scale-105"
-                    }`}
-                  >
-                    {newCategoryColor === color && (
-                      <span className="material-symbols-rounded text-sm text-white">check</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            {/* Compute which colors are already paired with the
+                currently-picked icon by another active category. Same
+                icon + same color is blocked at submit time too — this
+                just surfaces the constraint up-front so users don't
+                pick a swatch only to get rejected. */}
+            {(() => {
+              const effectiveIconKey = resolveCategoryIcon(
+                newCategoryIconKey || null,
+                newCategoryName,
+              ).key;
+              const usedColorsForIcon = new Set<CategoryColor>(
+                categories
+                  .filter((c) => c.isActive && c.id !== editingCategory?.id)
+                  .filter(
+                    (c) =>
+                      resolveCategoryIcon(c.iconKey ?? null, c.name).key === effectiveIconKey,
+                  )
+                  .map((c) => c.color),
+              );
+              const colorStyles: Record<CategoryColor, string> = {
+                amber: "bg-amber-500",
+                orange: "bg-orange-500",
+                yellow: "bg-yellow-400",
+                red: "bg-red-500",
+                pink: "bg-pink-500",
+                green: "bg-green-500",
+                teal: "bg-teal-500",
+                cyan: "bg-cyan-500",
+                blue: "bg-blue-500",
+                indigo: "bg-indigo-500",
+                purple: "bg-purple-500",
+                slate: "bg-slate-500",
+              };
+              return (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {(["amber", "orange", "yellow", "red", "pink", "green", "teal", "cyan", "blue", "indigo", "purple", "slate"] as CategoryColor[]).map((color) => {
+                      const taken = usedColorsForIcon.has(color);
+                      const selected = newCategoryColor === color;
+                      return (
+                        <button
+                          key={color}
+                          type="button"
+                          disabled={taken && !selected}
+                          onClick={() => setNewCategoryColor(color)}
+                          title={taken ? "Already used with this icon by another category" : undefined}
+                          className={`flex h-8 w-8 items-center justify-center rounded-full ${colorStyles[color]} transition-transform ${
+                            selected
+                              ? "scale-110 ring-2 ring-offset-2"
+                              : taken
+                                ? "opacity-30 grayscale cursor-not-allowed"
+                                : "hover:scale-105"
+                          }`}
+                        >
+                          {selected && (
+                            <span className="material-symbols-rounded text-sm text-white">check</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {usedColorsForIcon.size > 0 && (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Greyed swatches are already paired with this icon by another category.
+                      Pick a different colour, or change the icon.
+                    </p>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">

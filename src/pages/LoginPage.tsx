@@ -50,7 +50,7 @@ export const LoginPage = () => {
           <div className="flex flex-col justify-between bg-emerald-900 p-8 text-white">
             <div>
               <div className="text-xs uppercase tracking-[0.3em] text-emerald-200">Retail POS</div>
-              <h1 className="mt-3 text-3xl font-semibold">Shwe Pha La</h1>
+              <h1 className="mt-3 text-3xl font-semibold">Shwe Pha Lar</h1>
               <p className="mt-3 text-sm text-emerald-100">
                 Multi-shop POS + inventory suite with role-based access and real-time shift control.
               </p>

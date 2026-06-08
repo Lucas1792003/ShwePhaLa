@@ -7,6 +7,7 @@ import { PosPage } from "../../features/pos/pages/PosPage";
 import { SalesListPage } from "../../features/sales/pages/SalesListPage";
 import { SaleDetailPage } from "../../features/sales/pages/SaleDetailPage";
 import { ShiftsPage } from "../../features/shifts/pages/ShiftsPage";
+import { ShiftDetailPage } from "../../features/shifts/pages/ShiftDetailPage";
 import { InventoryPage } from "../../features/inventory/pages/InventoryPage";
 import { TransfersPage } from "../../features/transfers/pages/TransfersPage";
 import { PurchasesPage } from "../../features/purchases/pages/PurchasesPage";
@@ -91,6 +92,14 @@ export const AppRouter = () => (
         element={
           <RequireRole permission={ROUTE_PERMISSIONS.shifts}>
             <ShiftsPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path="shifts/:shiftId"
+        element={
+          <RequireRole permission={ROUTE_PERMISSIONS.shifts}>
+            <ShiftDetailPage />
           </RequireRole>
         }
       />

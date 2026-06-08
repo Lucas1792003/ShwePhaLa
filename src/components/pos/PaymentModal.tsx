@@ -103,8 +103,19 @@ export const PaymentModal = ({
               type="text"
               inputMode="numeric"
               autoComplete="off"
+              autoFocus
               value={paidInput}
               onChange={(event) => setPaidInput(normalizeAmountInput(event.target.value))}
+              onKeyDown={(event) => {
+                // Enter on the amount field is the natural "I'm done"
+                // signal for cashiers — let it confirm the payment when
+                // the modal is in a valid state, instead of forcing a
+                // mouse hop to the Confirm button.
+                if (event.key === "Enter" && canConfirm) {
+                  event.preventDefault();
+                  void onConfirm(method, paid);
+                }
+              }}
               onBlur={() => {
                 if (paidInput === "") setPaidInput("0");
               }}

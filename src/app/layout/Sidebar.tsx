@@ -9,7 +9,6 @@ import { hasPermission, ROUTE_PERMISSIONS } from "../../lib/permissions";
 import { ShopSwitcher } from "./ShopSwitcher";
 import { LanguageSwitcher } from "../../components/layout/LanguageSwitcher";
 import { useTranslation } from "../../hooks/useTranslation";
-import logo from "../../assets/logo1.png";
 
 interface NavItem {
   to: string;
@@ -58,8 +57,9 @@ const navSections: NavSection[] = [
       { to: "/app/admin/shops", labelKey: "shops", permission: ROUTE_PERMISSIONS.adminShops, icon: "store" },
       { to: "/app/admin/users", labelKey: "users", permission: ROUTE_PERMISSIONS.adminUsers, icon: "group" },
       { to: "/app/admin/products", labelKey: "products", permission: ROUTE_PERMISSIONS.adminProducts, icon: "inventory", allowedRoles: ["ADMIN", "MANAGER"] },
-      { to: "/app/admin/unit-types", labelKey: "unitTypes", permission: ROUTE_PERMISSIONS.adminUnitTypes, icon: "straighten" },
-      { to: "/app/admin/pricing", labelKey: "pricing", permission: ROUTE_PERMISSIONS.adminPricing, icon: "sell" },
+      // Unit Types + Pricing removed from sidebar — both surfaces are
+      // now edited inline from the Product form (Units & Prices section).
+      // The routes themselves still exist for direct linking / deep-links.
       { to: "/app/admin/audit", labelKey: "auditLog", permission: ROUTE_PERMISSIONS.adminAudit, icon: "policy" },
     ],
   },
@@ -113,9 +113,16 @@ export const Sidebar = () => {
   return (
     <aside className={cn("sidebar print-hidden", isSidebarCollapsed && "sidebar-collapsed")}>
       <div className="sidebar-header">
-        <img src={logo} alt="Shwe Pha La logo" className="header-logo" />
+        {/* mix-blend-multiply is a safety net: if the PNG has a white
+            background it blends into the sidebar's white panel; if it
+            is already transparent the blend mode is a no-op. */}
+        <img
+          src="/logo_real.png"
+          alt="Shwe Pha Lar logo"
+          className="header-logo mix-blend-multiply"
+        />
         <div className="sidebar-brand-copy">
-          <div className="shopName">Shwe Pha La</div>
+          <div className="shopName">Shwe Pha Lar</div>
           <div className="shop-meta">Multi-shop console</div>
         </div>
         <button

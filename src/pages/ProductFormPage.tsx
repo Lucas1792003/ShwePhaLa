@@ -935,25 +935,16 @@ export const ProductFormPage = () => {
                 <Input type="date" {...form.register("expiryDate")} />
               </div>
 
+              {/* Behaviour flags. "Open Price" was removed from this
+                  form because the POS "Adjust price" modal already lets
+                  the cashier set a custom price per line. The
+                  `is_open_price` column + RPC handling remain in place
+                  so a future re-introduction is a single checkbox add. */}
               <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
                 <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Behaviour flags
                 </span>
                 <div className="mt-2 space-y-2">
-                  <label className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                      {...form.register("isOpenPrice")}
-                    />
-                    <span className="text-sm text-slate-700">
-                      <span className="font-medium">Open Price</span>
-                      <span className="block text-xs text-slate-500">
-                        Cashier enters the price at the till — no fixed sale price.
-                      </span>
-                    </span>
-                  </label>
-
                   <label className="flex items-start gap-3">
                     <input
                       type="checkbox"
@@ -1131,9 +1122,15 @@ export const ProductFormPage = () => {
                             Blank Wholesale/Special uses {defaultPriceLevel?.name ?? "Retail"} price.
                           </span>
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        {/* `items-end` aligns inputs to the bottom of
+                            each row so a wrapping label (e.g. "Wholesale
+                            Price (Sale 2)") doesn't drop its input
+                            below the rest. `leading-tight` keeps the
+                            two-line label compact enough that the row
+                            doesn't grow taller than needed. */}
+                        <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-4">
                           <label className="block">
-                            <span className="mb-1 block text-xs font-medium text-slate-500">Purchase Cost</span>
+                            <span className="mb-1 block text-xs font-medium leading-tight text-slate-500">Purchase Cost</span>
                             <MoneyInput
                               value={unit.purchasePriceMmk}
                               onChange={(next) => updateUnitPurchaseCost(unit.id, next ?? undefined)}
@@ -1148,7 +1145,7 @@ export const ProductFormPage = () => {
                               const isDefaultLevel = defaultPriceLevel?.id === level.id;
                               return (
                                 <label key={level.id} className="block">
-                                  <span className="mb-1 block text-xs font-medium text-slate-500">
+                                  <span className="mb-1 block text-xs font-medium leading-tight text-slate-500">
                                     {getPriceLevelFormLabel(level.code, level.name)}
                                   </span>
                                   <Input
@@ -1163,7 +1160,7 @@ export const ProductFormPage = () => {
                             })
                           ) : (
                             <label className="block">
-                              <span className="mb-1 block text-xs font-medium text-slate-500">Retail Price (Sale 1)</span>
+                              <span className="mb-1 block text-xs font-medium leading-tight text-slate-500">Retail Price (Sale 1)</span>
                               <MoneyInput
                                 value={unit.salePriceMmk}
                                 onChange={(next) => {

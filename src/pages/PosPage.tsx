@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import type { CartItem, Product, ProductUnit } from "../types";
 import { useAuthStore } from "../stores/authStore";
 import { useAppStore } from "../stores/appStore";
@@ -13,13 +12,13 @@ import { useToast } from "../components/ui/Toast";
 import { ProductFinder } from "../components/pos/ProductFinder";
 import { CartPanel } from "../components/pos/CartPanel";
 import { PaymentModal } from "../components/pos/PaymentModal";
+import { ReceiptPreview } from "../components/pos/ReceiptPreview";
 import { calculateCartTotals } from "../features/pos/service";
 import {
   getActivePriceLevels,
   getDefaultPriceLevel,
   resolveProductUnitPrice,
 } from "../features/pricing/priceLevels";
-import { Select } from "../components/ui/Select";
 import {
   STOCK_OVERRIDE_REQUIRED_MESSAGE,
   STOCK_OVERRIDE_UI_REQUIRED_MESSAGE,
@@ -33,7 +32,6 @@ import { hasShopPermission } from "../lib/permissions";
 import { getEffectiveShopId } from "../lib/utils";
 
 export const PosPage = () => {
-  const navigate = useNavigate();
   const toast = useToast();
   const [barcodeInput, setBarcodeInput] = useState("");
   const [search, setSearch] = useState("");
@@ -47,6 +45,11 @@ export const PosPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [overrideItem, setOverrideItem] = useState<CartItem | null>(null);
   const [overridePriceLevelId, setOverridePriceLevelId] = useState("");
+  // Manual price input on the "Adjust price" modal. Seeded from the
+  // resolved price each time the cashier picks a price-level tab; only
+  // counts as an override if the saved value differs from the level's
+  // resolved price for the current shop.
+  const [overridePriceInput, setOverridePriceInput] = useState<string>("");
   // Open Price prompt — fires when an Open-Price product is added to the
   // cart. Holds the product + selected unit until the cashier confirms
   // the price, then completes the add. The prompt is the only entry path
@@ -66,6 +69,12 @@ export const PosPage = () => {
   const shops = useDataStore((state) => state.shops);
   const products = useDataStore((state) => state.products);
   const productUnits = useDataStore((state) => state.productUnits);
+  // Subscriptions used only to render the print receipt inline after a
+  // successful "Print (F3)" sale. Cheap because we read from the same
+  // store the rest of POS already depends on.
+  const sales = useDataStore((state) => state.sales);
+  const saleItems = useDataStore((state) => state.saleItems);
+  const users = useDataStore((state) => state.users);
   const priceLevels = useDataStore((state) => state.priceLevels);
   const productUnitPrices = useDataStore((state) => state.productUnitPrices);
   const categories = useDataStore((state) => state.categories);
@@ -347,7 +356,16 @@ export const PosPage = () => {
     applyCartQuantity(id, qty);
   };
 
-  const handleCheckout = useCallback(() => {
+  // Tracks whether the just-opened payment modal should auto-print the
+  // receipt after a successful sale. Captured at checkout-start time
+  // (F2 = false, F3 = true) and consumed by `handlePaymentConfirm`.
+  const [printAfterSave, setPrintAfterSave] = useState(false);
+  // After a print-requested sale, this holds the sale id so the hidden
+  // ReceiptPreview can render inline (using the store snapshot) and
+  // window.print() can fire without navigating off the POS page.
+  const [printSaleId, setPrintSaleId] = useState<string | null>(null);
+
+  const handleCheckout = useCallback((printOnSuccess: boolean) => {
     if (submitting) return;
     if (!currentUser) {
       toast({ title: "Checkout blocked", description: "Sign in before checkout.", variant: "error" });
@@ -357,22 +375,28 @@ export const PosPage = () => {
       showCartValidationToast();
       return;
     }
+    setPrintAfterSave(printOnSuccess);
     setPaymentOpen(true);
   }, [cartValidation.canCheckout, currentUser, showCartValidationToast, submitting, toast]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      // F2 = save only; F3 = save + auto-print. Barcode toggle moves to
+      // F4 so F3 can be the print-receipt shortcut the cashier asked for.
       if (event.key === "F2") {
         event.preventDefault();
-        handleCheckout();
+        handleCheckout(false);
+      }
+      if (event.key === "F3") {
+        event.preventDefault();
+        handleCheckout(true);
       }
       if (event.key === "Escape") {
         setPaymentOpen(false);
         setOverrideItem(null);
         setShowBarcodeInput(false);
       }
-      // F3 to toggle barcode input
-      if (event.key === "F3") {
+      if (event.key === "F4") {
         event.preventDefault();
         setShowBarcodeInput((prev) => !prev);
       }
@@ -398,11 +422,25 @@ export const PosPage = () => {
         paymentMethod,
         paidMmk,
       });
-      // Clear the cart and open the receipt only after the sale is committed.
+      // Clear the cart and stay on POS so the cashier can ring up the
+      // next sale immediately. When "Print (F3)" was picked we render a
+      // hidden ReceiptPreview below and trigger window.print() in an
+      // effect — the print CSS already isolates `.receipt` so the rest
+      // of the POS page is invisible during printing.
       setCartItems([]);
       setCartDiscountPct(0);
       setPaymentOpen(false);
-      navigate(`/app/sales/${saleId}`);
+      // Pull the saved sale from the store so the toast can show the
+      // human-friendly receipt number instead of the internal id.
+      const savedSale = useDataStore.getState().sales.find((s) => s.id === saleId);
+      toast({
+        title: printAfterSave ? "Sale recorded — printing…" : "Sale recorded",
+        description: savedSale ? `Receipt ${savedSale.receiptNo}` : undefined,
+        variant: "success",
+      });
+      if (printAfterSave) {
+        setPrintSaleId(saleId);
+      }
     } catch (error) {
       toast({
         title: "Checkout failed",
@@ -414,10 +452,91 @@ export const PosPage = () => {
     }
   };
 
+  // Build the props needed to render the hidden receipt for printing.
+  // Mirrors the logic in ReceiptDetail so the printed output matches
+  // what the cashier sees on the dedicated receipt page exactly.
+  const printReceipt = useMemo(() => {
+    if (!printSaleId) return null;
+    const sale = sales.find((s) => s.id === printSaleId);
+    if (!sale) return null;
+    const shop = shops.find((s) => s.id === sale.shopId);
+    if (!shop) return null;
+    const cashier = users.find((u) => u.id === sale.cashierId);
+    const itemsForSale = saleItems.filter((item) => item.saleId === printSaleId);
+    const lines = itemsForSale.map((item) => {
+      const product = products.find((p) => p.id === item.productId);
+      const unitName = item.unitNameSnapshot ?? item.unitLabel ?? "Unit";
+      const baseQuantity = item.unitBaseQuantitySnapshot ?? item.unitsPerItem ?? 1;
+      const soldBaseQuantity = item.baseQuantitySold ?? item.qtyUnits;
+      const soldUnitQty = baseQuantity > 0 ? soldBaseQuantity / baseQuantity : item.qtyUnits;
+      return {
+        name: product?.name ?? item.productId,
+        qty: soldUnitQty,
+        unitLabel: unitName,
+        unitPriceMmk: item.unitPriceMmkSnapshot ?? item.unitPriceMmk,
+        lineTotalMmk: item.lineTotalMmk,
+        priceLevelName: item.priceLevelNameSnapshot,
+      };
+    });
+    return { sale, shop, cashier, lines };
+  }, [printSaleId, sales, saleItems, shops, users, products]);
+
+  // Trigger window.print() once the hidden receipt has rendered. The
+  // 500 ms delay lets the brand logo finish loading so the printed
+  // output isn't missing it. printSaleId clears immediately after so a
+  // re-render of POS can't accidentally fire a second print job.
+  useEffect(() => {
+    if (!printReceipt) return;
+    const timeout = window.setTimeout(() => {
+      window.print();
+      setPrintSaleId(null);
+    }, 500);
+    return () => window.clearTimeout(timeout);
+  }, [printReceipt]);
+
+  // Resolve the price for the override modal's currently picked level.
+  // Returns null while the modal is closed or the cart's product unit
+  // is gone (e.g. the unit was deactivated between add and override).
+  const overrideResolved = useMemo(() => {
+    if (!overrideItem) return null;
+    const unit = productUnits.find((u) => u.id === overrideItem.productUnitId);
+    if (!unit) return null;
+    return resolveProductUnitPrice({
+      unit,
+      priceLevelId: overridePriceLevelId || overrideItem.priceLevelId || activePriceLevelId,
+      shopId: shopId ?? undefined,
+      priceLevels,
+      productUnitPrices,
+    });
+  }, [overrideItem, overridePriceLevelId, productUnits, priceLevels, productUnitPrices, shopId, activePriceLevelId]);
+
+  // Switching the price-level tab also reseeds the manual price input to
+  // that level's resolved price. The cashier can then leave it (uses the
+  // resolved price) or edit (flagged as a manual override on save).
+  const handlePickOverrideLevel = (levelId: string) => {
+    if (!overrideItem) return;
+    setOverridePriceLevelId(levelId);
+    const unit = productUnits.find((u) => u.id === overrideItem.productUnitId);
+    if (!unit) return;
+    const resolved = resolveProductUnitPrice({
+      unit,
+      priceLevelId: levelId,
+      shopId: shopId ?? undefined,
+      priceLevels,
+      productUnitPrices,
+    });
+    setOverridePriceInput(String(resolved.priceMmk));
+  };
+
+  const closeOverrideModal = () => {
+    setOverrideItem(null);
+    setOverridePriceLevelId("");
+    setOverridePriceInput("");
+  };
+
   const handleOverrideSave = () => {
     if (!overrideItem) return;
-    const unit = productUnits.find((item) => item.id === overrideItem.productUnitId);
-    if (!unit) {
+    if (!overrideResolved) {
       toast({
         title: "Price level unavailable",
         description: "Could not find this product unit. Remove and add the item again.",
@@ -426,23 +545,32 @@ export const PosPage = () => {
       return;
     }
 
-    const resolved = resolveProductUnitPrice({
-      unit,
-      priceLevelId: overridePriceLevelId || overrideItem.priceLevelId || activePriceLevelId,
-      shopId: shopId ?? undefined,
-      priceLevels,
-      productUnitPrices,
-    });
+    // Parse the input. Empty / non-numeric falls back to the resolved
+    // price (i.e. "no manual override"). A value that differs is the
+    // override path and must carry priceOverriddenBy.
+    const parsedInput = Number(overridePriceInput.replace(/[^\d]/g, ""));
+    const manualPrice = Number.isFinite(parsedInput) && parsedInput > 0
+      ? Math.trunc(parsedInput)
+      : null;
+    const finalPrice = manualPrice ?? overrideResolved.priceMmk;
+    const isManualOverride = manualPrice !== null && manualPrice !== overrideResolved.priceMmk;
+    const overrideBy = isManualOverride ? currentUserId ?? "" : undefined;
 
     setCartItems((items) => {
-      const duplicate = items.find(
-        (item) =>
-          item.id !== overrideItem.id &&
-          !item.isOpenPrice &&
-          item.productId === overrideItem.productId &&
-          item.productUnitId === overrideItem.productUnitId &&
-          item.priceLevelId === resolved.priceLevelId,
-      );
+      // Only merge with an existing line when the price is the level's
+      // resolved price AND a duplicate exists. A manual override stays
+      // on its own line — merging would silently average prices.
+      const duplicate = !isManualOverride
+        ? items.find(
+            (item) =>
+              item.id !== overrideItem.id &&
+              !item.isOpenPrice &&
+              !item.priceOverriddenBy &&
+              item.productId === overrideItem.productId &&
+              item.productUnitId === overrideItem.productUnitId &&
+              item.priceLevelId === overrideResolved.priceLevelId,
+          )
+        : undefined;
 
       if (duplicate) {
         return items
@@ -452,9 +580,9 @@ export const PosPage = () => {
               ? {
                   ...item,
                   qty: item.qty + overrideItem.qty,
-                  unitPriceMmk: resolved.priceMmk,
-                  priceLevelId: resolved.priceLevelId,
-                  priceLevelName: resolved.priceLevelName,
+                  unitPriceMmk: overrideResolved.priceMmk,
+                  priceLevelId: overrideResolved.priceLevelId,
+                  priceLevelName: overrideResolved.priceLevelName,
                   priceOverriddenBy: undefined,
                 }
               : item,
@@ -465,16 +593,15 @@ export const PosPage = () => {
         item.id === overrideItem.id
           ? {
               ...item,
-              unitPriceMmk: resolved.priceMmk,
-              priceLevelId: resolved.priceLevelId,
-              priceLevelName: resolved.priceLevelName,
-              priceOverriddenBy: undefined,
+              unitPriceMmk: finalPrice,
+              priceLevelId: overrideResolved.priceLevelId,
+              priceLevelName: overrideResolved.priceLevelName,
+              priceOverriddenBy: overrideBy,
             }
           : item,
       );
     });
-    setOverrideItem(null);
-    setOverridePriceLevelId("");
+    closeOverrideModal();
   };
 
   if (!hasShop) {
@@ -516,7 +643,7 @@ export const PosPage = () => {
             }`}
           >
             <span className="material-symbols-rounded text-lg">qr_code_scanner</span>
-            Barcode (F3)
+            Barcode (F4)
           </button>
           {/* Shop Info */}
           <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2">
@@ -590,7 +717,9 @@ export const PosPage = () => {
               canOverridePrice
                 ? (item) => {
                     setOverrideItem(item);
-                    setOverridePriceLevelId(item.priceLevelId || activePriceLevelId);
+                    const startLevelId = item.priceLevelId || activePriceLevelId;
+                    setOverridePriceLevelId(startLevelId);
+                    setOverridePriceInput(String(item.unitPriceMmk ?? 0));
                   }
                 : undefined
             }
@@ -612,42 +741,76 @@ export const PosPage = () => {
 
       <Modal
         open={!!overrideItem}
-        onClose={() => {
-          setOverrideItem(null);
-          setOverridePriceLevelId("");
-        }}
-        title="Change price level"
-        description="Choose one of the configured price levels for this cart line."
+        onClose={closeOverrideModal}
+        title="Adjust price"
+        description="Pick a price level, then optionally type a custom price for this line."
         footer={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setOverrideItem(null);
-                setOverridePriceLevelId("");
-              }}
-            >
+            <Button variant="secondary" onClick={closeOverrideModal}>
               Cancel
             </Button>
             <Button onClick={handleOverrideSave} disabled={activePriceLevels.length === 0}>
-              Apply price level
+              Apply
             </Button>
           </>
         }
       >
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Price level</label>
-          <Select
-            value={overridePriceLevelId}
-            onChange={(event) => setOverridePriceLevelId(event.target.value)}
-            autoFocus
-          >
-            {activePriceLevels.map((level) => (
-              <option key={level.id} value={level.id}>
-                {level.name}{level.isDefault ? " (default)" : ""}
-              </option>
-            ))}
-          </Select>
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Price level</label>
+            {/* Tabs replace the Select per UX request. flex-1 on each
+                button keeps the row evenly distributed regardless of how
+                many levels admins have configured. */}
+            <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
+              {activePriceLevels.map((level) => {
+                const selected = overridePriceLevelId === level.id;
+                return (
+                  <button
+                    key={level.id}
+                    type="button"
+                    onClick={() => handlePickOverrideLevel(level.id)}
+                    className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                      selected
+                        ? "bg-white text-emerald-700 shadow-sm"
+                        : "text-slate-600 hover:text-slate-800"
+                    }`}
+                  >
+                    {level.name}
+                    {level.isDefault && (
+                      <span className="ml-1 text-[10px] font-normal text-slate-400">
+                        default
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Unit price
+            </label>
+            <Input
+              inputMode="numeric"
+              value={overridePriceInput}
+              onChange={(event) =>
+                setOverridePriceInput(event.target.value.replace(/[^\d]/g, ""))
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  handleOverrideSave();
+                }
+              }}
+              placeholder="Enter price (MMK)"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              {overrideResolved
+                ? `Level price: ${overrideResolved.priceMmk.toLocaleString("en-US")} MMK. Editing flags this line as a price override.`
+                : "Pick a price level to see its resolved price."}
+            </p>
+          </div>
         </div>
       </Modal>
 
@@ -695,6 +858,20 @@ export const PosPage = () => {
         />
       </Modal>
 
+      {/* Hidden print host — invisible on screen (positioned far off the
+          viewport) but pulled in by the print CSS, which uses
+          `body * { visibility: hidden }` then reveals `.receipt`.
+          window.print() fires once via the useEffect above. */}
+      {printReceipt && (
+        <div className="pointer-events-none fixed -left-[10000px] top-0 print-receipt-host">
+          <ReceiptPreview
+            sale={printReceipt.sale}
+            lines={printReceipt.lines}
+            shop={printReceipt.shop}
+            cashier={printReceipt.cashier}
+          />
+        </div>
+      )}
     </div>
   );
 };
