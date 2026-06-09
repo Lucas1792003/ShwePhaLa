@@ -16,6 +16,7 @@ export interface ShopFormInput {
   name: string;
   code: string;
   address: string;
+  phone?: string;
 }
 
 export const normalizeShopText = (value: string | null | undefined): string =>
@@ -24,11 +25,15 @@ export const normalizeShopText = (value: string | null | undefined): string =>
 export const normalizeShopKey = (value: string | null | undefined): string =>
   normalizeShopText(value).toLowerCase();
 
-export const normalizeShopInput = (input: ShopFormInput): ShopFormInput => ({
-  name: normalizeShopText(input.name),
-  code: normalizeShopText(input.code),
-  address: normalizeShopText(input.address),
-});
+export const normalizeShopInput = (input: ShopFormInput): ShopFormInput => {
+  const phone = normalizeShopText(input.phone);
+  return {
+    name: normalizeShopText(input.name),
+    code: normalizeShopText(input.code),
+    address: normalizeShopText(input.address),
+    phone: phone || undefined,
+  };
+};
 
 export const findShopWithNormalizedName = (
   shops: Shop[],

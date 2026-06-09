@@ -365,6 +365,7 @@ export const PosPage = () => {
   // ReceiptPreview can render inline (using the store snapshot) and
   // window.print() can fire without navigating off the POS page.
   const [printSaleId, setPrintSaleId] = useState<string | null>(null);
+  const printedSaleIdsRef = useRef<Set<string>>(new Set());
 
   const handleCheckout = useCallback((printOnSuccess: boolean) => {
     if (submitting) return;
@@ -484,11 +485,17 @@ export const PosPage = () => {
 
   // Trigger window.print() once the hidden receipt has rendered. The
   // 500 ms delay lets the brand logo finish loading so the printed
-  // output isn't missing it. printSaleId clears immediately after so a
-  // re-render of POS can't accidentally fire a second print job.
+  // output isn't missing it. The sale-id guard prevents duplicate print
+  // jobs if React/store updates re-run this effect for the same sale.
   useEffect(() => {
     if (!printReceipt) return;
+    const saleId = printReceipt.sale.id;
     const timeout = window.setTimeout(() => {
+      if (printedSaleIdsRef.current.has(saleId)) {
+        setPrintSaleId(null);
+        return;
+      }
+      printedSaleIdsRef.current.add(saleId);
       window.print();
       setPrintSaleId(null);
     }, 500);

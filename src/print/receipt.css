@@ -50,6 +50,40 @@
   object-fit: contain;
 }
 
+.receipt-header {
+  line-height: 1.2;
+}
+
+.receipt-brand {
+  margin-top: 0.25rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: #111827;
+}
+
+.receipt-store-name {
+  margin-top: 0.125rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.receipt-shop-contact {
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  color: #64748b;
+}
+
+.receipt-number {
+  margin-top: 0.5rem;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  color: #111827;
+}
+
 /* Meta block — stacked label/separator/value rows. The grid layout
  * pins the colon column to a single character width so every colon
  * in the block lines up the same way it would on a paper receipt,
@@ -69,6 +103,10 @@
   align-items: baseline;
   min-width: 0;
   padding: 0.05rem 0;
+}
+
+.receipt-meta-row-wide {
+  grid-column: 1 / -1;
 }
 
 .receipt-meta-label {
@@ -96,6 +134,8 @@
 
 .receipt-items th {
   font-weight: 600;
+  font-size: 0.8rem;
+  line-height: 1.15;
   padding: 0.25rem 0.25rem;
   border-top: 1px dashed #94a3b8;
   border-bottom: 1px dashed #94a3b8;
@@ -130,6 +170,8 @@
 }
 
 .receipt-description-cell {
+  font-size: 0.8rem;
+  line-height: 1.18;
   overflow-wrap: anywhere;
 }
 
@@ -199,7 +241,7 @@
     width: 76mm;
     max-width: 76mm;
     margin: 0 auto;
-    padding: 2mm 3.5mm 0 2mm;
+    padding: 0.6mm 3.5mm 0 2mm;
     background: #ffffff;
     color: #000000;
     box-shadow: none !important;
@@ -234,9 +276,35 @@
     max-width: 42mm;
     height: auto;
     max-height: 31mm;
-    margin: 0 auto 2mm;
+    margin: 0 auto 1.4mm;
     filter: grayscale(100%) contrast(1.4);
     -webkit-filter: grayscale(100%) contrast(1.4);
+  }
+
+  .receipt .receipt-brand {
+    margin-top: 1mm;
+    font-size: 12px !important;
+    line-height: 1.15 !important;
+    font-weight: 800 !important;
+  }
+
+  .receipt .receipt-store-name {
+    margin-top: 0.5mm;
+    font-size: 10.5px !important;
+    line-height: 1.15 !important;
+    font-weight: 700 !important;
+  }
+
+  .receipt .receipt-shop-contact {
+    margin-top: 1mm;
+    font-size: 8.5px !important;
+    line-height: 1.18 !important;
+  }
+
+  .receipt .receipt-number {
+    margin-top: 1.8mm;
+    font-size: 9.5px !important;
+    line-height: 1.2 !important;
   }
 
   .receipt .receipt-totals,
@@ -280,10 +348,16 @@
   .receipt .receipt-items th {
     border-top: 1px dashed #000000 !important;
     border-bottom: 1px dashed #000000 !important;
+    font-size: 9.5px !important;
+    line-height: 1.15 !important;
     padding: 0.35mm 0.35mm;
   }
   .receipt .receipt-items td {
     padding: 0.45mm 0.35mm;
+  }
+  .receipt .receipt-description-cell {
+    font-size: 10px !important;
+    line-height: 1.18 !important;
   }
   .receipt .receipt-item-description-col {
     width: 34%;

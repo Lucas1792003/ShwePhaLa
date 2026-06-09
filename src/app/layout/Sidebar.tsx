@@ -122,11 +122,11 @@ export const Sidebar = () => {
             is already transparent the blend mode is a no-op. */}
         <img
           src="/logo_real.png"
-          alt="Shwe Pha Lar logo"
+          alt="Shwe PhaLar logo"
           className="header-logo mix-blend-multiply"
         />
         <div className="sidebar-brand-copy">
-          <div className="shopName">Shwe Pha Lar</div>
+          <div className="shopName">Shwe PhaLar</div>
           <div className="shop-meta">Multi-shop console</div>
         </div>
         {!isTabletNav && (

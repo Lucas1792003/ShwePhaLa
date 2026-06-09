@@ -25,6 +25,11 @@ interface ReceiptPreviewProps {
 // `formatMmk` so the currency is shown once, clearly.
 const fmtAmount = (value: number) => value.toLocaleString("en-US");
 
+const formatCashierName = (name: string | undefined): string => {
+  const withoutDigits = (name ?? "").replace(/\d+/g, "").trim();
+  return withoutDigits || "-";
+};
+
 export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: ReceiptPreviewProps) => {
   const itemCount = lines.reduce((sum, line) => sum + line.qty, 0);
 
@@ -41,10 +46,10 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
   return (
     <div className="receipt rounded-2xl border border-slate-200/70 p-4 shadow-card">
       {/* Brand header */}
-      <div className="text-center">
+      <div className="receipt-header text-center">
         <img
           src="/logo_real.png"
-          alt="Shwe Pha Lar"
+          alt="Shwe PhaLar"
           // `mix-blend-multiply` is a safety net for white-background
           // PNGs: it blends white pixels into the white card / thermal
           // paper. If the PNG is already transparent it's a no-op.
@@ -57,10 +62,14 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
         {/* Company brand sits above the per-shop name so customers see
             both the umbrella brand and the specific store they bought
             from on the same receipt. */}
-        <div className="text-base font-bold tracking-wide">Shwe Pha Lar</div>
-        <div className="text-sm font-semibold text-slate-700">{shop.name}</div>
-        <div className="text-xs text-slate-500">{shop.address}</div>
-        <div className="mt-2 text-xs mono">Receipt {sale.receiptNo}</div>
+        <div className="receipt-brand">Shwe PhaLar</div>
+        {(shop.address || shop.phone) && (
+          <div className="receipt-shop-contact">
+            {shop.address && <div>{shop.address}</div>}
+            {shop.phone && <div>Tel: {shop.phone}</div>}
+          </div>
+        )}
+        <div className="receipt-number">Receipt {sale.receiptNo}</div>
       </div>
 
       {/* Meta — stacked rows with a fixed-width label column so the
@@ -69,6 +78,11 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
           forced the long datetime and cashier strings to wrap awkwardly. */}
       <div className="receipt-meta mt-4 text-xs">
         <div className="receipt-meta-row">
+          <span className="receipt-meta-label">Branch</span>
+          <span className="receipt-meta-sep">:</span>
+          <span className="receipt-meta-value">{shop.name}</span>
+        </div>
+        <div className="receipt-meta-row">
           <span className="receipt-meta-label">Date</span>
           <span className="receipt-meta-sep">:</span>
           <span className="receipt-meta-value">{formatDateTime(sale.createdAt)}</span>
@@ -76,7 +90,12 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
         <div className="receipt-meta-row">
           <span className="receipt-meta-label">Cashier</span>
           <span className="receipt-meta-sep">:</span>
-          <span className="receipt-meta-value">{cashier?.name ?? "-"}</span>
+          <span className="receipt-meta-value">{formatCashierName(cashier?.name)}</span>
+        </div>
+        <div className="receipt-meta-row">
+          <span className="receipt-meta-label">Price</span>
+          <span className="receipt-meta-sep">:</span>
+          <span className="receipt-meta-value">{singlePriceLevel ?? "-"}</span>
         </div>
         <div className="receipt-meta-row">
           <span className="receipt-meta-label">Payment</span>
@@ -88,13 +107,6 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
           <span className="receipt-meta-sep">:</span>
           <span className="receipt-meta-value">{itemCount}</span>
         </div>
-        {singlePriceLevel && (
-          <div className="receipt-meta-row">
-            <span className="receipt-meta-label">Price</span>
-            <span className="receipt-meta-sep">:</span>
-            <span className="receipt-meta-value">{singlePriceLevel}</span>
-          </div>
-        )}
       </div>
 
       {/* Items — proper 4-column table. Description wraps; Qty / Price /

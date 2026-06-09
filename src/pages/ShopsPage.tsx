@@ -40,6 +40,7 @@ export const ShopsPage = () => {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -79,11 +80,12 @@ export const ShopsPage = () => {
     setName("");
     setCode("");
     setAddress("");
+    setPhone("");
     setFeedback(null);
   };
 
   const handleSubmit = async () => {
-    const normalized = normalizeShopInput({ name, code, address });
+    const normalized = normalizeShopInput({ name, code, address, phone });
     const validationError = validateShopInput(normalized, shops, editingId);
     if (validationError) {
       setFeedback({ type: "error", message: validationError });
@@ -99,6 +101,8 @@ export const ShopsPage = () => {
           name: normalized.name,
           code: normalized.code,
           address: normalized.address,
+          phone: normalized.phone,
+          email: existingShop?.email,
           isActive: existingShop?.isActive ?? true,
           createdAt: existingShop?.createdAt ?? new Date().toISOString(),
         });
@@ -108,6 +112,7 @@ export const ShopsPage = () => {
           name: normalized.name,
           code: normalized.code,
           address: normalized.address,
+          phone: normalized.phone,
           isActive: true,
           createdAt: new Date().toISOString(),
         });
@@ -127,6 +132,7 @@ export const ShopsPage = () => {
     setName(shop.name);
     setCode(shop.code);
     setAddress(shop.address);
+    setPhone(shop.phone ?? "");
     setFeedback(null);
   };
 
@@ -184,6 +190,15 @@ export const ShopsPage = () => {
             }}
             placeholder="Address"
           />
+          <Input
+            type="tel"
+            value={phone}
+            onChange={(event) => {
+              setPhone(event.target.value);
+              setFeedback(null);
+            }}
+            placeholder="Phone number"
+          />
           {feedback && (
             <div
               className={
@@ -223,6 +238,9 @@ export const ShopsPage = () => {
               <div key={shop.id} className="rounded-2xl border border-slate-200/70 bg-slate-50/60 p-4">
                 <div className="font-semibold">{shop.name}</div>
                 <div className="text-xs text-slate-500">{shop.code} - {shop.address}</div>
+                {shop.phone && (
+                  <div className="mt-1 text-xs text-slate-500">Phone: {shop.phone}</div>
+                )}
                 {refSummary && (
                   <div className="mt-2 text-xs text-slate-400">In use by {refSummary}</div>
                 )}

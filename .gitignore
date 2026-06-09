@@ -47,3 +47,6 @@ coverage
 
 # Claude Code
 .claude/
+
+# Supabase CLI local state (links + cached metadata) — never commit
+supabase/.temp/
