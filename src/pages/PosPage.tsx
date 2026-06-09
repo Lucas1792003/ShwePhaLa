@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { CartItem, Product, ProductUnit } from "../types";
 import { useAuthStore } from "../stores/authStore";
 import { useAppStore } from "../stores/appStore";
@@ -858,24 +859,24 @@ export const PosPage = () => {
         />
       </Modal>
 
-      {/* Hidden print host — invisible on screen (positioned far off
-          the viewport) but pulled in by the print CSS, which uses
-          `body * { visibility: hidden }` then reveals `.receipt`.
-          IMPORTANT: `print:static` resets the wrapper to static
-          positioning when printing. The print CSS makes `.receipt`
-          `position: absolute; top: 0; left: 0` relative to the nearest
-          positioned ancestor — without the print-only reset, that
-          ancestor is THIS wrapper at left:-10000px, and the receipt
-          ends up printing far off the page (blank paper). */}
-      {printReceipt && (
-        <div className="pointer-events-none fixed -left-[10000px] top-0 print-receipt-host print:static print:left-auto print:top-auto">
+      {/* Hidden print host portaled directly into <body> — bypasses any
+          positioned ancestor in the POS page tree. The print CSS makes
+          `.receipt` `position: absolute; top: 0; left: 0` against its
+          nearest positioned ancestor; any wrapper here was causing
+          that to land off the printable area. As the wrapper now sits
+          as a direct child of <body> with `position: static`, the
+          receipt prints correctly at the top of the page. On screen
+          the wrapper is hidden via the print-only-host CSS. */}
+      {printReceipt && createPortal(
+        <div className="print-only-host">
           <ReceiptPreview
             sale={printReceipt.sale}
             lines={printReceipt.lines}
             shop={printReceipt.shop}
             cashier={printReceipt.cashier}
           />
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

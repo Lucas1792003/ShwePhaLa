@@ -65,13 +65,21 @@ export const ProductFinder = ({
 
   const showBrandBar = brandsForCategory.length > 0 && Boolean(onBrand);
 
-  // Click-and-drag horizontal scroll for the category row. Tracks the
-  // pointer-down x + scrollLeft so onPointerMove can translate cursor
-  // travel into scroll offset. The `dragMovedRef` flag is checked by
-  // each tile's onClick — if the cursor moved more than 5 px during the
-  // drag we treat the gesture as a scroll, not a select.
+  // Click-and-drag horizontal scroll for the category row. Earlier
+  // version called setPointerCapture on every pointerdown — that made
+  // Chrome route the subsequent click event to the row element, so the
+  // category buttons never got their onClick. New approach: stash the
+  // start position on pointerdown, then only capture (and start
+  // scrolling) once the cursor has moved more than the 5 px threshold.
+  // Plain clicks never trigger capture, so the button onClick fires
+  // normally.
   const dragRef = useRef<HTMLDivElement | null>(null);
-  const dragStateRef = useRef<{ startX: number; startScroll: number; pointerId: number } | null>(null);
+  const dragStateRef = useRef<{
+    startX: number;
+    startScroll: number;
+    pointerId: number;
+    capturing: boolean;
+  } | null>(null);
   const dragMovedRef = useRef(false);
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     // Ignore right-click / middle-click drags so context menu still works.
@@ -82,28 +90,37 @@ export const ProductFinder = ({
       startX: event.clientX,
       startScroll: el.scrollLeft,
       pointerId: event.pointerId,
+      capturing: false,
     };
     dragMovedRef.current = false;
-    el.setPointerCapture(event.pointerId);
   };
   const updateDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     const state = dragStateRef.current;
     const el = dragRef.current;
     if (!state || !el) return;
     const dx = event.clientX - state.startX;
-    if (Math.abs(dx) > 5) dragMovedRef.current = true;
+    if (!state.capturing) {
+      // Wait until the gesture clearly looks like a drag before we
+      // capture. Without this, every short click would capture and
+      // Chrome would re-route the click event off the button.
+      if (Math.abs(dx) <= 5) return;
+      state.capturing = true;
+      dragMovedRef.current = true;
+      el.setPointerCapture(state.pointerId);
+    }
     el.scrollLeft = state.startScroll - dx;
   };
   const endDrag = () => {
     const state = dragStateRef.current;
     if (!state) return;
     const el = dragRef.current;
-    if (el?.hasPointerCapture(state.pointerId)) {
+    if (state.capturing && el?.hasPointerCapture(state.pointerId)) {
       el.releasePointerCapture(state.pointerId);
     }
     dragStateRef.current = null;
     // Leave dragMovedRef true for one tick so the upcoming click event
-    // can read it; clear right after via microtask.
+    // (if any) sees the drag and skips the category-select. Clear in
+    // the next microtask so the next interaction starts clean.
     queueMicrotask(() => { dragMovedRef.current = false; });
   };
 

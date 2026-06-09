@@ -17,6 +17,28 @@
  *      that the printer happily feeds out.
  * ============================================================ */
 
+/* POS auto-print host — portaled to <body>, kept invisible on screen
+ * while remaining in the DOM so window.print() can pull the receipt
+ * subtree in via the print-time visibility cascade below. We use
+ * `display: contents` on screen so the host establishes no positioning
+ * context (avoids the absolute-receipt-lands-off-paper bug), and the
+ * inner `.receipt` is then hidden via visibility:hidden + width:0 so
+ * it doesn't take screen space. On print the cascade reveals only the
+ * receipt subtree (see @media print below). */
+@media screen {
+  .print-only-host {
+    display: contents;
+  }
+  .print-only-host .receipt {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
 /* Screen sizing for the receipt brand logo. Kept compact so the
  * preview card doesn't grow taller than the cart panel beside it. */
 .receipt-logo {
