@@ -113,18 +113,29 @@ body {
 }
 
 .sidebar-brand-copy {
+  flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
 }
 
 .sidebar-header .shopName {
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 600;
+  line-height: 1.15;
+  white-space: nowrap;
   color: var(--color-text-primary);
+}
+
+@media (min-width: 1280px) {
+  .sidebar-header .shopName {
+    font-size: 1.1rem;
+  }
 }
 
 .sidebar-header .shop-meta {
   margin-top: 4px;
   font-size: 0.75rem;
+  line-height: 1.25;
   color: var(--color-text-placeholder);
 }
 
@@ -134,12 +145,17 @@ body {
   justify-content: center;
   width: 28px;
   height: 28px;
-  margin-left: auto;
+  position: absolute;
+  right: -13px;
+  top: 50%;
+  flex-shrink: 0;
+  transform: translateY(-50%);
   border: 1px solid var(--border-color);
   border-radius: 999px;
   background: #ffffff;
   color: var(--color-text-placeholder);
   cursor: pointer;
+  box-shadow: 0 2px 8px var(--color-shadow);
   transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 

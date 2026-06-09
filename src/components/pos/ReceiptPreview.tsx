@@ -101,6 +101,12 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
           Amount stay right-aligned and tabular so the eye can scan down
           the column on paper. */}
       <table className="receipt-items mt-4 w-full text-xs">
+        <colgroup>
+          <col className="receipt-item-description-col" />
+          <col className="receipt-item-qty-col" />
+          <col className="receipt-item-price-col" />
+          <col className="receipt-item-amount-col" />
+        </colgroup>
         <thead>
           <tr>
             <th className="text-left">Description</th>
@@ -112,7 +118,7 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
         <tbody>
           {lines.map((line, index) => (
             <tr key={`${line.name}-${index}`}>
-              <td>
+              <td className="receipt-description-cell">
                 <div>{line.name}</div>
                 {/* Per-line price level shown ONLY when the receipt has
                     mixed levels — single-level receipts surface the
@@ -123,9 +129,9 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
                   </div>
                 )}
               </td>
-              <td>{line.qty} {line.unitLabel}</td>
-              <td className="text-right">{fmtAmount(line.unitPriceMmk)}</td>
-              <td className="text-right">{fmtAmount(line.lineTotalMmk)}</td>
+              <td className="receipt-qty-cell">{line.qty} {line.unitLabel}</td>
+              <td className="receipt-money">{fmtAmount(line.unitPriceMmk)}</td>
+              <td className="receipt-money">{fmtAmount(line.lineTotalMmk)}</td>
             </tr>
           ))}
         </tbody>
