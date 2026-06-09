@@ -1,13 +1,14 @@
 export const SmallScreenGuard = () => (
-  <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-    <div className="max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-card">
-      <span className="material-symbols-rounded text-4xl text-emerald-600">desktop_windows</span>
-      <h1 className="mt-3 text-lg font-semibold text-slate-900">Screen too small</h1>
-      <p className="mt-2 text-sm text-slate-600">
-        This app is optimized for tablet and desktop screens. Please use a wider
-        screen for POS operations.
+  <div className="fixed inset-0 z-[999] flex min-h-dvh items-center justify-center bg-slate-50 p-6">
+    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-card">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+        <span className="material-symbols-rounded text-3xl">desktop_windows</span>
+      </div>
+      <h1 className="mt-4 text-lg font-semibold text-slate-900">Tablet or desktop required</h1>
+      <p className="mt-2 text-sm leading-6 text-slate-600">
+        Please use a tablet, laptop, or desktop for the best experience.
       </p>
-      <p className="mt-4 text-xs text-slate-400">Recommended minimum: 1024×768.</p>
+      <p className="mt-4 text-xs font-medium text-slate-400">Minimum supported width: 768px.</p>
     </div>
   </div>
 );

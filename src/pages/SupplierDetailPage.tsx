@@ -266,7 +266,7 @@ export const SupplierDetailPage = () => {
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-3 gap-3 rounded-2xl bg-slate-50/80 p-3">
+              <div className="mt-4 grid gap-3 rounded-2xl bg-slate-50/80 p-3 sm:grid-cols-3">
                 <MoneyLine label="Total" value={po.totalMmk} />
                 <MoneyLine label="Paid" value={getPurchaseOrderPaidMmk(po)} tone="green" />
                 <MoneyLine label="Balance" value={balance} tone={balance > 0 ? "red" : "slate"} />
@@ -347,8 +347,8 @@ export const SupplierDetailPage = () => {
                       No line items found for this purchase order.
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
+                    <div className="overflow-x-auto rounded-xl border border-slate-200/70">
+                      <table className="w-full min-w-[640px] text-sm">
                         <thead>
                           <tr className="border-b text-left text-slate-500">
                             <th className="pb-2 font-medium">Product</th>
@@ -398,8 +398,8 @@ export const SupplierDetailPage = () => {
         No supplier payments recorded yet.
       </div>
     ) : (
-      <div className="overflow-x-auto rounded-3xl border border-slate-200/70 bg-white shadow-sm">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white shadow-sm">
+        <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr className="border-b text-left text-slate-500">
               <th className="px-4 py-3 font-medium">Date</th>

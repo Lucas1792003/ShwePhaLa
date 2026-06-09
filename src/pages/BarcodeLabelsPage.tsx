@@ -155,7 +155,7 @@ export const BarcodeLabelsPage = () => {
 
       <Card>
         <div className="flex flex-wrap items-center gap-3">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search name, SKU, or barcode" />
+          <SearchInput value={search} onChange={setSearch} placeholder="Search name, SKU, or barcode" className="min-w-64 flex-1 md:max-w-md" />
         </div>
         <div className="mt-4">
           <CategoryFilter
@@ -166,7 +166,7 @@ export const BarcodeLabelsPage = () => {
           />
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3 xl:grid-cols-3 2xl:grid-cols-4">
+        <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3 xl:grid-cols-[repeat(auto-fill,minmax(210px,1fr))]">
           {filtered.length === 0 && (
             <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
               No products found.

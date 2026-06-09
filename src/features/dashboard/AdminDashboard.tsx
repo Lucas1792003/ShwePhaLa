@@ -253,7 +253,7 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
           <select
             value={selectedShopId}
             onChange={(event) => setSelectedShopId(event.target.value as DashboardSelectedShopId)}
-            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           >
             <option value="all">{copy("allShops")}</option>
             {activeShops.map((shop) => (

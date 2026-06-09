@@ -120,7 +120,7 @@ export const PurchaseOrderCreateModal = ({
   );
 
   return (
-    <Modal open={open} onClose={() => (submitting ? undefined : onClose())} title="Create Purchase Order" size="lg">
+    <Modal open={open} onClose={() => (submitting ? undefined : onClose())} title="Create Purchase Order" size="xl">
       <div className="space-y-4">
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">Supplier</label>
@@ -164,8 +164,8 @@ export const PurchaseOrderCreateModal = ({
         </div>
 
         {items.length > 0 && (
-          <div className="overflow-hidden rounded-lg border">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full min-w-[760px] text-sm">
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-3 py-2 text-left">Product</th>
@@ -198,7 +198,7 @@ export const PurchaseOrderCreateModal = ({
                           onChange={(event) =>
                             updateItem(item.productId, "orderedQty", parseInt(event.target.value, 10) || 1)
                           }
-                          className="w-20 rounded border px-2 py-1"
+                          className="min-h-10 w-20 rounded border px-2 py-1"
                         />
                       </td>
                       <td className="px-3 py-2">
@@ -209,7 +209,7 @@ export const PurchaseOrderCreateModal = ({
                           onChange={(event) =>
                             updateItem(item.productId, "unitCostMmk", parseInt(event.target.value, 10) || 0)
                           }
-                          className="w-24 rounded border px-2 py-1"
+                          className="min-h-10 w-24 rounded border px-2 py-1"
                         />
                       </td>
                       <td className="px-3 py-2 text-right font-medium">
@@ -246,7 +246,7 @@ export const PurchaseOrderCreateModal = ({
           />
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex flex-wrap justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>

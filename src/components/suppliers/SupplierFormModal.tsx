@@ -120,7 +120,7 @@ export const SupplierFormModal = ({
   return (
     <Modal open={open} onClose={requestClose} title={editing ? "Edit Supplier" : "Add Supplier"}>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Code <span className="text-red-500">*</span>
@@ -129,7 +129,7 @@ export const SupplierFormModal = ({
               type="text"
               value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value })}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+              className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
               placeholder="SUP-001"
             />
           </div>
@@ -141,20 +141,20 @@ export const SupplierFormModal = ({
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+              className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
               placeholder="Supplier name"
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Contact Person</label>
             <input
               type="text"
               value={form.contactPerson}
               onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+              className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
               placeholder="Contact name"
             />
           </div>
@@ -164,7 +164,7 @@ export const SupplierFormModal = ({
               type="text"
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+              className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
               placeholder="09-xxxxxxxxx"
             />
           </div>
@@ -176,7 +176,7 @@ export const SupplierFormModal = ({
             type="email"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
-            className="w-full rounded-lg border px-3 py-2 text-sm"
+            className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
             placeholder="email@example.com"
           />
         </div>
@@ -187,7 +187,7 @@ export const SupplierFormModal = ({
             type="text"
             value={form.address}
             onChange={(e) => setForm({ ...form, address: e.target.value })}
-            className="w-full rounded-lg border px-3 py-2 text-sm"
+            className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
             placeholder="Full address"
           />
         </div>
@@ -197,7 +197,7 @@ export const SupplierFormModal = ({
           <textarea
             value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            className="w-full rounded-lg border px-3 py-2 text-sm"
+            className="min-h-24 w-full rounded-lg border px-3 py-2 text-sm"
             rows={2}
             placeholder="Additional notes..."
           />
@@ -209,7 +209,7 @@ export const SupplierFormModal = ({
           </div>
         )}
 
-        <div className="flex justify-end gap-2 pt-4">
+        <div className="flex flex-wrap justify-end gap-2 pt-4">
           <Button variant="secondary" disabled={saving} onClick={requestClose}>
             Cancel
           </Button>

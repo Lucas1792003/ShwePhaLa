@@ -1179,6 +1179,7 @@ export const ProductFormPage = () => {
                         <span className="mb-1 block text-xs font-medium text-slate-500">Barcode for this unit</span>
                         <div className="flex flex-col gap-2 sm:flex-row">
                           <Input
+                            className="min-w-0 flex-1"
                             value={unitBarcodes[unit.id] ?? ""}
                             onChange={(event) => setUnitBarcodes((rows) => ({
                               ...rows,
@@ -1213,7 +1214,7 @@ export const ProductFormPage = () => {
             </div>
           )}
 
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="secondary" onClick={handleCancel} disabled={isSaving}>
               Cancel
             </Button>

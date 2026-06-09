@@ -24,7 +24,7 @@ export const AuditPage = () => {
     <Card>
       <PageHeader title="Audit Log" subtitle="Key system actions and overrides." />
       <div className="mt-4">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search audit log" />
+        <SearchInput value={search} onChange={setSearch} placeholder="Search audit log" className="md:max-w-md" />
       </div>
       <div className="mt-4">
         {filtered.length === 0 ? (

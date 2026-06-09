@@ -70,16 +70,16 @@ export const SalesPage = () => {
 
       <Card>
         <div className="flex flex-wrap gap-3">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search receipt" />
+          <SearchInput value={search} onChange={setSearch} placeholder="Search receipt" className="min-w-64 flex-1 md:w-72 md:flex-none" />
           <DateRangePicker start={range.start} end={range.end} onChange={setRange} />
-          <Select value={status} onChange={(event) => setStatus(event.target.value)}>
+          <Select value={status} onChange={(event) => setStatus(event.target.value)} className="min-w-44 flex-1 md:w-auto md:flex-none">
             <option value="all">All statuses</option>
             <option value="NORMAL">Normal</option>
             <option value="VOID">Void</option>
             <option value="REFUNDED">Refunded</option>
           </Select>
           {!ownSalesOnly && (
-            <Select value={cashier} onChange={(event) => setCashier(event.target.value)}>
+            <Select value={cashier} onChange={(event) => setCashier(event.target.value)} className="min-w-48 flex-1 md:w-auto md:flex-none">
               <option value="all">All cashiers</option>
               {users.filter((user) => user.role === "CASHIER").map((user) => (
                 <option key={user.id} value={user.id}>{user.name}</option>

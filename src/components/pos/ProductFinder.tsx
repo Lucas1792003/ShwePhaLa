@@ -108,9 +108,9 @@ export const ProductFinder = ({
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Fixed Header - Search & Categories */}
-      <div className="sticky top-0 z-10 space-y-4 bg-white pb-4">
+      <div className="sticky top-0 z-10 space-y-3 bg-white pb-3 lg:space-y-4 lg:pb-4">
         {/* Search Bar */}
         <SearchInput value={search} onChange={onSearch} placeholder="Search items here..." />
 
@@ -126,7 +126,7 @@ export const ProductFinder = ({
           // and the visible bar was just noise. Cross-browser combo:
           // `scrollbar-width:none` (Firefox) + `::-webkit-scrollbar`
           // override (Chromium/Safari).
-          className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 cursor-grab select-none active:cursor-grabbing [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="-mx-1 flex cursor-grab select-none gap-2 overflow-x-auto px-1 pb-1 active:cursor-grabbing [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           onWheel={(event) => {
             if (event.deltaY === 0) return;
             event.currentTarget.scrollLeft += event.deltaY;
@@ -144,14 +144,14 @@ export const ProductFinder = ({
                 if (dragMovedRef.current) return;
                 onCategory(cat.key);
               }}
-              className={`flex flex-shrink-0 flex-col items-center gap-1 rounded-xl px-4 py-2 text-xs font-medium capitalize transition-all ${
+              className={`flex min-h-16 w-20 flex-shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium capitalize transition-all md:w-24 ${
                 category === cat.key
                   ? "bg-emerald-600 text-white shadow-md"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
               <span className="material-symbols-rounded text-xl">{cat.symbol}</span>
-              <span>{cat.label}</span>
+              <span className="max-w-full truncate">{cat.label}</span>
             </button>
           ))}
         </div>
@@ -197,8 +197,8 @@ export const ProductFinder = ({
       </div>
 
       {/* Products Grid - Scrollable */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3 xl:grid-cols-[repeat(auto-fill,minmax(170px,1fr))] xl:gap-4">
           {products.map((product) => {
             const isNonStock = Boolean(product.isNonStock);
             const qty = inventoryById[product.id] ?? 0;
@@ -232,7 +232,7 @@ export const ProductFinder = ({
                     onAdd(product, defaultUnit);
                   }
                 }}
-                className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
+                className={`group relative flex min-h-0 flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
                   allUnitsDisabled
                     ? "cursor-not-allowed border-red-200 opacity-70"
                     : defaultAddDisabled
@@ -241,7 +241,7 @@ export const ProductFinder = ({
                 }`}
               >
                 {/* Product Image */}
-                <div className="relative h-32 w-full bg-gradient-to-br from-slate-100 to-slate-50">
+                <div className="relative h-28 w-full bg-gradient-to-br from-slate-100 to-slate-50 lg:h-32">
                   {product.imageUrl ? (
                     <img
                       src={product.imageUrl}
@@ -287,10 +287,10 @@ export const ProductFinder = ({
                 </div>
 
                 {/* Product Info */}
-                <div className="flex flex-1 flex-col p-3">
+                <div className="flex min-h-0 flex-1 flex-col p-3">
                   <h3 className="line-clamp-2 text-sm font-semibold text-slate-800">{product.name}</h3>
-                  <div className="mt-auto flex items-center justify-between pt-2">
-                    <span className="text-base font-bold text-emerald-600">{formatMmk(defaultUnit.salePriceMmk)}</span>
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-2">
+                    <span className="min-w-0 truncate text-base font-bold text-emerald-600">{formatMmk(defaultUnit.salePriceMmk)}</span>
                     <button
                       type="button"
                       onClick={(event) => {
@@ -305,7 +305,7 @@ export const ProductFinder = ({
                             ? `Only ${qty} in stock for this shop.`
                             : `Add ${product.name}`
                       }
-                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
                     >
                       <span className="material-symbols-rounded text-lg">add</span>
                     </button>
@@ -323,7 +323,7 @@ export const ProductFinder = ({
                               if (!disabled) onAdd(product, unit);
                             }}
                             disabled={disabled}
-                            className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-rose-300 disabled:bg-white disabled:text-rose-600 disabled:hover:border-rose-300 disabled:hover:bg-white"
+                            className="min-h-8 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-rose-300 disabled:bg-white disabled:text-rose-600 disabled:hover:border-rose-300 disabled:hover:bg-white"
                             title={`${unit.name} deducts ${unit.baseQuantity} ${product.unitType}`}
                           >
                             {unit.name}

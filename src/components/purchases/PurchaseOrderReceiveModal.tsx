@@ -108,6 +108,7 @@ export const PurchaseOrderReceiveModal = ({
       onClose={() => (submitting ? undefined : onClose())}
       title="Receive purchase order"
       description={po?.orderNo}
+      size="lg"
     >
       {purchaseOrderId && (
         <div className="space-y-4">
@@ -116,18 +117,19 @@ export const PurchaseOrderReceiveModal = ({
             start supplier debt for any unpaid balance.
           </p>
 
-          <table className="w-full overflow-hidden rounded-lg border text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-3 py-2 text-left">Product</th>
-                <th className="px-3 py-2 text-right">Ordered (base)</th>
-                <th className="px-3 py-2 text-left">Unit</th>
-                <th className="px-3 py-2 text-right">Qty</th>
-                <th className="px-3 py-2 text-right">Adds (base)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line, idx) => {
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-3 py-2 text-left">Product</th>
+                  <th className="px-3 py-2 text-right">Ordered (base)</th>
+                  <th className="px-3 py-2 text-left">Unit</th>
+                  <th className="px-3 py-2 text-right">Qty</th>
+                  <th className="px-3 py-2 text-right">Adds (base)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line, idx) => {
                 const product = products.find((p) => p.id === line.productId);
                 const orderedItem = orderedItems.find((item) => item.productId === line.productId);
                 const orderedBase = orderedItem?.orderedQty ?? 0;
@@ -198,7 +200,7 @@ export const PurchaseOrderReceiveModal = ({
                             )
                           );
                         }}
-                        className="w-20 rounded border px-2 py-1 text-right"
+                        className="min-h-10 w-20 rounded border px-2 py-1 text-right"
                       />
                     </td>
                     <td className="px-3 py-2 text-right text-xs text-slate-600">
@@ -212,10 +214,11 @@ export const PurchaseOrderReceiveModal = ({
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={onClose} disabled={submitting}>
               Cancel
             </Button>

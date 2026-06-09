@@ -48,22 +48,24 @@ export const DateRangeSelector = ({
 }) => {
   const copy = useDashboardCopy();
   return (
-    <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
-      {(["today", "week", "month"] as DateRange[]).map((range) => (
-        <button
-          key={range}
-          type="button"
-          onClick={() => onChange(range)}
-          className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-semibold transition",
-            value === range
-              ? "bg-emerald-600 text-white shadow-sm"
-              : "text-slate-600 hover:bg-slate-100"
-          )}
-        >
-          {rangeLabel(copy, range)}
-        </button>
-      ))}
+    <div className="max-w-full overflow-x-auto pb-1">
+      <div className="inline-flex min-w-max rounded-lg border border-slate-200 bg-white p-1">
+        {(["today", "week", "month"] as DateRange[]).map((range) => (
+          <button
+            key={range}
+            type="button"
+            onClick={() => onChange(range)}
+            className={cn(
+              "min-h-10 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-semibold transition",
+              value === range
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-100"
+            )}
+          >
+            {rangeLabel(copy, range)}
+          </button>
+        ))}
+      </div>
     </div>
   );
 };
@@ -121,14 +123,14 @@ export const SectionCard = ({
   className?: string;
 }) => (
   <Card className={cn("rounded-lg p-4 shadow-sm", className)}>
-    <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2">
         {icon && (
           <span className="material-symbols-rounded text-xl text-emerald-700">{icon}</span>
         )}
         <h2 className="truncate text-sm font-semibold text-slate-800">{title}</h2>
       </div>
-      {action}
+      {action && <div className="min-w-0">{action}</div>}
     </div>
     {children}
   </Card>

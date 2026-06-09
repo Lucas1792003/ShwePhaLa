@@ -7,8 +7,8 @@ interface DateRangePickerProps {
 }
 
 export const DateRangePicker = ({ start, end, onChange }: DateRangePickerProps) => (
-  <div className="flex flex-wrap gap-2">
-    <Input type="date" value={start} onChange={(event) => onChange({ start: event.target.value, end })} />
-    <Input type="date" value={end} onChange={(event) => onChange({ start, end: event.target.value })} />
+  <div className="flex min-w-0 flex-wrap gap-2">
+    <Input className="min-w-40 flex-1 md:w-auto md:flex-none" type="date" value={start} onChange={(event) => onChange({ start: event.target.value, end })} />
+    <Input className="min-w-40 flex-1 md:w-auto md:flex-none" type="date" value={end} onChange={(event) => onChange({ start, end: event.target.value })} />
   </div>
 );

@@ -15,8 +15,8 @@ interface ModalProps {
 const sizes: Record<string, string> = {
   sm: "max-w-md",
   md: "max-w-xl",
-  lg: "max-w-2xl",
-  xl: "max-w-5xl",
+  lg: "max-w-3xl",
+  xl: "max-w-6xl",
 };
 
 export const Modal = ({ open, title, description, onClose, children, footer, size = "md" }: ModalProps) => {
@@ -33,7 +33,7 @@ export const Modal = ({ open, title, description, onClose, children, footer, siz
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm md:p-4"
       onClick={(e) => {
         // Close when clicking the backdrop
         if (e.target === e.currentTarget) onClose();
@@ -41,13 +41,13 @@ export const Modal = ({ open, title, description, onClose, children, footer, siz
     >
       <div
         className={cn(
-          "flex max-h-[90vh] w-full flex-col rounded-3xl border border-slate-200/70 bg-white shadow-2xl",
+          "flex max-h-[calc(100dvh-1.5rem)] w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-2xl md:max-h-[calc(100dvh-2rem)]",
           sizes[size]
         )}
       >
         {/* Fixed Header */}
-        <div className="flex flex-shrink-0 items-start justify-between border-b border-slate-100 p-6 pb-4">
-          <div>
+        <div className="flex flex-shrink-0 items-start justify-between gap-3 border-b border-slate-100 p-4 md:p-5">
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
             {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
           </div>
@@ -61,13 +61,13 @@ export const Modal = ({ open, title, description, onClose, children, footer, siz
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-6 pt-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
           <div className="space-y-4">{children}</div>
         </div>
 
         {/* Fixed Footer */}
         {footer && (
-          <div className="flex flex-shrink-0 items-center justify-end gap-3 border-t border-slate-100 p-6 pt-4">
+          <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-3 border-t border-slate-100 p-4 md:p-5">
             {footer}
           </div>
         )}

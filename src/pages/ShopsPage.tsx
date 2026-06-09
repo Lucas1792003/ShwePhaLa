@@ -195,7 +195,7 @@ export const ShopsPage = () => {
               {feedback.message}
             </div>
           )}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button onClick={handleSubmit} disabled={isSubmitting}>
               {isSubmitting ? "Saving..." : editingId ? "Update" : "Create"}
             </Button>
@@ -226,7 +226,7 @@ export const ShopsPage = () => {
                 {refSummary && (
                   <div className="mt-2 text-xs text-slate-400">In use by {refSummary}</div>
                 )}
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Button variant="secondary" onClick={() => handleEdit(shop.id)}>
                     Edit
                   </Button>

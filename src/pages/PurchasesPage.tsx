@@ -132,8 +132,8 @@ export const PurchasesPage = () => {
       </div>
 
       <div className="mt-5 flex flex-wrap gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search by PO #" />
-        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search by PO #" className="min-w-64 flex-1 md:w-72 md:flex-none" />
+        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="min-w-44 flex-1 md:w-auto md:flex-none">
           <option value="all">All Status</option>
           <option value="DRAFT">Draft</option>
           <option value="SUBMITTED">Submitted</option>
@@ -149,18 +149,18 @@ export const PurchasesPage = () => {
             No purchase orders found.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
+            <table className="w-full min-w-[920px] text-sm">
               <thead>
                 <tr className="border-b text-left text-slate-500">
-                  <th className="pb-3 font-medium">PO #</th>
-                  <th className="pb-3 font-medium">Supplier</th>
-                  <th className="pb-3 font-medium">Shop</th>
-                  <th className="pb-3 font-medium">Items</th>
-                  <th className="pb-3 font-medium">Total</th>
-                  <th className="pb-3 font-medium">Status</th>
-                  <th className="pb-3 font-medium">Created</th>
-                  <th className="pb-3 font-medium">Actions</th>
+                  <th className="px-3 py-3 font-medium">PO #</th>
+                  <th className="px-3 py-3 font-medium">Supplier</th>
+                  <th className="px-3 py-3 font-medium">Shop</th>
+                  <th className="px-3 py-3 font-medium">Items</th>
+                  <th className="px-3 py-3 font-medium">Total</th>
+                  <th className="px-3 py-3 font-medium">Status</th>
+                  <th className="px-3 py-3 font-medium">Created</th>
+                  <th className="px-3 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -172,20 +172,20 @@ export const PurchasesPage = () => {
 
                   return (
                     <tr key={po.id} className="border-b last:border-0">
-                      <td className="py-3 font-medium">{po.orderNo}</td>
-                      <td className="py-3">{supplier?.name ?? po.supplierId}</td>
-                      <td className="py-3">{shop?.name ?? po.shopId}</td>
-                      <td className="py-3">{items.length} items</td>
-                      <td className="py-3 font-medium">MMK {po.totalMmk.toLocaleString()}</td>
-                      <td className="py-3">
+                      <td className="px-3 py-3 font-medium">{po.orderNo}</td>
+                      <td className="px-3 py-3">{supplier?.name ?? po.supplierId}</td>
+                      <td className="px-3 py-3">{shop?.name ?? po.shopId}</td>
+                      <td className="px-3 py-3">{items.length} items</td>
+                      <td className="px-3 py-3 font-medium">MMK {po.totalMmk.toLocaleString()}</td>
+                      <td className="px-3 py-3">
                         <Badge color={statusColors[po.status]}>{po.status}</Badge>
                       </td>
-                      <td className="py-3">
+                      <td className="px-3 py-3">
                         <div>{formatDateTime(po.createdAt)}</div>
                         <div className="text-xs text-slate-500">by {createdByUser?.name ?? "Unknown"}</div>
                       </td>
-                      <td className="py-3">
-                        <div className="flex gap-2">
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap gap-2">
                           <Button size="sm" variant="ghost" onClick={() => setShowDetailModal(po.id)}>
                             View
                           </Button>
@@ -232,10 +232,11 @@ export const PurchasesPage = () => {
         open={!!showDetailModal}
         onClose={() => setShowDetailModal(null)}
         title={`Purchase Order - ${selectedPO?.orderNo}`}
+        size="lg"
       >
         {selectedPO && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid gap-4 text-sm sm:grid-cols-2">
               <div>
                 <span className="text-slate-500">Supplier:</span>
                 <span className="ml-2 font-medium">{suppliers.find((s) => s.id === selectedPO.supplierId)?.name}</span>
@@ -256,34 +257,36 @@ export const PurchasesPage = () => {
 
             <div>
               <h4 className="font-medium mb-2">Items</h4>
-              <table className="w-full text-sm border rounded-lg overflow-hidden">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Product</th>
-                    <th className="px-3 py-2 text-right">Ordered</th>
-                    <th className="px-3 py-2 text-right">Received</th>
-                    <th className="px-3 py-2 text-right">Unit Cost</th>
-                    <th className="px-3 py-2 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedPOItems.map((item) => {
-                    const product = products.find((p) => p.id === item.productId);
-                    return (
-                      <tr key={item.id} className="border-t">
-                        <td className="px-3 py-2">{product?.name}</td>
-                        <td className="px-3 py-2 text-right">{item.orderedQty}</td>
-                        <td className="px-3 py-2 text-right">{item.receivedQty ?? "-"}</td>
-                        <td className="px-3 py-2 text-right">MMK {item.unitCostMmk.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right">MMK {item.lineTotalMmk.toLocaleString()}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full min-w-[640px] text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Product</th>
+                      <th className="px-3 py-2 text-right">Ordered</th>
+                      <th className="px-3 py-2 text-right">Received</th>
+                      <th className="px-3 py-2 text-right">Unit Cost</th>
+                      <th className="px-3 py-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedPOItems.map((item) => {
+                      const product = products.find((p) => p.id === item.productId);
+                      return (
+                        <tr key={item.id} className="border-t">
+                          <td className="px-3 py-2">{product?.name}</td>
+                          <td className="px-3 py-2 text-right">{item.orderedQty}</td>
+                          <td className="px-3 py-2 text-right">{item.receivedQty ?? "-"}</td>
+                          <td className="px-3 py-2 text-right">MMK {item.unitCostMmk.toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">MMK {item.lineTotalMmk.toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            <div className="flex justify-end pt-4">
+            <div className="flex flex-wrap justify-end gap-2 pt-4">
               <Button variant="secondary" onClick={() => setShowDetailModal(null)}>Close</Button>
             </div>
           </div>

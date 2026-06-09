@@ -622,21 +622,21 @@ export const PosPage = () => {
   }
 
   return (
-    <div className="flex h-[calc(100vh-2rem)] flex-col gap-4">
+    <div className="flex h-[calc(100dvh-1.5rem)] min-h-0 flex-col gap-3 lg:h-[calc(100dvh-2rem)] lg:gap-4">
       {/* Top Bar */}
-      <div className="flex items-center justify-between rounded-2xl bg-white px-5 py-3 shadow-sm">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm lg:px-5">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
           <h1 className="text-xl font-bold text-slate-800">Point of Sale</h1>
           <Badge tone={openShift ? "green" : "amber"}>
             {openShift ? "Shift Open" : "No Shift"}
           </Badge>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2 lg:gap-4">
           {/* Barcode Toggle */}
           <button
             type="button"
             onClick={() => setShowBarcodeInput(!showBarcodeInput)}
-            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+            className={`flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
               showBarcodeInput
                 ? "bg-emerald-100 text-emerald-700"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -646,16 +646,16 @@ export const PosPage = () => {
             Barcode (F4)
           </button>
           {/* Shop Info */}
-          <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2">
+          <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg bg-slate-100 px-3 py-2">
             <span className="material-symbols-rounded text-lg text-slate-500">store</span>
-            <span className="text-sm font-medium text-slate-700">{currentShop?.name || "No Shop"}</span>
+            <span className="truncate text-sm font-medium text-slate-700">{currentShop?.name || "No Shop"}</span>
           </div>
         </div>
       </div>
 
       {/* Barcode Input (Collapsible) */}
       {showBarcodeInput && (
-        <div className="flex items-center gap-3 rounded-2xl bg-white px-5 py-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm lg:px-5">
           <span className="material-symbols-rounded text-2xl text-slate-400">qr_code_scanner</span>
           <Input
             ref={barcodeInputRef}
@@ -668,7 +668,7 @@ export const PosPage = () => {
               }
             }}
             placeholder="Scan or enter barcode..."
-            className="flex-1"
+            className="min-w-64 flex-1"
             autoFocus
           />
           <Button onClick={handleBarcodeSubmit}>Add</Button>
@@ -676,9 +676,9 @@ export const PosPage = () => {
       )}
 
       {/* Main Content */}
-      <div className="flex flex-1 gap-4 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,34%)] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         {/* Products Section */}
-        <Card className="flex-1 overflow-y-auto">
+        <Card className="min-h-0 flex-1 overflow-hidden p-3 md:p-4 xl:p-5">
           <ProductFinder
             products={filteredProducts}
             categories={categories.filter((c) => c.isActive)}
@@ -697,7 +697,7 @@ export const PosPage = () => {
         </Card>
 
         {/* Cart Section */}
-        <Card className="w-[320px] flex-shrink-0 xl:w-[380px]">
+        <Card className="min-h-[280px] max-h-[42vh] shrink-0 overflow-hidden p-3 md:p-4 lg:max-h-none lg:min-h-0 xl:p-5">
           <CartPanel
             items={cartItems}
             subtotal={subtotal}
@@ -761,7 +761,7 @@ export const PosPage = () => {
             {/* Tabs replace the Select per UX request. flex-1 on each
                 button keeps the row evenly distributed regardless of how
                 many levels admins have configured. */}
-            <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
+            <div className="flex gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1">
               {activePriceLevels.map((level) => {
                 const selected = overridePriceLevelId === level.id;
                 return (
@@ -769,7 +769,7 @@ export const PosPage = () => {
                     key={level.id}
                     type="button"
                     onClick={() => handlePickOverrideLevel(level.id)}
-                    className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`min-h-10 min-w-32 flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                       selected
                         ? "bg-white text-emerald-700 shadow-sm"
                         : "text-slate-600 hover:text-slate-800"
@@ -858,12 +858,17 @@ export const PosPage = () => {
         />
       </Modal>
 
-      {/* Hidden print host — invisible on screen (positioned far off the
-          viewport) but pulled in by the print CSS, which uses
+      {/* Hidden print host — invisible on screen (positioned far off
+          the viewport) but pulled in by the print CSS, which uses
           `body * { visibility: hidden }` then reveals `.receipt`.
-          window.print() fires once via the useEffect above. */}
+          IMPORTANT: `print:static` resets the wrapper to static
+          positioning when printing. The print CSS makes `.receipt`
+          `position: absolute; top: 0; left: 0` relative to the nearest
+          positioned ancestor — without the print-only reset, that
+          ancestor is THIS wrapper at left:-10000px, and the receipt
+          ends up printing far off the page (blank paper). */}
       {printReceipt && (
-        <div className="pointer-events-none fixed -left-[10000px] top-0 print-receipt-host">
+        <div className="pointer-events-none fixed -left-[10000px] top-0 print-receipt-host print:static print:left-auto print:top-auto">
           <ReceiptPreview
             sale={printReceipt.sale}
             lines={printReceipt.lines}

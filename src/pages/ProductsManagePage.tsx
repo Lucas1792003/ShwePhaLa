@@ -577,10 +577,12 @@ export const ProductsManagePage = () => {
           value={searchQuery}
           onChange={setSearchQuery}
           placeholder="Search by name, SKU, or barcode..."
+          className="min-w-64 flex-1 md:w-96 md:flex-none"
         />
         <Select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value as "all" | "active" | "inactive")}
+          className="min-w-44 flex-1 md:w-auto md:flex-none"
         >
           <option value="all">All Status</option>
           <option value="active">Active Only</option>
@@ -618,7 +620,7 @@ export const ProductsManagePage = () => {
           <select
             value={filterBrandId}
             onChange={(event) => setFilterBrandId(event.target.value)}
-            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="min-h-9 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           >
             <option value="">Select a brand…</option>
             {filterBrandsForCategory.map((brand) => (
@@ -637,7 +639,7 @@ export const ProductsManagePage = () => {
 
       {/* Products Table */}
       <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200/70">
-        <Table>
+        <Table className="min-w-[980px]">
           <THead>
             <TR>
               <TH>Product</TH>
@@ -771,7 +773,7 @@ export const ProductsManagePage = () => {
       </div>
 
       {/* Pagination */}
-      <div className="mt-4 flex items-center justify-between">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-slate-500">
           Showing {filteredProducts.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}-
           {Math.min(page * PAGE_SIZE, filteredProducts.length)} of {filteredProducts.length} products
@@ -936,7 +938,7 @@ export const ProductsManagePage = () => {
 
           {importPlan && (
             <>
-              <div className="grid gap-3 sm:grid-cols-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                   <div className="text-xs uppercase text-slate-500">Valid Rows</div>
                   <div className="text-lg font-semibold text-slate-800">{importPlan.items.length}</div>
@@ -957,7 +959,7 @@ export const ProductsManagePage = () => {
 
               <div className="overflow-hidden rounded-xl border border-slate-200">
                 <div className="max-h-96 overflow-auto">
-                  <Table>
+                  <Table className="min-w-[720px]">
                     <THead>
                       <TR>
                         <TH>Row</TH>
@@ -1035,14 +1037,14 @@ export const ProductsManagePage = () => {
 
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700">Icon</label>
-            <div className="grid grid-cols-6 gap-2">
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
               {CATEGORY_ICONS.map((opt) => (
                 <button
                   key={opt.key}
                   type="button"
                   title={opt.label}
                   onClick={() => setNewCategoryIconKey(opt.key)}
-                  className={`flex items-center justify-center rounded-lg border p-2 transition-colors ${
+                  className={`flex min-h-11 items-center justify-center rounded-lg border p-2 transition-colors ${
                     newCategoryIconKey === opt.key
                       ? "border-emerald-500 bg-emerald-50 text-emerald-700"
                       : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
@@ -1133,7 +1135,7 @@ export const ProductsManagePage = () => {
             })()}
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
             <Button
               variant="secondary"
               onClick={() => {
@@ -1203,7 +1205,7 @@ export const ProductsManagePage = () => {
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
             <Button
               variant="secondary"
               onClick={() => {

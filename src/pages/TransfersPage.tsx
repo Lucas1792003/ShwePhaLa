@@ -320,8 +320,8 @@ export const TransfersPage = () => {
       </div>
 
       <div className="mt-5 flex flex-wrap gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search by transfer #" />
-        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search by transfer #" className="min-w-64 flex-1 md:w-72 md:flex-none" />
+        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="min-w-44 flex-1 md:w-auto md:flex-none">
           <option value="all">All Status</option>
           <option value="PENDING">Pending</option>
           <option value="APPROVED">Approved</option>
@@ -337,17 +337,17 @@ export const TransfersPage = () => {
             No transfers found.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
+            <table className="w-full min-w-[900px] text-sm">
               <thead>
                 <tr className="border-b text-left text-slate-500">
-                  <th className="pb-3 font-medium">Transfer #</th>
-                  <th className="pb-3 font-medium">From</th>
-                  <th className="pb-3 font-medium">To</th>
-                  <th className="pb-3 font-medium">Items</th>
-                  <th className="pb-3 font-medium">Status</th>
-                  <th className="pb-3 font-medium">Created</th>
-                  <th className="pb-3 font-medium">Actions</th>
+                  <th className="px-3 py-3 font-medium">Transfer #</th>
+                  <th className="px-3 py-3 font-medium">From</th>
+                  <th className="px-3 py-3 font-medium">To</th>
+                  <th className="px-3 py-3 font-medium">Items</th>
+                  <th className="px-3 py-3 font-medium">Status</th>
+                  <th className="px-3 py-3 font-medium">Created</th>
+                  <th className="px-3 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -360,19 +360,19 @@ export const TransfersPage = () => {
 
                   return (
                     <tr key={transfer.id} className="border-b last:border-0">
-                      <td className="py-3 font-medium">{transfer.transferNo}</td>
-                      <td className="py-3">{fromShop?.name ?? transfer.fromShopId}</td>
-                      <td className="py-3">{toShop?.name ?? transfer.toShopId}</td>
-                      <td className="py-3">{items.length} items</td>
-                      <td className="py-3">
+                      <td className="px-3 py-3 font-medium">{transfer.transferNo}</td>
+                      <td className="px-3 py-3">{fromShop?.name ?? transfer.fromShopId}</td>
+                      <td className="px-3 py-3">{toShop?.name ?? transfer.toShopId}</td>
+                      <td className="px-3 py-3">{items.length} items</td>
+                      <td className="px-3 py-3">
                         <Badge color={statusColors[transfer.status]}>{transfer.status}</Badge>
                       </td>
-                      <td className="py-3">
+                      <td className="px-3 py-3">
                         <div>{formatDateTime(transfer.createdAt)}</div>
                         <div className="text-xs text-slate-500">by {createdByUser?.name ?? "Unknown"}</div>
                       </td>
-                      <td className="py-3">
-                        <div className="flex gap-2">
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap gap-2">
                           <Button size="sm" variant="ghost" onClick={() => setShowDetailModal(transfer.id)}>
                             View
                           </Button>
@@ -408,7 +408,7 @@ export const TransfersPage = () => {
       </div>
 
       {/* Create Transfer Modal */}
-      <Modal open={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create Stock Transfer">
+      <Modal open={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create Stock Transfer" size="xl">
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Destination Shop</label>
@@ -444,8 +444,8 @@ export const TransfersPage = () => {
           </div>
 
           {newTransfer.items.length > 0 && (
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full min-w-[920px] text-sm">
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="px-3 py-2 text-left">Product</th>
@@ -513,7 +513,7 @@ export const TransfersPage = () => {
                             max={Math.max(1, maxQty)}
                             value={item.selectedUnitQuantity}
                             onChange={(e) => updateItemQty(item.lineId, parseInt(e.target.value, 10) || 1)}
-                            className="w-20 rounded border px-2 py-1 text-right"
+                            className="min-h-10 w-20 rounded border px-2 py-1 text-right"
                           />
                           <div className="mt-1 text-xs text-slate-500">Max {maxQty}</div>
                         </td>
@@ -558,7 +558,7 @@ export const TransfersPage = () => {
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-4">
+          <div className="flex flex-wrap justify-end gap-2 pt-4">
             <Button variant="secondary" onClick={() => setShowCreateModal(false)}>Cancel</Button>
             <Button
               onClick={handleCreateTransfer}
@@ -575,10 +575,11 @@ export const TransfersPage = () => {
         open={!!showDetailModal}
         onClose={() => setShowDetailModal(null)}
         title={`Transfer Details - ${selectedTransfer?.transferNo}`}
+        size="lg"
       >
         {selectedTransfer && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid gap-4 text-sm sm:grid-cols-2">
               <div>
                 <span className="text-slate-500">From:</span>
                 <span className="ml-2 font-medium">{shops.find((s) => s.id === selectedTransfer.fromShopId)?.name}</span>
@@ -625,45 +626,47 @@ export const TransfersPage = () => {
 
             <div>
               <h4 className="font-medium mb-2">Items</h4>
-              <table className="w-full text-sm border rounded-lg overflow-hidden">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Product</th>
-                    <th className="px-3 py-2 text-right">Entered as</th>
-                    <th className="px-3 py-2 text-right">Base requested</th>
-                    <th className="px-3 py-2 text-right">Base approved</th>
-                    <th className="px-3 py-2 text-right">Base transferred</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedTransferItems.map((item) => {
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full min-w-[720px] text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Product</th>
+                      <th className="px-3 py-2 text-right">Entered as</th>
+                      <th className="px-3 py-2 text-right">Base requested</th>
+                      <th className="px-3 py-2 text-right">Base approved</th>
+                      <th className="px-3 py-2 text-right">Base transferred</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedTransferItems.map((item) => {
                     const product = products.find((p) => p.id === item.productId);
                     const baseUnitName = product?.unitType || "unit";
                     const fallbackUnit = productUnits.find((unit) => unit.id === item.productUnitId);
                     const enteredAs = formatEnteredAs(item, fallbackUnit);
                     return (
-                      <tr key={item.id} className="border-t">
-                        <td className="px-3 py-2">{product?.name}</td>
-                        <td className="px-3 py-2 text-right">
-                          {enteredAs ?? formatBaseQty(item.requestedQty, baseUnitName)}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {formatBaseQty(item.requestedQty, baseUnitName)}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {formatBaseQty(item.approvedQty, baseUnitName)}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {formatBaseQty(item.transferredQty, baseUnitName)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        <tr key={item.id} className="border-t">
+                          <td className="px-3 py-2">{product?.name}</td>
+                          <td className="px-3 py-2 text-right">
+                            {enteredAs ?? formatBaseQty(item.requestedQty, baseUnitName)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {formatBaseQty(item.requestedQty, baseUnitName)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {formatBaseQty(item.approvedQty, baseUnitName)}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {formatBaseQty(item.transferredQty, baseUnitName)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            <div className="flex justify-end pt-4">
+            <div className="flex flex-wrap justify-end gap-2 pt-4">
               <Button variant="secondary" onClick={() => setShowDetailModal(null)}>Close</Button>
             </div>
           </div>

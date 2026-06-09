@@ -203,8 +203,8 @@ export const PricingPage = () => {
       </div>
 
       <div className="mt-5 flex flex-wrap gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search products..." />
-        <Select value={productFilter} onChange={(e) => setProductFilter(e.target.value)}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search products..." className="min-w-64 flex-1 md:w-80 md:flex-none" />
+        <Select value={productFilter} onChange={(e) => setProductFilter(e.target.value)} className="min-w-48 flex-1 md:w-auto md:flex-none">
           <option value="all">All Products</option>
           <option value="with_tiers">Products with Tiers</option>
         </Select>
@@ -219,9 +219,9 @@ export const PricingPage = () => {
           filteredProducts.map((product) => {
             const tiers = (tiersByProduct.get(product.id) ?? []).sort((a, b) => a.minQty - b.minQty);
             return (
-              <div key={product.id} className="border rounded-lg overflow-hidden">
-                <div className="bg-slate-50 px-4 py-3 flex justify-between items-center">
-                  <div>
+              <div key={product.id} className="overflow-hidden rounded-lg border">
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-4 py-3">
+                  <div className="min-w-0">
                     <h4 className="font-medium">{product.name}</h4>
                     <p className="text-sm text-slate-500">
                       Base Price: MMK {product.priceMmk.toLocaleString()} | Cost: MMK {(product.costMmk ?? 0).toLocaleString()}
@@ -235,18 +235,19 @@ export const PricingPage = () => {
                 </div>
 
                 {tiers.length > 0 ? (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-slate-500">
-                        <th className="px-4 py-2 font-medium">Quantity Range</th>
-                        <th className="px-4 py-2 font-medium">Price per Unit</th>
-                        <th className="px-4 py-2 font-medium">Shop</th>
-                        <th className="px-4 py-2 font-medium">Status</th>
-                        <th className="px-4 py-2 font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tiers.map((tier) => {
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[760px] text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-slate-500">
+                          <th className="px-4 py-2 font-medium">Quantity Range</th>
+                          <th className="px-4 py-2 font-medium">Price per Unit</th>
+                          <th className="px-4 py-2 font-medium">Shop</th>
+                          <th className="px-4 py-2 font-medium">Status</th>
+                          <th className="px-4 py-2 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tiers.map((tier) => {
                         const shop = tier.shopId ? shops.find((s) => s.id === tier.shopId) : null;
                         const discount = ((product.priceMmk - tier.priceMmk) / product.priceMmk * 100).toFixed(1);
                         return (
@@ -273,7 +274,7 @@ export const PricingPage = () => {
                               </Badge>
                             </td>
                             <td className="px-4 py-2">
-                              <div className="flex gap-2">
+                              <div className="flex flex-wrap gap-2">
                                 <Button size="sm" variant="ghost" onClick={() => openEditModal(tier)}>
                                   Edit
                                 </Button>
@@ -294,8 +295,9 @@ export const PricingPage = () => {
                           </tr>
                         );
                       })}
-                    </tbody>
-                  </table>
+                      </tbody>
+                    </table>
+                  </div>
                 ) : (
                   <div className="px-4 py-3 text-sm text-slate-500">
                     No price tiers configured. Using base price for all quantities.
@@ -353,7 +355,7 @@ export const PricingPage = () => {
             <p className="mt-1 text-xs text-slate-500">Leave empty to apply to all shops</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Min Quantity <span className="text-red-500">*</span>
@@ -366,7 +368,7 @@ export const PricingPage = () => {
                   setForm({ ...form, minQty: parseInt(e.target.value) || 1 });
                   setFormError(null);
                 }}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
               />
             </div>
             <div>
@@ -379,7 +381,7 @@ export const PricingPage = () => {
                   setForm({ ...form, maxQty: e.target.value });
                   setFormError(null);
                 }}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
                 placeholder="Unlimited"
               />
             </div>
@@ -397,7 +399,7 @@ export const PricingPage = () => {
                 setForm({ ...form, priceMmk: parseInt(e.target.value) || 0 });
                 setFormError(null);
               }}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+              className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
             />
             {selectedProduct && (
               <p className="mt-1 text-xs text-slate-500">
@@ -412,7 +414,7 @@ export const PricingPage = () => {
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-4">
+          <div className="flex flex-wrap justify-end gap-2 pt-4">
             <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
             <Button onClick={handleSave}>{editingTier ? "Update" : "Create"}</Button>
           </div>

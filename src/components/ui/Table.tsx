@@ -1,7 +1,17 @@
 import { cn } from "../../lib/utils";
 
 export const Table = ({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) => (
-  <table className={cn("w-full text-sm text-slate-700", className)} {...props} />
+  <table className={cn("w-full min-w-full text-sm text-slate-700", className)} {...props} />
+);
+
+export const TableContainer = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn(
+      "w-full min-w-0 overflow-x-auto rounded-2xl border border-slate-200/70 bg-white",
+      className
+    )}
+    {...props}
+  />
 );
 
 export const THead = ({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
@@ -17,9 +27,9 @@ export const TR = ({ className, ...props }: React.HTMLAttributes<HTMLTableRowEle
 );
 
 export const TH = ({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
-  <th className={cn("px-3 py-3 font-semibold", className)} {...props} />
+  <th className={cn("px-3 py-3 align-top font-semibold", className)} {...props} />
 );
 
 export const TD = ({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
-  <td className={cn("px-3 py-3", className)} {...props} />
+  <td className={cn("px-3 py-3 align-top", className)} {...props} />
 );

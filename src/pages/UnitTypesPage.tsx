@@ -223,7 +223,7 @@ export const UnitTypesPage = () => {
       </div>
 
       <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200/70">
-        <Table>
+        <Table className="min-w-[760px]">
           <THead>
             <TR>
               <TH className="w-20 text-right">Order</TH>
@@ -341,7 +341,7 @@ export const UnitTypesPage = () => {
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={closeModal}>
               Cancel
             </Button>

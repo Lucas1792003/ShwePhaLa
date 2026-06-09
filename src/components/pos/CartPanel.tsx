@@ -50,9 +50,9 @@ export const CartPanel = ({
   const [showAllOpen, setShowAllOpen] = useState(false);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-bold text-slate-800">Bills</h2>
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">
@@ -62,7 +62,7 @@ export const CartPanel = ({
             type="button"
             onClick={() => setShowAllOpen(true)}
             disabled={items.length === 0}
-            className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300 disabled:hover:bg-white"
+            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300 disabled:hover:bg-white"
             title="Show all bill items"
           >
             <span className="material-symbols-rounded text-sm">list_alt</span>
@@ -72,7 +72,7 @@ export const CartPanel = ({
       </div>
 
       {/* Cart Items - Scrollable */}
-      <div className="flex-1 space-y-2 overflow-y-auto pr-1" style={{ maxHeight: "calc(100vh - 400px)" }}>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 py-12 text-center">
             <span className="material-symbols-rounded mb-2 text-4xl text-slate-300">shopping_cart</span>
@@ -96,7 +96,7 @@ export const CartPanel = ({
       </div>
 
       {/* Summary */}
-      <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
+      <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
         <div className="flex items-center justify-between text-sm">
           <span className="text-slate-500">Sub Total</span>
           <span className="font-semibold text-slate-700">{formatMmk(subtotal)}</span>
@@ -119,7 +119,7 @@ export const CartPanel = ({
                   max={100}
                   value={cartDiscountPct || ""}
                   onChange={(event) => onCartDiscountChange(toNumber(event.target.value))}
-                  className="h-7 w-16 text-center text-xs"
+                  className="h-7 min-h-7 w-16 text-center text-xs"
                   placeholder="0"
                 />
               </span>
@@ -138,7 +138,7 @@ export const CartPanel = ({
                 max={100}
                 value={cartDiscountPct || ""}
                 onChange={(event) => onCartDiscountChange(toNumber(event.target.value))}
-                className="h-7 w-16 text-center text-xs"
+                className="h-7 min-h-7 w-16 text-center text-xs"
                 placeholder="0"
               />
             </span>
@@ -148,16 +148,16 @@ export const CartPanel = ({
 
         <div className="h-px bg-slate-200" />
 
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <span className="text-lg font-bold text-slate-800">Total</span>
-          <span className="text-xl font-bold text-emerald-600">{formatMmk(total)}</span>
+          <span className="text-right text-xl font-bold text-emerald-600">{formatMmk(total)}</span>
         </div>
       </div>
 
       {/* Checkout buttons — Place Order is the primary action and takes
           the remaining width; Print is a compact secondary action so the
           ratio reflects how often each is used in practice. */}
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
         <Button
           className="flex-1 whitespace-nowrap bg-emerald-600 py-3 text-sm font-semibold hover:bg-emerald-700"
           onClick={() => onCheckout(false)}

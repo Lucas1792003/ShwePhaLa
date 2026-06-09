@@ -226,7 +226,7 @@ export const ProfitReportsPage = () => {
       <div className="mt-5 flex flex-wrap gap-3">
         <DateRangePicker start={range.start} end={range.end} onChange={setRange} />
         {isAdmin && (
-          <Select value={shopFilter} onChange={(e) => setShopFilter(e.target.value)}>
+          <Select value={shopFilter} onChange={(e) => setShopFilter(e.target.value)} className="min-w-48 flex-1 md:w-auto md:flex-none">
             <option value="all">All Shops</option>
             {shops.map((shop) => (
               <option key={shop.id} value={shop.id}>{shop.name}</option>
@@ -239,7 +239,7 @@ export const ProfitReportsPage = () => {
       {activeTab === "profit" && (
         <div className="mt-5 space-y-4">
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="bg-slate-50 rounded-lg p-4">
               <div className="text-sm text-slate-500">Total Revenue</div>
               <div className="text-xl font-bold text-slate-900">MMK {totals.totalRevenue.toLocaleString()}</div>
@@ -262,8 +262,8 @@ export const ProfitReportsPage = () => {
             <Button variant="secondary" onClick={exportProfitReport}>Export CSV</Button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
+            <table className="w-full min-w-[720px] text-sm">
               <thead>
                 <tr className="border-b text-left text-slate-500">
                   <th className="pb-3 font-medium">Shop</th>
@@ -294,7 +294,7 @@ export const ProfitReportsPage = () => {
       {/* Stock Valuation */}
       {activeTab === "valuation" && (
         <div className="mt-5 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="bg-slate-50 rounded-lg p-4">
               <div className="text-sm text-slate-500">Total Retail Value</div>
               <div className="text-xl font-bold text-slate-900">MMK {totals.totalRetailValue.toLocaleString()}</div>
@@ -309,8 +309,8 @@ export const ProfitReportsPage = () => {
             <Button variant="secondary" onClick={exportStockValuation}>Export CSV</Button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
+            <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b text-left text-slate-500">
                   <th className="pb-3 font-medium">Product</th>
@@ -353,8 +353,8 @@ export const ProfitReportsPage = () => {
             </ul>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
+            <table className="w-full min-w-[640px] text-sm">
               <thead>
                 <tr className="border-b text-left text-slate-500">
                   <th className="pb-3 font-medium">Shop</th>
@@ -383,7 +383,7 @@ export const ProfitReportsPage = () => {
       {/* Purchase Summary */}
       {activeTab === "purchases" && (
         <div className="mt-5 space-y-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid gap-4 sm:grid-cols-3">
             <div className="bg-slate-50 rounded-lg p-4">
               <div className="text-sm text-slate-500">Purchase Orders</div>
               <div className="text-xl font-bold text-slate-900">{purchaseSummary.orderCount}</div>

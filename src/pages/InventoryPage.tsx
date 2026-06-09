@@ -163,7 +163,7 @@ export const InventoryPage = () => {
       {effectiveTab === "stock" && (
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center gap-3">
-            <SearchInput value={search} onChange={setSearch} placeholder="Search product" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Search product" className="min-w-64 flex-1 md:w-96 md:flex-none" />
           </div>
           {/* Category filter — shared icon-chip filter (no native dropdown) */}
           <CategoryFilter
@@ -177,7 +177,7 @@ export const InventoryPage = () => {
             categories={categories}
             onAdjust={canAdjust ? setAdjustProductId : undefined}
           />
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm text-slate-500">
               Showing {stockRows.length === 0 ? 0 : ((stockPage - 1) * PAGE_SIZE) + 1}-{Math.min(stockPage * PAGE_SIZE, stockRows.length)} of {stockRows.length} products
             </span>
@@ -189,7 +189,7 @@ export const InventoryPage = () => {
       {effectiveTab === "movements" && canViewMovements && (
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center gap-3">
-            <SearchInput value={movementSearch} onChange={setMovementSearch} placeholder="Filter by product" />
+            <SearchInput value={movementSearch} onChange={setMovementSearch} placeholder="Filter by product" className="min-w-64 flex-1 md:w-96 md:flex-none" />
             <DateRangePicker start={range.start} end={range.end} onChange={setRange} />
           </div>
           {filteredMovements.length === 0 ? (
@@ -199,7 +199,7 @@ export const InventoryPage = () => {
           ) : (
             <>
               <MovementsTable movements={paginatedMovements} products={products} />
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm text-slate-500">
                   Showing {filteredMovements.length === 0 ? 0 : ((movementPage - 1) * PAGE_SIZE) + 1}-{Math.min(movementPage * PAGE_SIZE, filteredMovements.length)} of {filteredMovements.length} movements
                 </span>

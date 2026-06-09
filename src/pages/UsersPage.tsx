@@ -312,7 +312,7 @@ export const UsersPage = () => {
             </div>
           )}
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button onClick={handleSubmit} disabled={isSubmitting}>
               {isSubmitting ? "Creating…" : editingId ? "Update" : "Create account"}
             </Button>
@@ -335,7 +335,7 @@ export const UsersPage = () => {
               className={`rounded-2xl border p-4 ${user.isActive ? "border-slate-200/70 bg-slate-50/60" : "border-slate-100 bg-slate-50/30 opacity-60"}`}
             >
               <div className="flex items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0">
                   <div className="font-semibold text-sm">{user.name}</div>
                   <div className="text-xs text-slate-400 mt-0.5">{user.email ?? "—"}</div>
                   <div className="text-xs text-slate-500 mt-1">
@@ -344,7 +344,7 @@ export const UsersPage = () => {
                     {!user.isActive && " · Inactive"}
                   </div>
                 </div>
-                <div className="flex gap-1 shrink-0">
+                <div className="flex shrink-0 flex-wrap justify-end gap-1">
                   <Button variant="secondary" className="text-xs py-1 px-2" onClick={() => handleEdit(user.id)}>
                     Edit
                   </Button>

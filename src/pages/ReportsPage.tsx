@@ -51,12 +51,12 @@ export const ReportsPage = () => {
         <div className="text-lg font-semibold">7-day sales pulse</div>
         <div className="mt-4 grid gap-3">
           {dailyTotals.map(([date, value]) => (
-            <div key={date} className="flex items-center gap-3">
-              <div className="w-24 text-xs text-slate-500">{date}</div>
-              <div className="flex-1 rounded-full bg-slate-100">
+            <div key={date} className="flex min-w-0 items-center gap-3">
+              <div className="w-24 shrink-0 text-xs text-slate-500">{date}</div>
+              <div className="min-w-0 flex-1 rounded-full bg-slate-100">
                 <div className="h-3 rounded-full bg-indigo-600" style={{ width: `${Math.min(100, (value / (totalSales || 1)) * 100)}%` }} />
               </div>
-              <div className="w-24 text-right text-xs font-semibold">{formatMmk(value)}</div>
+              <div className="w-28 shrink-0 text-right text-xs font-semibold">{formatMmk(value)}</div>
             </div>
           ))}
           {dailyTotals.length === 0 && <div className="text-sm text-slate-400">No sales yet.</div>}

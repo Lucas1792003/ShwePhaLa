@@ -108,7 +108,7 @@ export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPayment
       {purchaseOrder && (
         <div className="space-y-4">
           <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-500">Total</div>
                 <div className="mt-0.5 font-semibold">{formatMmk(purchaseOrder.totalMmk)}</div>
@@ -122,8 +122,8 @@ export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPayment
 
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-slate-700">Amount</span>
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
                 <MoneyInput
                   value={form.amountMmk}
                   onChange={(value) => setForm((prev) => ({ ...prev, amountMmk: value ?? 0 }))}
@@ -165,7 +165,7 @@ export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPayment
               type="text"
               value={form.referenceNo}
               onChange={(event) => setForm((prev) => ({ ...prev, referenceNo: event.target.value }))}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
               placeholder="Bank slip, mobile transaction, voucher..."
             />
           </label>
@@ -175,7 +175,7 @@ export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPayment
             <textarea
               value={form.notes}
               onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+              className="min-h-24 w-full rounded-lg border px-3 py-2 text-sm"
               rows={2}
               placeholder="Optional notes"
             />
@@ -187,7 +187,7 @@ export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPayment
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
             <Button variant="secondary" disabled={submitting} onClick={requestClose}>
               Cancel
             </Button>

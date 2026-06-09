@@ -51,12 +51,12 @@ export const CartItemRow = ({
   return (
     <div
       className={cn(
-        "flex items-start gap-3 rounded-xl border p-2",
+        "flex min-w-0 items-start gap-2 rounded-xl border p-2 md:gap-3",
         isInvalid ? "border-rose-200 bg-rose-50" : "border-transparent bg-slate-50"
       )}
     >
       {/* Product Image/Icon */}
-      <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-slate-100 to-slate-200">
+      <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 md:h-12 md:w-12">
         {item.imageUrl ? (
           <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
         ) : (
@@ -89,7 +89,7 @@ export const CartItemRow = ({
             <button
               type="button"
               onClick={() => onOverridePrice(item)}
-              className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700"
               title="Change price level"
             >
               <span className="material-symbols-rounded text-base">edit</span>
@@ -119,7 +119,7 @@ export const CartItemRow = ({
             type="button"
             onClick={() => onQtyChange(item.id, -1)}
             disabled={item.qty <= 1}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-rose-100 text-rose-600 transition-colors hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-rose-600 transition-colors hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <span className="material-symbols-rounded text-lg">remove</span>
           </button>
@@ -133,7 +133,7 @@ export const CartItemRow = ({
             aria-label={`Quantity for ${item.name}`}
             aria-invalid={isInvalid}
             className={cn(
-              "h-8 w-12 rounded-lg border bg-white px-1 text-center text-sm font-bold outline-none focus:ring-2",
+              "h-10 w-12 rounded-lg border bg-white px-1 text-center text-sm font-bold outline-none focus:ring-2",
               isInvalid
                 ? "border-rose-300 text-rose-700 focus:border-rose-400 focus:ring-rose-100"
                 : "border-slate-200 text-slate-700 focus:border-emerald-400 focus:ring-emerald-100"
@@ -143,7 +143,7 @@ export const CartItemRow = ({
             type="button"
             onClick={() => onQtyChange(item.id, 1)}
             disabled={!canIncrease}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 transition-colors hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 transition-colors hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <span className="material-symbols-rounded text-lg">add</span>
           </button>
@@ -153,7 +153,7 @@ export const CartItemRow = ({
           <button
             type="button"
             onClick={() => onRemove(item.id)}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-700"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-700"
             aria-label={`Remove ${item.name}`}
             title="Remove"
           >

@@ -7,7 +7,7 @@ interface PaginationProps {
 }
 
 export const Pagination = ({ page, totalPages, onChange }: PaginationProps) => (
-  <div className="flex items-center gap-2">
+  <div className="flex flex-wrap items-center justify-end gap-2">
     <Button variant="secondary" size="sm" onClick={() => onChange(Math.max(1, page - 1))}>
       Prev
     </Button>

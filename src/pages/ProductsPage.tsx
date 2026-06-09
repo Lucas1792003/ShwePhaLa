@@ -36,12 +36,12 @@ export const ProductsPage = () => {
           const units = getActiveProductUnits(product.id, productUnits);
           return (
           <div key={product.id} className="rounded-2xl border border-slate-200/70 bg-slate-50/60 p-4">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
                 <div className="text-lg font-semibold">{product.name}</div>
                 <div className="text-xs text-slate-500">{product.category}</div>
               </div>
-              <div className="text-sm font-semibold">{formatMmk(product.priceMmk)}</div>
+              <div className="shrink-0 text-sm font-semibold">{formatMmk(product.priceMmk)}</div>
             </div>
             <div className="mt-2 text-xs text-slate-500">
               Unit: {product.unitType} - Low stock alert at {product.lowStockThreshold}

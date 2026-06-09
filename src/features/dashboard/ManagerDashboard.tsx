@@ -152,7 +152,7 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
           <select
             value={shopId}
             disabled
-            className="h-10 rounded-lg border border-slate-200 bg-slate-100 px-3 text-sm font-medium text-slate-600"
+            className="min-h-11 rounded-lg border border-slate-200 bg-slate-100 px-3 text-sm font-medium text-slate-600"
           >
             <option value={shopId}>{shopName}</option>
           </select>

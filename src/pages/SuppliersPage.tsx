@@ -92,7 +92,7 @@ export const SuppliersPage = () => {
       />
 
       <div className="mt-5">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search suppliers..." />
+        <SearchInput value={search} onChange={setSearch} placeholder="Search suppliers..." className="md:max-w-md" />
       </div>
 
       <div className="mt-5">
@@ -101,7 +101,7 @@ export const SuppliersPage = () => {
             No suppliers found.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
             <table className="min-w-[1180px] w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-slate-500">

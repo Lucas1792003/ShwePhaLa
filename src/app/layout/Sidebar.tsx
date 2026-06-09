@@ -9,6 +9,7 @@ import { hasPermission, ROUTE_PERMISSIONS } from "../../lib/permissions";
 import { ShopSwitcher } from "./ShopSwitcher";
 import { LanguageSwitcher } from "../../components/layout/LanguageSwitcher";
 import { useTranslation } from "../../hooks/useTranslation";
+import { useViewportWidth } from "../../hooks/useViewportWidth";
 
 interface NavItem {
   to: string;
@@ -83,6 +84,9 @@ export const Sidebar = () => {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed);
   const { t } = useTranslation();
+  const viewportWidth = useViewportWidth();
+  const isTabletNav = viewportWidth < 1024;
+  const effectiveCollapsed = isTabletNav || isSidebarCollapsed;
 
   useEffect(() => {
     try {
@@ -111,7 +115,7 @@ export const Sidebar = () => {
   };
 
   return (
-    <aside className={cn("sidebar print-hidden", isSidebarCollapsed && "sidebar-collapsed")}>
+    <aside className={cn("sidebar print-hidden", effectiveCollapsed && "sidebar-collapsed")}>
       <div className="sidebar-header">
         {/* mix-blend-multiply is a safety net: if the PNG has a white
             background it blends into the sidebar's white panel; if it
@@ -125,17 +129,19 @@ export const Sidebar = () => {
           <div className="shopName">Shwe Pha Lar</div>
           <div className="shop-meta">Multi-shop console</div>
         </div>
-        <button
-          type="button"
-          className="sidebar-toggle"
-          onClick={() => setIsSidebarCollapsed((value) => !value)}
-          aria-label={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
-          title={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
-        >
-          <span className="material-symbols-rounded">
-            {isSidebarCollapsed ? "keyboard_double_arrow_right" : "keyboard_double_arrow_left"}
-          </span>
-        </button>
+        {!isTabletNav && (
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={() => setIsSidebarCollapsed((value) => !value)}
+            aria-label={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
+            title={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
+          >
+            <span className="material-symbols-rounded">
+              {isSidebarCollapsed ? "keyboard_double_arrow_right" : "keyboard_double_arrow_left"}
+            </span>
+          </button>
+        )}
       </div>
 
       <div className="sidebar-content">
@@ -161,7 +167,7 @@ export const Sidebar = () => {
 
             return (
               <div key={section.titleKey || `section-${sectionIndex}`} className="nav-section">
-                {sectionTitle && !isSidebarCollapsed && (
+                {sectionTitle && !effectiveCollapsed && (
                   <button
                     type="button"
                     className="section-header"
@@ -180,7 +186,7 @@ export const Sidebar = () => {
                         <NavLink
                           to={item.to}
                           className={({ isActive }) => cn("menu-link", isActive && "active")}
-                          title={isSidebarCollapsed ? t("sidebar", item.labelKey) : undefined}
+                          title={effectiveCollapsed ? t("sidebar", item.labelKey) : undefined}
                         >
                           <span className="material-symbols-rounded">{item.icon}</span>
                           <span className="menu-label">{t("sidebar", item.labelKey)}</span>
@@ -205,7 +211,7 @@ export const Sidebar = () => {
           type="button"
           className="logout-btn"
           onClick={handleLogout}
-          title={isSidebarCollapsed ? t("common", "logout") : undefined}
+          title={effectiveCollapsed ? t("common", "logout") : undefined}
           aria-label={t("common", "logout")}
         >
           <span className="material-symbols-rounded">logout</span>
