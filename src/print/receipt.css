@@ -96,7 +96,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 0.75rem;
   row-gap: 0.125rem;
-  font-size: 0.72rem;
+  font-size: 0.84rem;
 }
 
 .receipt-meta-row {
@@ -325,7 +325,7 @@
   .receipt .receipt-meta {
     column-gap: 1.8mm;
     row-gap: 0.35mm;
-    font-size: 9px !important;
+    font-size: 10.5px !important;
   }
 
   .receipt .receipt-items {
@@ -366,6 +366,11 @@
     padding: 0.45mm 0.35mm;
   }
   .receipt .receipt-description-cell {
+    font-size: 11px !important;
+    line-height: 1.18 !important;
+  }
+  /* Qty column matches the Description size for readability. */
+  .receipt .receipt-qty-cell {
     font-size: 11px !important;
     line-height: 1.18 !important;
   }
