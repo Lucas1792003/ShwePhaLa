@@ -35,6 +35,15 @@ Open work, grouped by area.
         admin accounts. Role lives in the `users` table (not the JWT), so
         admin enforcement is app-side unless an `aal` claim is added to RLS
         for sensitive writes (optional, more work).
+- [ ] **Auto-create inventory rows.** A product only gets an
+      `inventory (shop_id, product_id, qty_base_units)` row the first time
+      it's stocked (purchase receive / adjust). Never-stocked products
+      therefore have no row, which makes them show "0 in stock" in POS but
+      stay invisible to the dashboard's all-shops Low Stock card (it scans
+      existing rows only — see `04-features-workflows.md`). Create a qty-0
+      row for every active product × active shop on **product creation** and
+      **shop creation** so POS and the dashboard always agree. One-off
+      backfill for existing data: [`supabase/backfill_inventory_rows.sql`](../supabase/backfill_inventory_rows.sql).
 - [ ] **Live Supabase RLS/RPC verification.** Run the full
       [`archive/29-live-supabase-rls-rpc-verification.md`](./archive/29-live-supabase-rls-rpc-verification.md)
       checklist against the production project. Required after every

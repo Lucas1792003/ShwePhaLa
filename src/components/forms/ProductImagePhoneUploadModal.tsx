@@ -46,6 +46,7 @@ export const ProductImagePhoneUploadModal = ({
   const [phase, setPhase] = useState<ModalPhase>("creating");
   const [error, setError] = useState<string | null>(null);
   const [uploadedBytes, setUploadedBytes] = useState<number | undefined>();
+  const [uploadedUrl, setUploadedUrl] = useState<string | undefined>();
   const [secondsLeft, setSecondsLeft] = useState(0);
 
   const statusTone = useMemo(() => {
@@ -62,6 +63,7 @@ export const ProductImagePhoneUploadModal = ({
     setPhase("creating");
     setError(null);
     setUploadedBytes(undefined);
+    setUploadedUrl(undefined);
     setSecondsLeft(0);
 
     createSignedProductImageUploadSession({ productId, shopId })
@@ -102,6 +104,7 @@ export const ProductImagePhoneUploadModal = ({
         setSecondsLeft(getSecondsLeft(result.expiresAt));
         if (result.status === "COMPLETED" && result.publicUrl) {
           setUploadedBytes(result.bytes);
+          setUploadedUrl(result.publicUrl);
           onUploaded(result.publicUrl, result.bytes);
         }
       } catch (e) {
@@ -146,7 +149,13 @@ export const ProductImagePhoneUploadModal = ({
       <div className="grid gap-5 sm:grid-cols-[260px_1fr] sm:items-center">
         <div className="rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-slate-50 p-4 shadow-sm">
           <div className="flex min-h-[228px] items-center justify-center rounded-2xl border border-white bg-white p-3 shadow-inner">
-          {session?.qrUrl && phase !== "FAILED" ? (
+          {phase === "COMPLETED" && uploadedUrl ? (
+            <img
+              src={uploadedUrl}
+              alt="Uploaded product preview"
+              className="h-52 w-52 rounded-xl object-contain"
+            />
+          ) : session?.qrUrl && phase !== "FAILED" ? (
             <QRCodeSVG
               value={session.qrUrl}
               size={212}
@@ -163,8 +172,17 @@ export const ProductImagePhoneUploadModal = ({
           )}
           </div>
           <div className="mt-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
-            <span className="material-symbols-rounded text-base">qr_code_scanner</span>
-            Scan to upload
+            {phase === "COMPLETED" && uploadedUrl ? (
+              <>
+                <span className="material-symbols-rounded text-base">check_circle</span>
+                Photo received
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-rounded text-base">qr_code_scanner</span>
+                Scan to upload
+              </>
+            )}
           </div>
         </div>
 
