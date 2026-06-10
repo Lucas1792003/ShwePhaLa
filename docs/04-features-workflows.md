@@ -916,3 +916,25 @@ sequence (Resend signup → secrets → function deploy).
 - `log_audit_event(...)` is the only RPC dedicated to logging
   admin/reference events; it forces `actor_id` to the authenticated user
   so authorship can't be spoofed.
+
+### Audit log rotation (archive + auto-delete)
+
+To keep the table bounded, the audit log self-rotates:
+
+- A `pg_cron` job (every 5 min — see
+  [`supabase/schedule_audit_rotation.sql`](../supabase/schedule_audit_rotation.sql))
+  calls the `rotate-audit-log` Edge Function
+  ([`supabase/functions/rotate-audit-log/index.ts`](../supabase/functions/rotate-audit-log/index.ts)).
+- When `audit_logs` holds **≥ 200** rows, the function archives the **oldest
+  200** to a CSV, emails it (via Resend) to **every active ADMIN with an
+  email**, and **only then permanently deletes those exact rows**. Newer rows
+  are kept, so the table stays under ~200 between runs.
+- **Safety:** the delete runs strictly after Resend confirms the send and
+  targets only the archived ids — a failed email (or no admin email on file)
+  skips the delete, so nothing is ever lost; it retries next run.
+- Auth: the function only accepts calls bearing the service-role key (the
+  cron job supplies it). The delete works because migration `013` revokes
+  audit writes from `authenticated` only, not `service_role`.
+- Setup: deploy the function, set `RESEND_API_KEY` + `REPORT_EMAIL_FROM`, then
+  run the schedule script — details in
+  [07-setup-deployment.md](./07-setup-deployment.md#audit-log-rotation).

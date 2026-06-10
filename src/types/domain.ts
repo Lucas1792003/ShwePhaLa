@@ -6,7 +6,7 @@ export type BarcodeType = "EAN13" | "CODE128" | "QR";
 export interface Category {
   id: string;
   name: string;
-  color: "amber" | "red" | "green" | "blue" | "purple" | "slate" | "pink" | "teal" | "indigo" | "yellow" | "orange" | "cyan";
+  color: "amber" | "red" | "green" | "blue" | "purple" | "slate" | "pink" | "teal" | "indigo" | "yellow" | "orange" | "cyan" | "lime" | "emerald" | "sky" | "violet" | "fuchsia" | "rose";
   /**
    * Category icon registry key (see src/features/categories/categoryIcons.ts).
    * Optional — older categories without it fall back to a name-based match.

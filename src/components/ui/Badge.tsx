@@ -22,6 +22,12 @@ const tones: Record<string, string> = {
   purple: "bg-purple-100 text-purple-700 border border-purple-200",
   slate: "bg-slate-100 text-slate-700 border border-slate-200",
   gray: "bg-slate-100 text-slate-700 border border-slate-200",
+  lime: "bg-lime-100 text-lime-700 border border-lime-200",
+  emerald: "bg-emerald-100 text-emerald-700 border border-emerald-200",
+  sky: "bg-sky-100 text-sky-700 border border-sky-200",
+  violet: "bg-violet-100 text-violet-700 border border-violet-200",
+  fuchsia: "bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200",
+  rose: "bg-rose-100 text-rose-700 border border-rose-200",
 };
 
 // Map color prop to tone
@@ -31,11 +37,22 @@ const colorToTone = (color?: string): string => {
     green: "green",
     yellow: "yellow",
     amber: "amber",
+    orange: "orange",
     red: "red",
+    pink: "pink",
+    teal: "teal",
+    cyan: "cyan",
     blue: "blue",
+    indigo: "indigo",
     gray: "gray",
     slate: "slate",
     purple: "purple",
+    lime: "lime",
+    emerald: "emerald",
+    sky: "sky",
+    violet: "violet",
+    fuchsia: "fuchsia",
+    rose: "rose",
   };
   return mapping[color] ?? "slate";
 };

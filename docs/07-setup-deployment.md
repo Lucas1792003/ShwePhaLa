@@ -138,6 +138,48 @@ After deploy:
    the latest invocation reports the failing branch (config, admin
    lookup, Resend response)
 
+## Audit Log Rotation
+
+Keeps `audit_logs` bounded: when it reaches **200 rows**, the oldest 200 are
+archived to a CSV, emailed to every active ADMIN, and then permanently
+deleted. Behaviour spec in
+[04-features-workflows.md](./04-features-workflows.md#audit-log-rotation-archive--auto-delete).
+
+### Setup
+
+1. **Deploy the function:**
+   ```bash
+   supabase functions deploy rotate-audit-log
+   ```
+   …or paste `supabase/functions/rotate-audit-log/index.ts` into **Edge
+   Functions → rotate-audit-log → Code editor** and Deploy.
+2. **Secrets** — reuses the email config (set once for both functions):
+   ```bash
+   supabase secrets set RESEND_API_KEY=re_xxx
+   supabase secrets set REPORT_EMAIL_FROM="Shwe PhaLar <onboarding@resend.dev>"
+   ```
+   `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically.
+3. **Schedule the cron** — open `supabase/schedule_audit_rotation.sql`, fill in
+   `<PROJECT_REF>` and `<SERVICE_ROLE_KEY>`, and run it in the SQL Editor. It
+   enables `pg_cron` + `pg_net` and schedules a 5-minute job. (For stricter
+   setups, store the service-role key in Supabase Vault rather than inlining it.)
+
+### Verify
+
+- `SELECT * FROM cron.job WHERE jobname = 'rotate-audit-log';` shows the job.
+- Generate 200+ audit rows (or temporarily lower the threshold), wait for a
+  run, and confirm: admins receive the CSV, and `audit_logs` drops to < 200.
+- Run history: `SELECT * FROM cron.job_run_details ORDER BY start_time DESC;`
+  and **Edge Functions → rotate-audit-log → Logs** (it returns
+  `{ rotated, archived, recipients, remaining }`).
+
+### Safety notes
+
+- The delete runs **only after** Resend confirms the send, targeting only the
+  archived ids — a failed email or missing admin email skips the delete and
+  retries next run (no data loss).
+- Only callers presenting the service-role key (the cron job) can invoke it.
+
 ## Vercel Deployment
 
 The app is a static SPA. `vercel.json` rewrites all routes to

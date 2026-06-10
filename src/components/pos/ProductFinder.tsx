@@ -4,6 +4,7 @@ import { Badge } from "../ui/Badge";
 import { SearchInput } from "../forms/SearchInput";
 import { formatMmk } from "../../lib/utils";
 import { resolveCategoryIcon } from "../../features/categories/categoryIcons";
+import { CATEGORY_ACCENT, CATEGORY_SOLID, type CategoryColor } from "../../features/categories/categoryColors";
 import { getActiveProductUnits, getDefaultProductUnit } from "../../features/catalog/productUnits";
 
 interface ProductFinderProps {
@@ -42,12 +43,13 @@ export const ProductFinder = ({
 }: ProductFinderProps) => {
   // "All" keeps its own grid icon; every category resolves its icon through
   // the shared central registry (iconKey, else category name, else default).
-  const categoryButtons = [
+  const categoryButtons: { key: string; label: string; symbol: string; color?: CategoryColor }[] = [
     { key: "all", label: "All", symbol: "apps" },
     ...categories.map((cat) => ({
       key: cat.name,
       label: cat.name,
       symbol: resolveCategoryIcon(cat.iconKey, cat.name).symbol,
+      color: cat.color,
     })),
   ];
 
@@ -153,7 +155,18 @@ export const ProductFinder = ({
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
         >
-          {categoryButtons.map((cat) => (
+          {categoryButtons.map((cat) => {
+            const active = category === cat.key;
+            // Reflect the category's colour: solid fill when active, soft
+            // accent when not. "All" (no colour) keeps the emerald/slate look.
+            const stateClass = active
+              ? cat.color
+                ? `${CATEGORY_SOLID[cat.color]} shadow-md`
+                : "bg-emerald-600 text-white shadow-md"
+              : cat.color
+                ? `${CATEGORY_ACCENT[cat.color]} hover:opacity-80`
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200";
+            return (
             <button
               key={cat.key}
               type="button"
@@ -161,16 +174,13 @@ export const ProductFinder = ({
                 if (dragMovedRef.current) return;
                 onCategory(cat.key);
               }}
-              className={`flex min-h-16 w-20 flex-shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium capitalize transition-all md:w-24 ${
-                category === cat.key
-                  ? "bg-emerald-600 text-white shadow-md"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
+              className={`flex min-h-16 w-20 flex-shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium capitalize transition-all md:w-24 ${stateClass}`}
             >
               <span className="material-symbols-rounded text-xl">{cat.symbol}</span>
               <span className="max-w-full truncate">{cat.label}</span>
             </button>
-          ))}
+            );
+          })}
         </div>
 
         {/* Brand sub-filter — only shown when a specific category with at

@@ -20,6 +20,7 @@ import { Pagination } from "../components/ui/Pagination";
 import { formatMmk } from "../lib/utils";
 import { downloadCsv, parseCsvRecords } from "../lib/csv";
 import { CATEGORY_ICONS, resolveCategoryIcon } from "../features/categories/categoryIcons";
+import { CATEGORY_ACCENT, CATEGORY_SWATCH } from "../features/categories/categoryColors";
 import { getCategoryDeleteBlockMessage } from "../features/categories/categoryUsage";
 import { CategoryFilter } from "../features/categories/CategoryFilter";
 import {
@@ -29,7 +30,8 @@ import {
   type ProductCsvImportPlan,
 } from "../features/catalog/productCsv";
 
-type CategoryColor = "amber" | "red" | "green" | "blue" | "purple" | "slate" | "pink" | "teal" | "indigo" | "yellow" | "orange" | "cyan";
+// Derived from the domain type so the palette can't drift out of sync.
+type CategoryColor = Category["color"];
 
 const PAGE_SIZE = 10;
 
@@ -810,21 +812,8 @@ export const ProductsManagePage = () => {
             const productCount = products.filter((p) => p.category === category.name).length;
             const icon = resolveCategoryIcon(category.iconKey, category.name);
             const brandsHere = brandsByCategory.get(category.id) ?? [];
-            // Color is now only a small accent on the icon tile.
-            const accent: Record<CategoryColor, string> = {
-              amber: "bg-amber-100 text-amber-600",
-              red: "bg-red-100 text-red-600",
-              green: "bg-green-100 text-green-600",
-              blue: "bg-blue-100 text-blue-600",
-              purple: "bg-purple-100 text-purple-600",
-              slate: "bg-slate-100 text-slate-600",
-              pink: "bg-pink-100 text-pink-600",
-              teal: "bg-teal-100 text-teal-600",
-              indigo: "bg-indigo-100 text-indigo-600",
-              yellow: "bg-yellow-100 text-yellow-700",
-              orange: "bg-orange-100 text-orange-600",
-              cyan: "bg-cyan-100 text-cyan-600",
-            };
+            // Color is a small accent on the icon tile (shared palette).
+            const accent = CATEGORY_ACCENT;
 
             return (
               <div key={category.id} className="rounded-xl border border-slate-200 bg-white p-4">
@@ -1082,24 +1071,11 @@ export const ProductsManagePage = () => {
                   )
                   .map((c) => c.color),
               );
-              const colorStyles: Record<CategoryColor, string> = {
-                amber: "bg-amber-500",
-                orange: "bg-orange-500",
-                yellow: "bg-yellow-400",
-                red: "bg-red-500",
-                pink: "bg-pink-500",
-                green: "bg-green-500",
-                teal: "bg-teal-500",
-                cyan: "bg-cyan-500",
-                blue: "bg-blue-500",
-                indigo: "bg-indigo-500",
-                purple: "bg-purple-500",
-                slate: "bg-slate-500",
-              };
+              const colorStyles = CATEGORY_SWATCH;
               return (
                 <>
                   <div className="flex flex-wrap gap-2">
-                    {(["amber", "orange", "yellow", "red", "pink", "green", "teal", "cyan", "blue", "indigo", "purple", "slate"] as CategoryColor[]).map((color) => {
+                    {(["amber", "orange", "yellow", "lime", "green", "emerald", "teal", "cyan", "sky", "blue", "indigo", "violet", "purple", "fuchsia", "pink", "rose", "red", "slate"] as CategoryColor[]).map((color) => {
                       const taken = usedColorsForIcon.has(color);
                       const selected = newCategoryColor === color;
                       return (
