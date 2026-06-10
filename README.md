@@ -1,200 +1,196 @@
-# Shwe Pha La - Retail POS System
+# Shwe PhaLar — Retail POS & Inventory System
 
-A modern Point of Sale and Inventory Management system for small retail businesses (alcohol, drinks, FMCG). Frontend-only with localStorage persistence.
+A multi-shop Point of Sale and inventory management system for small retail
+businesses (alcohol, drinks, FMCG). Built on **Supabase** (Auth + PostgreSQL)
+with row-level security and `SECURITY DEFINER` RPCs for all critical writes —
+business data lives in the database, not the browser.
 
 ## Tech Stack
 
-- **Frontend**: React 18 + TypeScript + Vite
-- **State Management**: Zustand (modular slice pattern with persistence)
-- **Styling**: Tailwind CSS
-- **Charts**: Recharts
+- **Frontend**: React 19 + TypeScript + Vite 7
+- **Backend**: Supabase — PostgreSQL, Auth, Row Level Security, Postgres RPCs (`SECURITY DEFINER`), Edge Functions (Deno)
+- **State**: Zustand 5 (modular data store mirroring the DB; UI prefs persisted to localStorage)
+- **Styling**: Tailwind CSS 3
+- **Charts**: Recharts 3
 - **Forms**: React Hook Form + Zod
-- **Routing**: React Router DOM
-- **i18n**: Custom translation system (English + Myanmar)
+- **Routing**: React Router DOM 7
+- **Barcodes / QR**: jsbarcode, qrcode.react
+- **i18n**: custom translation system (English + Myanmar)
+- **Tests**: Vitest
 
 ## Getting Started
 
+### Prerequisites
+- Node.js 18+
+- A Supabase project (free tier is fine)
+
+### 1. Install
 ```bash
-# Install dependencies
 npm install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
 ```
 
-## Demo Accounts
+### 2. Configure environment
+Create `.env.local` in the project root:
+```bash
+VITE_SUPABASE_URL=<your-project-url>
+VITE_SUPABASE_ANON_KEY=<your-anon-key>
+```
+> The anon key is safe to expose in the client bundle — data is protected by
+> Row Level Security. Never put the **service-role** key here.
 
-Login with any password using these email patterns:
+### 3. Set up the database
+Apply the SQL in [`supabase/`](supabase/) to your project (Supabase Dashboard
+→ SQL Editor, or the Supabase CLI):
+- `supabase/schema.sql` — base tables + RLS scaffold
+- `supabase/migrations/*.sql` — RBAC, RPCs, units, pricing, and later fixes (run in order)
+- `supabase/functions/email-sales-report` — optional Edge Function for the admin "Email today's CSV" feature (see [docs/07-setup-deployment.md](docs/07-setup-deployment.md))
 
-| Role | Email Pattern | Example | Start Page |
-|------|---------------|---------|------------|
-| Admin | `*@admin.com` | `nandar@admin.com` | Dashboard |
-| Manager | `*@manager.com` | `kozaw@manager.com` | POS |
-| Cashier | `*@staff.com` | `ayeaye@staff.com` | POS |
-| Buyer | `*@buyer.com` | `buyer@buyer.com` | Catalog |
+### 4. Run
+```bash
+npm run dev       # start the dev server
+npm run build     # type-check + production build (tsc -b && vite build)
+npm run preview   # preview the production build
+npm run test      # run the Vitest suite
+npm run lint      # ESLint
+```
 
-Demo users are created automatically on first login.
+## Authentication
+
+Real **Supabase Auth** (email + password) — there are no demo-password
+bypasses or magic email patterns.
+
+- **First-time setup:** signing in against an **empty `users` table** creates
+  the first **ADMIN** account, linked to its auth identity.
+- **After that:** staff accounts are created by an admin in *Users*, then
+  linked to a Supabase Auth user on first sign-in (by `auth_id`, falling back
+  to email). Orphan auth accounts are rejected.
+- The login form disables credential autofill (shared-till friendly) and
+  supports show/hide password.
+
+## Roles & Permissions
+
+Granular RBAC. Each role has default permissions; admins can grant/revoke
+per user. Enforced in **both** the UI and the database (RLS + RPC checks).
+
+| Role | Scope |
+|------|-------|
+| **ADMIN** | Everything, all shops, all settings. Lands on the Dashboard. |
+| **MANAGER** | Assigned shop: POS, shifts, approvals, shop reports, receiving |
+| **CASHIER** | POS, own shift, raise (not approve) refund/void requests |
+| **BUYER** | Catalog + suppliers + create/view purchase orders |
+
+Full matrix: [docs/05-roles-permissions.md](docs/05-roles-permissions.md).
 
 ## Features
 
+### Point of Sale
+- Product grid with category filter, search, and per-unit selling (Piece / pack / etc.)
+- Price levels (Retail / Wholesale / Special), tier pricing, open-price + non-stock items
+- Real-time stock guards; `F3` inline 80mm receipt print, `F4` barcode mode
+- Atomic checkout via the `complete_sale` RPC (validates auth, shift, stock, prices in one transaction)
+
+### Sales & Receipts
+- Sales history with search/date/status/cashier filters
+- **Sales Voucher** detail page (itemized grid + live receipt preview)
+- Refund / void request → manager approval flow; receipt reprint logging
+- CSV export and an admin per-shop "Email today's CSV" report (Edge Function + Resend)
+
+### Inventory & Stock
+- Base-unit inventory with multi-tier display ("8 Case 22 Can")
+- Movement ledger (sale, purchase, transfer, adjustment, damage)
+- Inter-shop transfers with an approval workflow
+- Purchase orders, suppliers, supplier payments / debt tracking
+
+### Catalog & Admin
+- Products with dynamic categories, brands, sellable units, and per-unit prices
+- Barcode management + printable barcode labels
+- Phone photo upload via QR code (with live preview)
+- Multi-shop management, user management, pricing, and an audit log
+
 ### Dashboard
-
-Decision-making view for shop owners with:
-
-- **KPI Summary Cards** - Revenue, Investment, Profit, Orders, Avg Order Value
-- **Shop Filter** - Admin can filter by all shops or individual shops
-- **Profit Trend Chart** - Daily profit/loss with 7-day or 30-day view
-- **Monthly Goal Tracker** - Progress rings for revenue and profit targets
-- **Inventory Intelligence** - Stock health, fast/slow movers, reorder suggestions
-- **Sales Trend Chart** - Revenue, investment, profit over time
-- **Sales by Category** - Donut chart showing revenue distribution
-- **Top Selling Products** - With revenue, cost, and profit breakdown
-- **Low Stock Alert** - Products below threshold with days until stockout
-- **Recent Sales** - Last 5 transactions with profit per sale
-
-### Core Modules
-
-- **POS (Point of Sale)** - Grid layout, barcode scanning (F3), cart management, checkout
-- **Sales History** - View transactions, refunds, voids, receipt reprinting
-- **Shifts** - Opening/closing cash, shift summaries, variance tracking
-- **Inventory** - Stock levels, movements, adjustments with reasons
-- **Transfers** - Inter-shop stock transfers with approval workflow
-- **Purchases** - Purchase orders, supplier management
-- **Reports** - Profit reports, global analytics
-
-### Admin Features
-
-- **Shops** - Multi-shop management
-- **Users** - User management with role assignment
-- **Products** - Product catalog with dynamic category management
-- **Categories** - Add, edit, delete categories with custom colors
-- **Barcodes** - Barcode management
-- **Suppliers** - Supplier directory
-- **Pricing** - Price tier management
-- **Audit Log** - Action tracking
+- Net revenue, orders, AOV, profit/margin KPIs (date-ranged, shop-scoped)
+- Revenue/Cost/Profit trend, Sales by Category, Top Products
+- Inventory Intelligence (stock health, fast/slow movers, reorder hints)
+- Low-stock alerts, pending approvals/receipts/transfers, supplier debt, recent activity
 
 ## Project Structure
 
 ```
 src/
+├── app/
+│   ├── routes/            # AppRouter + RequireAuth / RequireRole guards
+│   └── layout/            # Shell, sidebar, topbar
 ├── components/
-│   ├── ui/                 # Design system (Button, Modal, Badge, etc.)
-│   ├── layout/             # Shell, navigation, guards
-│   ├── dashboard/          # Analytics components
-│   │   ├── ProfitTrendChart.tsx
-│   │   ├── GoalTracker.tsx
-│   │   └── InventoryIntelligence.tsx
-│   ├── pos/                # POS UI components
-│   ├── inventory/          # Inventory UI components
-│   ├── sales/              # Sales UI components
-│   └── shifts/             # Shift UI components
+│   ├── ui/                # Design system (Button, Modal, Badge, Input, Table…)
+│   ├── pos/               # ProductFinder, CartPanel, PaymentModal, ReceiptPreview
+│   ├── receipt/           # ReceiptDetail (voucher + printable receipt)
+│   ├── sales/             # SalesTable, SaleVoucher, refund/void modals
+│   ├── inventory/ shifts/ purchases/ products/ forms/ layout/
 ├── features/
-│   ├── auth/               # Authentication
-│   ├── catalog/            # Product & barcode helpers
-│   ├── pos/                # Cart calculations
-│   ├── inventory/          # Inventory helpers
-│   ├── sales/              # Refund/void logic
-│   └── admin/              # Admin pages
-├── pages/                  # Route-level compositions
-├── stores/                 # Zustand stores
-│   ├── authStore.ts        # Current user session
-│   ├── appStore.ts         # Shop context
-│   ├── languageStore.ts    # i18n preference
-│   ├── toastStore.ts       # Notifications
-│   └── data/               # Modular data store (slice pattern)
-│       ├── index.ts        # Store composition & persistence
-│       ├── types.ts        # All state interfaces & input types
-│       ├── utils.ts        # ID generators, helpers
-│       └── slices/         # Domain-specific state slices
-│           ├── shopSlice.ts
-│           ├── categorySlice.ts
-│           ├── productSlice.ts
-│           ├── inventorySlice.ts
-│           ├── shiftSlice.ts
-│           ├── saleSlice.ts
-│           ├── transferSlice.ts
-│           ├── purchaseSlice.ts
-│           ├── pricingSlice.ts
-│           └── auditSlice.ts
-├── hooks/                  # Custom hooks
-│   ├── useTranslation.ts
-│   └── useDashboardInsights.ts
-├── i18n/                   # Translations (English + Myanmar)
-├── data/                   # Seed data
-├── types/                  # TypeScript types
-├── print/                  # Receipt printing
-└── lib/                    # Utilities (formatMmk, cn, etc.)
+│   ├── auth/ catalog/ pos/ inventory/ sales/ pricing/ shifts/ dashboard/
+├── pages/                 # Route-level compositions
+├── stores/
+│   ├── authStore.ts       # Supabase session → current app user
+│   ├── appStore.ts        # Selected shop (persisted)
+│   ├── languageStore.ts   # i18n preference (persisted)
+│   ├── toastStore.ts      # Notifications
+│   └── data/              # Modular data store (loads from Supabase)
+│       ├── index.ts       # Composition + row mappers + loadData
+│       ├── types.ts  utils.ts
+│       └── slices/        # shop, category, brand, unitType, priceLevel,
+│                          # product, inventory, shift, sale, transfer,
+│                          # purchase, pricing, audit
+├── hooks/  i18n/  lib/  print/  types/
+supabase/
+├── schema.sql             # base tables + RLS scaffold
+├── migrations/            # RBAC, RPCs, units, pricing, fixes (ordered)
+└── functions/             # Edge Functions (email-sales-report)
+docs/                      # architecture, security, workflows, setup, QA…
 ```
 
 ## Routes
 
-### Main Routes
-- `/login` - Login page
-- `/app/dashboard` - Analytics dashboard
-- `/app/pos` - Point of Sale
-- `/app/sales` - Sales history
-- `/app/shifts` - Shift management
-- `/app/inventory` - Stock levels
-- `/app/transfers` - Inter-shop transfers
-- `/app/purchases` - Purchase orders
-- `/app/approvals` - Refund/void approvals
-- `/app/catalog` - Product catalog (Buyer)
+**App** (`/app`, auth + permission gated):
+`dashboard` · `pos` · `sales` · `sales/:saleId` · `shifts` · `shifts/:shiftId`
+· `inventory` · `transfers` · `purchases` · `approvals` · `reports` ·
+`reports/profit` · `catalog` · `barcode-labels` · `suppliers` ·
+`suppliers/:supplierId`
 
-### Admin Routes
-- `/app/admin/shops` - Shop management
-- `/app/admin/users` - User management
-- `/app/admin/products` - Product & category management
-- `/app/admin/barcodes` - Barcode management
-- `/app/admin/suppliers` - Supplier management
-- `/app/admin/pricing` - Pricing tiers
-- `/app/admin/audit` - Audit logs
-- `/app/admin/reports` - Global reports
+**Admin** (`/app/admin`):
+`shops` · `users` · `products` (+ `products/new`, `products/:id/edit`) ·
+`unit-types` · `barcodes` · `suppliers` · `pricing` · `reports` · `audit`
 
-## User Roles
+**Public:** `/login` · `/phone-upload/product-image/:token`
 
-| Role | Permissions |
-|------|-------------|
-| **Admin** | Full access, all shops, all settings. Starts at Dashboard. |
-| **Manager** | Shop-level access, reports, approvals |
-| **Cashier** | POS, shifts, basic sales |
-| **Buyer** | Purchase orders, suppliers, catalog |
+## Data & Persistence
 
-## Translations
+- **Business data** (products, sales, inventory, shifts, …) lives in **Supabase**
+  and is loaded into the in-memory Zustand store on startup. It is **not**
+  cached in localStorage.
+- **localStorage** holds only UI preferences:
+  - `pos-app` — selected shop context
+  - `pos-language` — language preference
+- Auth state is the **Supabase session** (restored on load), not localStorage.
 
-The app supports English and Myanmar (Burmese). Toggle language from the sidebar.
+## Internationalization
 
-| English | Myanmar |
-|---------|---------|
-| Dashboard | ဒက်ရှ်ဘုတ် |
-| Total Revenue | စုစုပေါင်းဝင်ငွေ |
-| Total Profit | စုစုပေါင်းအမြတ် |
-| Inventory Intelligence | ကုန်ပစ္စည်းထိန်းချုပ်မှု |
-| Low Stock Alert | ကုန်ပစ္စည်းနည်းနေသည် |
-
-## Data Persistence
-
-All data is stored in browser localStorage using Zustand persist middleware:
-- `shwephala-db` - Main data store (products, sales, inventory, etc.)
-- `pos-auth` - Authentication state
-- `pos-app` - App state (selected shop)
-- `pos-language` - Language preference
+English and Myanmar (Burmese), toggled from the sidebar — e.g. Dashboard
+(ဒက်ရှ်ဘုတ်), Total Revenue (စုစုပေါင်းဝင်ငွေ), Low Stock (ကုန်ပစ္စည်းနည်းနေသည်).
 
 ## Documentation
 
-See [/docs](/docs) folder for detailed documentation:
+See [`docs/`](docs/) for full documentation:
 
-- [Overview](docs/00-overview.md)
-- [Roles & Permissions](docs/01-roles-permissions.md)
-- [Architecture](docs/17-architecture.md)
-- [Data Model](docs/13-data-model.md)
-- [Contributing](docs/19-contributing.md)
+- [Overview](docs/01-overview.md)
+- [Architecture](docs/02-architecture.md)
+- [Database & Security](docs/03-database-security.md)
+- [Features & Workflows](docs/04-features-workflows.md)
+- [Roles & Permissions](docs/05-roles-permissions.md)
+- [UI, Printing & Hardware](docs/06-ui-printing-hardware.md)
+- [Setup & Deployment](docs/07-setup-deployment.md)
+- [Testing & QA](docs/08-testing-qa.md)
+- [Roadmap & TODO](docs/09-roadmap-todo.md)
 
 ## License
 
-Private - Shwe Pha La Co., Ltd.
+Private — Shwe Pha La Co., Ltd.
