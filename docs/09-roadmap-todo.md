@@ -4,6 +4,37 @@ Open work, grouped by area.
 
 ## High Priority
 
+- [ ] **Admin 2FA (authenticator app / TOTP).** Add an authenticator-app
+      verification step for ADMIN sign-in. Built on Supabase Auth's native
+      TOTP MFA (`supabase.auth.mfa.*`) — enroll/challenge/verify are
+      provided; **backup codes are NOT, so they are the bespoke piece.**
+      Scope decided: **required for all admins, with backup codes for
+      recovery.** Estimate ~2–3 days.
+      - **Supabase setup:** enable TOTP MFA in the dashboard
+        (Authentication → settings).
+      - **DB (backup codes):** `mfa_backup_codes` table (user_id,
+        code_hash, used_at) storing **hashes only**; a `SECURITY DEFINER`
+        RPC `consume_backup_code(code)` that hashes input, matches an
+        unused code for the caller, marks it used, returns ok/fail; RLS so
+        a user only touches their own codes.
+      - **Enrollment (forced for admins with no factor):** `mfa.enroll()`
+        → show QR + secret → confirm first code via
+        `mfa.challengeAndVerify()` → generate ~10 backup codes, show once,
+        store hashes.
+      - **Login flow (`authStore.login`):** after `signInWithPassword`, for
+        ADMIN check assurance level — no factor → route to forced
+        enrollment; factor + still aal1 → verification step accepting
+        **either** a TOTP code or a backup code (`consume_backup_code`).
+        Non-admins unchanged.
+      - **Settings + recovery:** remaining-backup-code count, regenerate
+        codes, re-enroll device. **Break-glass:** document a manual
+        Supabase factor reset for lost-phone-AND-lost-codes (backup-codes-
+        only recovery can still strand someone).
+      - **Risks:** lost phone + lost codes → manual reset only; forcing MFA
+        on a *shared* admin login is awkward — nudges toward per-person
+        admin accounts. Role lives in the `users` table (not the JWT), so
+        admin enforcement is app-side unless an `aal` claim is added to RLS
+        for sensitive writes (optional, more work).
 - [ ] **Live Supabase RLS/RPC verification.** Run the full
       [`archive/29-live-supabase-rls-rpc-verification.md`](./archive/29-live-supabase-rls-rpc-verification.md)
       checklist against the production project. Required after every

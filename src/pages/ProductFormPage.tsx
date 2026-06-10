@@ -685,6 +685,29 @@ export const ProductFormPage = () => {
 
   const handleCancel = () => navigate(PRODUCTS_ROUTE);
 
+  // Enter should advance to the next field, not submit the whole form — a
+  // long unit/pricing form is easy to submit by accident otherwise. Only the
+  // Save button (type="submit") creates the product. Textareas keep newline
+  // behaviour; buttons keep their click. The next focusable control is found
+  // in DOM order, skipping disabled / read-only / hidden ones.
+  const handleFormKeyDown = (event: React.KeyboardEvent<HTMLFormElement>) => {
+    if (event.key !== "Enter") return;
+    const target = event.target as HTMLElement;
+    if (target.tagName !== "INPUT" || (target as HTMLInputElement).type === "submit") return;
+    event.preventDefault();
+    const controls = Array.from(
+      event.currentTarget.querySelectorAll<HTMLInputElement>("input, select, textarea"),
+    ).filter(
+      (el) => !el.disabled && !el.readOnly && el.tabIndex !== -1 && el.offsetParent !== null,
+    );
+    const index = controls.indexOf(target as HTMLInputElement);
+    const next = index > -1 ? controls[index + 1] : undefined;
+    if (next) {
+      next.focus();
+      if (typeof next.select === "function") next.select();
+    }
+  };
+
   // ============================================================
   // Render
   // ============================================================
@@ -706,7 +729,7 @@ export const ProductFormPage = () => {
         }
       />
 
-      <form onSubmit={handleSubmit} className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+      <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         {/* Left column — Identity & stock */}
         <div className="space-y-5">
           <div className="rounded-xl border border-slate-200 bg-white p-5">

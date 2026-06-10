@@ -10,6 +10,7 @@ export const LoginPage = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -61,28 +62,64 @@ export const LoginPage = () => {
           </div>
           <div className="p-8">
             <div className="text-sm text-slate-500">Sign in to your account</div>
-            <form className="mt-6 space-y-4" onSubmit={handleLogin}>
+            {/* autoComplete off everywhere: this is a shared till, so the
+                browser must not cache or auto-fill the previous user's
+                credentials. */}
+            <form className="mt-6 space-y-4" onSubmit={handleLogin} autoComplete="off">
               <div>
                 <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Email</div>
                 <Input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (error) setError("");
+                  }}
                   placeholder="your@email.com"
-                  autoComplete="email"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  error={!!error}
                 />
               </div>
               <div>
                 <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Password</div>
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
-                  autoComplete="current-password"
-                />
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (error) setError("");
+                    }}
+                    placeholder="Password"
+                    autoComplete="new-password"
+                    error={!!error}
+                    className="pr-11"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 transition-colors hover:text-slate-600"
+                  >
+                    <span className="material-symbols-rounded text-xl">
+                      {showPassword ? "visibility_off" : "visibility"}
+                    </span>
+                  </button>
+                </div>
               </div>
-              {error && <div className="text-sm text-rose-600">{error}</div>}
+              {error && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+                >
+                  <span className="material-symbols-rounded text-base leading-5">error</span>
+                  <span>{error}</span>
+                </div>
+              )}
               <Button className="w-full" type="submit" disabled={isSubmitting}>
                 {isSubmitting ? "Signing in…" : "Sign in"}
               </Button>

@@ -445,7 +445,7 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
         </SectionCard>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)] xl:items-start">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)] xl:items-stretch">
         <SectionCard title={copy("shopPerformance")} icon="storefront">
           {perShopRows.length > 0 ? (
             <div className="overflow-x-auto">
@@ -496,8 +496,8 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
           )}
         </SectionCard>
 
-        <div className="space-y-4">
-          <SectionCard title={copy("salesByCategory")} icon="donut_small">
+        <div className="space-y-4 xl:h-full">
+          <SectionCard title={copy("salesByCategory")} icon="donut_small" className="xl:h-full">
             <div className="h-56">
               {categoryData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
