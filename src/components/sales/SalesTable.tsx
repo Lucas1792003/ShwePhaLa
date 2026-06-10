@@ -28,7 +28,11 @@ export const SalesTable = ({ sales, users, onView }: SalesTableProps) => (
         {sales.map((sale) => {
           const cashier = users.find((user) => user.id === sale.cashierId);
           return (
-            <TR key={sale.id}>
+            <TR
+              key={sale.id}
+              onClick={() => onView(sale.id)}
+              className="cursor-pointer transition hover:bg-slate-50"
+            >
               <TD>{sale.receiptNo}</TD>
               <TD>{formatDateTime(sale.createdAt)}</TD>
               <TD>{cashier?.name}</TD>
@@ -38,8 +42,17 @@ export const SalesTable = ({ sales, users, onView }: SalesTableProps) => (
               </TD>
               <TD>{formatMmk(sale.totalMmk)}</TD>
               <TD>
-                <Button variant="secondary" size="sm" onClick={() => onView(sale.id)}>
-                  View receipt
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={(event) => {
+                    // Row already handles the click; stop here so we don't
+                    // navigate twice.
+                    event.stopPropagation();
+                    onView(sale.id);
+                  }}
+                >
+                  View voucher
                 </Button>
               </TD>
             </TR>

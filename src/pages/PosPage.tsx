@@ -80,7 +80,11 @@ export const PosPage = () => {
   const productUnitPrices = useDataStore((state) => state.productUnitPrices);
   const categories = useDataStore((state) => state.categories);
   const brands = useDataStore((state) => state.brands);
-  const getInventoryQty = useDataStore((state) => state.getInventoryQty);
+  // Subscribe to the inventory array directly so the stock badges recompute
+  // after a sale decrements stock. Reading via the (stable) getInventoryQty
+  // selector instead left the inventoryById memo with a stale closure that
+  // only refreshed on a full reload.
+  const inventory = useDataStore((state) => state.inventory);
   const getProductByBarcode = useDataStore((state) => state.getProductByBarcode);
   const createSale = useDataStore((state) => state.createSale);
   const shifts = useDataStore((state) => state.shifts);
@@ -128,12 +132,15 @@ export const PosPage = () => {
   }, [products, search, category, brandId]);
 
   const inventoryById = useMemo(() => {
+    // Build the per-product stock map from the current shop's inventory rows.
+    // Products without a row default to 0 at every read site (`?? 0`), so we
+    // only need to copy the rows that exist for this shop.
     const map: Record<string, number> = {};
-    products.forEach((product) => {
-      map[product.id] = getInventoryQty(shopId, product.id);
-    });
+    for (const record of inventory) {
+      if (record.shopId === shopId) map[record.productId] = record.qtyBaseUnits;
+    }
     return map;
-  }, [products, getInventoryQty, shopId]);
+  }, [inventory, shopId]);
 
   const cartUnitsByProductId = useMemo(() => getRequestedUnitsByProduct(cartItems), [cartItems]);
 

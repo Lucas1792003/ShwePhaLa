@@ -7,6 +7,7 @@ import { Card } from "../ui/Card";
 import { PageHeader } from "../layout/PageHeader";
 import { useToast } from "../ui/Toast";
 import { ReceiptPreview } from "../pos/ReceiptPreview";
+import { SaleVoucher } from "../sales/SaleVoucher";
 import { RefundModal } from "../sales/RefundModal";
 import { VoidModal } from "../sales/VoidModal";
 import { buildRefundItems } from "../../features/sales/service";
@@ -91,6 +92,9 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
       // Amount) so cashiers and customers can scan the figures the way
       // they're used to on a paper roll. Price level snapshot is rendered
       // separately by ReceiptPreview, not concatenated into the name.
+      // `code` is consumed by the on-screen voucher's Code column; the
+      // thermal ReceiptPreview ignores the extra field.
+      code: product?.sku ?? product?.aliasCode ?? "",
       name: product?.name ?? item.productId,
       qty: soldUnitQty,
       unitLabel: unitName,
@@ -213,8 +217,8 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
 
       {variant === "page" ? (
         <PageHeader
-          title="Receipt Preview"
-          subtitle="Ready for 80mm print layout."
+          title="Sales Voucher"
+          subtitle="Itemized sale detail. Use Print for the 80mm receipt."
           actions={printToolbar}
         />
       ) : (
@@ -232,13 +236,35 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
         </div>
       )}
 
-      <ReceiptPreview
-        sale={sale}
-        lines={lines}
-        shop={shop}
-        cashier={cashier}
-        statusNote={sale.status !== "NORMAL" ? sale.status : undefined}
-      />
+      {variant === "page" ? (
+        // Full page: themed voucher grid on the left, the live receipt
+        // preview (logo + branding + totals) on the right. The same
+        // `.receipt` node is what Print / Reprint output — the print CSS
+        // isolates it regardless of where it sits on screen.
+        <SaleVoucher
+          sale={sale}
+          lines={lines}
+          shop={shop}
+          cashier={cashier}
+          aside={
+            <ReceiptPreview
+              sale={sale}
+              lines={lines}
+              shop={shop}
+              cashier={cashier}
+              statusNote={sale.status !== "NORMAL" ? sale.status : undefined}
+            />
+          }
+        />
+      ) : (
+        <ReceiptPreview
+          sale={sale}
+          lines={lines}
+          shop={shop}
+          cashier={cashier}
+          statusNote={sale.status !== "NORMAL" ? sale.status : undefined}
+        />
+      )}
 
       <Card>
         <div className="flex items-center justify-between">

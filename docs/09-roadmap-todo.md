@@ -154,3 +154,42 @@ These were the headline backend hardening milestones; details are in
       `/app/suppliers/:supplierId`.
 - [x] System-wide error utility + `useAsyncAction` + top-level
       ErrorBoundary + `loadData` retry surface.
+- [x] **Product CRUD moved to dedicated routes.** `/app/admin/products/new`
+      and `/app/admin/products/:productId/edit` replace the cramped modal
+      with a 2-column page (Identity / Classification / Stock & Status on
+      the left, Units & Prices on the right). Manager Products gate fixed
+      (`adminProducts` route now `product:read`; Add / Delete / Add
+      Category / Add Brand buttons gated individually).
+- [x] **Shift detail moved to a dedicated page.** `/app/shifts/:shiftId`
+      renders the breakdown, an items-sold rollup (NORMAL sales only),
+      an iStock-style per-sale table with expandable line items, and
+      the inline Close-shift card. Replaces the previous modal.
+- [x] **POS checkout split into F2 (Place Order) / F3 (Print).** After
+      checkout the cashier stays on POS; F3 prints inline via a
+      hidden React portal to `<body>` so no POS ancestor breaks the
+      absolute-receipt positioning. Barcode toggle moved to F4. Enter
+      on the payment Amount field confirms.
+- [x] **POS Adjust Price tabs.** Per-line price-level picker is now
+      tab buttons (Retail / Wholesale / Special) plus a manual price
+      input; editing the input flags the line as a manual override.
+- [x] **Receipt redesign.** 4-column items table (Description / Qty /
+      Price / Amount), grid meta block with aligned colons, brand line
+      `Shwe PhaLar` above the per-shop name, single-level price moved
+      to the meta block when every line shares a level, Burmese
+      thank-you footer.
+- [x] **Inventory admin shop picker.** Pill row above the
+      Stock/Movements tabs (emerald active state) so admins can switch
+      shops without leaving the page. Inventory Product + Category
+      cells now match the Products admin styling.
+- [x] **Category UX improvements.** Brand list moved to a popup modal
+      per category card; icon+color uniqueness surfaced in the colour
+      picker (greys out conflicting swatches in real time). POS
+      category row is horizontally scrollable with click-and-drag
+      support and a hidden scrollbar.
+- [x] **Daily sales email report** for admins. `Email today's CSV`
+      button on Sales calls the `email-sales-report` Supabase edge
+      function which emails per-shop CSVs via Resend. Open shifts are
+      surfaced as an in-email "data may be incomplete" notice instead
+      of blocking the send. See
+      [04-features-workflows.md](./04-features-workflows.md#daily-sales-email-report)
+      and [07-setup-deployment.md](./07-setup-deployment.md#daily-sales-email-function).

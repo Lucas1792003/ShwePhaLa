@@ -56,7 +56,7 @@
 
 .receipt-brand {
   margin-top: 0.25rem;
-  font-size: 1.05rem;
+  font-size: 1.45rem;
   font-weight: 800;
   letter-spacing: 0;
   color: #111827;
@@ -71,8 +71,11 @@
 
 .receipt-shop-contact {
   margin-top: 0.25rem;
-  font-size: 0.72rem;
-  line-height: 1.25;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  /* Let a long address split evenly across two lines instead of leaving a
+     stray word/bracket dangling on its own line. */
+  text-wrap: balance;
   color: #64748b;
 }
 
@@ -247,8 +250,14 @@
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
-    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    /* Thermal heads dither thin monospace faces into broken dots, which is
+     * why the old IBM Plex Mono print was hard to read. A solid sans-serif
+     * at medium weight lays down darker, fuller glyphs. Column alignment is
+     * handled structurally (CSS grid meta block + HTML items table), so we
+     * don't need monospace; tabular-nums still keeps the figures aligned. */
+    font-family: Arial, "Helvetica Neue", Helvetica, "Segoe UI", Roboto, sans-serif;
     font-size: 10.5px;
+    font-weight: 500;
     line-height: 1.25;
     font-variant-numeric: tabular-nums;
     -webkit-print-color-adjust: exact;
@@ -257,12 +266,12 @@
     break-after: auto;
   }
 
-  /* Force the mono stack + true black on every node, but DO NOT
+  /* Force the sans-serif stack + true black on every node, but DO NOT
    * force a single font-size — that flattens the visual hierarchy
    * (shop name, totals, secondary qty line all benefit from
    * Tailwind's text-lg / text-xs / text-[10px] sizing). */
   .receipt * {
-    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace !important;
+    font-family: Arial, "Helvetica Neue", Helvetica, "Segoe UI", Roboto, sans-serif !important;
     color: #000000 !important;
   }
 
@@ -283,7 +292,7 @@
 
   .receipt .receipt-brand {
     margin-top: 1mm;
-    font-size: 12px !important;
+    font-size: 17px !important;
     line-height: 1.15 !important;
     font-weight: 800 !important;
   }
@@ -297,8 +306,9 @@
 
   .receipt .receipt-shop-contact {
     margin-top: 1mm;
-    font-size: 8.5px !important;
-    line-height: 1.18 !important;
+    font-size: 10.5px !important;
+    line-height: 1.25 !important;
+    text-wrap: balance;
   }
 
   .receipt .receipt-number {

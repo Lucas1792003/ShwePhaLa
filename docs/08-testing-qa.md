@@ -428,8 +428,11 @@ Work Hours tab:
       changes a fixed-price cart line through the pencil selector only.
 - [ ] CASHIER does not see the cart-line price-level pencil.
 - [ ] Cashier without open shift → checkout disabled with helper.
-- [ ] Pay = total → confirm enabled; payment succeeds; receipt opens at
-      `/app/sales/:saleId`.
+- [ ] Pay = total → confirm enabled; payment succeeds; receipt number toast shows.
+- [ ] Sales list **View voucher** → `/app/sales/:saleId` shows the themed
+      Sales Voucher (line-item grid + summary panel), not the 80 mm receipt.
+- [ ] **Print** / **Reprint** on the voucher page still output only the
+      80 mm receipt (the print-only-host receipt), not the voucher grid.
 - [ ] Reprint button writes one `reprint_logs` row even on double-click.
 - [ ] Cashier opens another cashier's sale URL → "Receipt not found"
       (RLS hides it).

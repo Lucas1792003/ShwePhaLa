@@ -19,8 +19,8 @@ src/
   components/
     ui/              Button, Card, Modal, Drawer, Badge, Toast, ErrorBoundary, …
     pos/             ProductFinder, CartPanel, PaymentModal, ReceiptPreview
-    receipt/         ReceiptDetail (shared by page + drawer variants)
-    sales/           SalesTable, SaleDetailDrawer, refund/void modals
+    receipt/         ReceiptDetail (voucher on screen + print-only receipt)
+    sales/           SalesTable, SaleVoucher, refund/void modals (SaleDetailDrawer unused)
     shifts/          Shift cards and detail views
     inventory/       Inventory UI
     products/        Reusable ProductPicker and search helpers

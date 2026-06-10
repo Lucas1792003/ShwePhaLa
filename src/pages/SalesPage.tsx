@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../stores/authStore";
 import { useAppStore } from "../stores/appStore";
 import { useDataStore } from "../stores/dataStore";
@@ -8,7 +9,6 @@ import { Select } from "../components/ui/Select";
 import { SearchInput } from "../components/forms/SearchInput";
 import { DateRangePicker } from "../components/forms/DateRangePicker";
 import { SalesTable } from "../components/sales/SalesTable";
-import { SaleDetailDrawer } from "../components/sales/SaleDetailDrawer";
 import { Button } from "../components/ui/Button";
 import { useToast } from "../components/ui/Toast";
 import { downloadCsv } from "../lib/csv";
@@ -23,7 +23,7 @@ import {
 } from "../features/sales/dailySalesReport";
 
 export const SalesPage = () => {
-  const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
+  const navigate = useNavigate();
   const [status, setStatus] = useState("all");
   const [cashier, setCashier] = useState("all");
   const [search, setSearch] = useState("");
@@ -268,17 +268,11 @@ export const SalesPage = () => {
             <SalesTable
               sales={filteredSales}
               users={users}
-              onView={(saleId) => setSelectedSaleId(saleId)}
+              onView={(saleId) => navigate(`/app/sales/${saleId}`)}
             />
           )}
         </div>
       </Card>
-
-      <SaleDetailDrawer
-        open={!!selectedSaleId}
-        saleId={selectedSaleId}
-        onClose={() => setSelectedSaleId(null)}
-      />
     </div>
   );
 };

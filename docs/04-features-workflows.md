@@ -6,9 +6,28 @@ for the full RPC list.
 
 ## POS Sale
 
+### Keyboard shortcuts
+
+| Key | Action |
+| --- | --- |
+| **F2** | Place Order (saves the sale, no print, stays on POS) |
+| **F3** | Print (saves the sale AND fires `window.print()` against an inline hidden receipt — stays on POS) |
+| **F4** | Toggle barcode input |
+| **Enter** (in payment modal Amount field) | Confirm payment |
+| **Esc** | Close any open modal |
+
+The cashier never leaves POS after checkout — both F2 and F3 just clear the
+cart and toast the receipt number. F3 additionally renders the receipt into
+a hidden React portal (`createPortal` to `document.body`) and triggers the
+browser print dialog; the print CSS isolates the `.receipt` subtree so
+nothing else from POS lands on paper. See
+[06-ui-printing-hardware.md](./06-ui-printing-hardware.md) for the
+positioning details and the recommended Chrome `--kiosk-printing` flag for
+silent thermal printing.
+
 ### Barcode scan
 
-- F3 toggles the barcode input; Escape hides it. The input autofocuses and
+- F4 toggles the barcode input; Escape hides it. The input autofocuses and
   is **refocused after every scan** so the next Enter-terminated burst
   always lands there.
 - On Enter, POS calls `findProductForScan(value, products, productUnits, barcodes)` in
@@ -51,8 +70,12 @@ for the full RPC list.
   on historical rows so old receipts/refunds render unchanged.
 - Cart discount % applies after item discounts.
 - Changing a fixed-price cart line's price level requires
-  `pos:override_price`. The override modal only lets the user choose one of
-  the configured active price levels; it does not accept arbitrary prices.
+  `pos:override_price`. The "Adjust price" modal shows the configured
+  active price levels as **tabs** (Retail / Wholesale / Special), plus a
+  manual price input that's seeded from the level's resolved price.
+  Saving with the input differing from the resolved price flags the line
+  as a manual override (`priceOverriddenBy = currentUserId`) and
+  `complete_sale` records a `PRICE_OVERRIDE` audit row.
 - Open Price products prompt for a positive unit price when added to cart.
   That cashier-entered price is sent to `complete_sale` and is required by
   the RPC.
@@ -71,20 +94,54 @@ for the full RPC list.
    client prices, inventory, stock, and override permissions; then inserts
    sale + sale items, decrements inventory for stock-tracked items, writes
    `SALE_OUT` movements for stock-tracked items, and writes the audit row.
-4. The cart clears and the receipt page (`/app/sales/:saleId`) opens only
-   after RPC success.
+4. On RPC success the cart clears, a success toast shows the receipt
+   number, and the cashier stays on POS. F2 stops there; F3 also fires
+   `window.print()` against a hidden `<ReceiptPreview>` portaled into
+   `document.body` (~500 ms delay so the logo image loads). The
+   `/app/sales/:saleId` page is no longer the forced landing route —
+   it's still reachable from the Sales list, the receipt header link,
+   and refund/void flows.
 
-### Receipt + reprint
+### Sale voucher + receipt + reprint
 
-- The post-payment route `/app/sales/:saleId` and the Sales History drawer
-  both render the shared `ReceiptDetail` component.
+- `/app/sales/:saleId` renders the shared `ReceiptDetail` component. From
+  the Sales list, the **View voucher** row action navigates here (the
+  list no longer opens a slide-over drawer; `SaleDetailDrawer` is retained
+  but unused).
+- **On-screen the page shows a themed "Sales Voucher"**
+  ([src/components/sales/SaleVoucher.tsx](../src/components/sales/SaleVoucher.tsx)),
+  not the 80 mm receipt:
+  - **Header strip:** receipt no + status badge + Date / Branch / Cashier / Payment.
+  - **Line-item grid:** `# · Code · Description · Qty · Unit · Level · Sale Price · Amount`
+    (`Code` = product SKU, falling back to alias code).
+  - **Summary panel:** Total Amount + Qty, then Subtotal / Discount / Total / Paid / Change.
+    Customer / FOC / outstanding-balance columns are intentionally absent —
+    the data model has no customer entity and sales are paid in full at checkout.
+- The 80 mm `ReceiptPreview` still lives on the page inside a
+  `.print-only-host` wrapper (hidden on screen, revealed on print), so
+  **Print** / **Reprint** output the thermal receipt exactly as before.
+- The `drawer` variant of `ReceiptDetail` still renders the receipt
+  inline (kept for any caller that mounts the drawer directly).
+- The POS inline print (F3) renders `ReceiptPreview` directly via a
+  portal — no navigation required. The print CSS isolates `.receipt`
+  globally so the same component covers all contexts.
 - **Print** calls `window.print()` directly; it does not log.
 - **Reprint** is gated by `receipt:reprint`. It awaits `log_receipt_reprint`,
   then prints. The in-flight flag prevents duplicate log rows on rapid
   clicks. The button shows `Reprinting…` while pending; any RPC failure
   shows a toast and skips the print dialog.
+- Receipt layout (see [src/components/pos/ReceiptPreview.tsx](../src/components/pos/ReceiptPreview.tsx)):
+  - **Brand header:** logo + `Shwe PhaLar` brand name + per-shop name + address + phone + receipt number
+  - **Meta block:** 6 stacked rows (Branch, Date, Cashier, Price level, Payment, Items) with a fixed-width label column so colons align
+  - **Items table:** 4 columns — Description · Qty · Price · Amount — with a dashed rule above and below the header. Numbers are plain integers (no `MMK` per row)
+  - **Totals:** Subtotal / Discount → dashed rule → **Total** (bumped to `text-sm` + semibold) → dashed rule → Paid / Change
+  - **Footer:** Burmese thank-you (`ဝယ်ပြီးပစ္စည်းပြန်မလဲပါ။` + `ဝယ်ယူအားပေးမှုကို…`)
+  - **Price level:** shown once in the meta block when every line is at the same level; falls back to a per-line label only for mixed-level receipts
 - Printing isolates the 80 mm `.receipt` DOM via `src/print/receipt.css`
-  (`@media print` hides everything else). See [06-ui-printing-hardware.md](./06-ui-printing-hardware.md).
+  (`@media print` hides everything else). See
+  [06-ui-printing-hardware.md](./06-ui-printing-hardware.md) for the
+  print-host portal trick, `display: contents` rule, and the
+  `--kiosk-printing` Chrome flag.
 
 ### Cashier sales history
 
@@ -166,8 +223,24 @@ the RPC will write at close time.
   `Expected cash (live)` while open), closing, variance. Closing and
   variance render as `Active` while open.
 
-The View summary also shows shop, role, opened/closed timestamps, duration,
-variance reason, and the list of sales in the shift when sales are present.
+**View opens a dedicated page** at `/app/shifts/:shiftId`
+([src/features/shifts/pages/ShiftDetailPage.tsx](../src/features/shifts/pages/ShiftDetailPage.tsx)) —
+no modal. The page renders:
+
+- The same `ShiftDetail` summary card (payment breakdown, cash reconciliation)
+- **Items rollup** — aggregated product / qty / revenue across NORMAL
+  sales in this shift (voided/refunded sales excluded so the totals match
+  the cash drawer)
+- **Sales table** — iStock-style columns: Time · Receipt · User · Payment ·
+  Qty · Discount · Paid · Change · Total · Status · Actions. Each row
+  has a chevron that expands a sub-table of line items
+  (Product · Unit · Qty · Unit Price · Discount % · Line Total) so
+  managers can drill into any receipt without leaving the page
+- **Open-receipt icon** on each row → links to `/app/sales/:id` for the
+  full sale voucher / receipt / refund / void flow
+- **Close-shift card** at the bottom (only when the viewer can close
+  this shift) — same `EndShiftCard` component that used to live in the
+  modal
 
 A hint appears for open shifts with non-cash-only sales:
 *"Non-cash sales don't increase expected cash. Closing cash should match
@@ -768,6 +841,71 @@ rules baked into migration `020`:
   replace them). Friendly error: `Cannot remove the only manager of this
   shop while active cashiers remain. Reassign or deactivate the cashiers
   first, or assign another manager.`
+
+## Daily Sales Email Report
+
+Admin-only "Email today's CSV" button on `/app/sales`. Calls the
+`email-sales-report` Supabase edge function which builds **one CSV per
+shop** for the report date and emails them as attachments via Resend.
+
+### What the email contains
+
+- Subject: `Shwe PhaLar daily sales report - <date>`
+- One attachment per shop with sales on the date, filename pattern
+  `daily-sales-{shopcode}-{YYYY-MM-DD}.csv`. Shops with zero sales are
+  skipped (empty CSVs would just be noise)
+- HTML body with a **Per-shop breakdown** table: Shop · Sales · CSV rows ·
+  Attachment filename, plus a totals header
+- **Incomplete-data notice** (amber banner) when any cashier shift is
+  still open at send time — lists the cashier and branch for each open
+  shift. The send is NOT blocked; the notice is informational so the
+  admin sees the figures may not be the final end-of-day numbers
+- A plain-text mirror of the same body for clients that prefer
+  `text/plain`
+
+### CSV columns (per attachment)
+
+`Report Date`, `Branch`, `Branch Code`, `Receipt No`, `Sale Date Time`,
+`Cashier Name`, `Cashier Email`, `Payment Method`, `Sale Status`,
+`Receipt Line`, `Price Level`, `Product Name`, `Product SKU`,
+`Product Alias`, `Unit`, `Quantity`, `Unit Price MMK`,
+`Item Discount %`, `Line Total MMK`, `Subtotal MMK`, `Sale Discount MMK`,
+`Cart Discount %`, `Total MMK`, `Paid MMK`, `Change MMK`.
+
+### Code layout
+
+- `src/features/sales/dailySalesReport.ts`:
+  - `buildDailySalesReportsByShop(input)` → returns
+    `{ reportDate, reportDateLabel, subject, shopReports, totalSaleCount, totalRowCount }`
+  - `buildDailySalesReport(input)` — legacy single-CSV builder kept for
+    other callers
+  - `getOpenShiftReportNotice(shifts, users, shops)` — returns
+    `{ openShiftCount, entries, summary }` or `null`. Pure informational;
+    the edge function renders it as a banner
+- `src/pages/SalesPage.tsx` — admin-only button calls
+  `supabase.functions.invoke("email-sales-report", { body: { attachments, shopSummaries, openShiftNotice, ... } })`
+- `supabase/functions/email-sales-report/index.ts` — Deno edge function:
+  1. Validates the caller's auth token + looks them up in `users`
+  2. Rejects unless `role = 'ADMIN'` AND `is_active = true`
+  3. Renders text + HTML bodies, base64-encodes each CSV
+  4. Posts to Resend's `/emails` endpoint
+  5. Accepts both the new (`attachments` array) and legacy (`csv` + `filename`) payload shapes for back-compat
+
+### Configuration
+
+The edge function needs these Supabase secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `RESEND_API_KEY` | Resend API key (sender) |
+| `REPORT_EMAIL_FROM` | "From" address — e.g. `Shwe PhaLar <onboarding@resend.dev>` on the Resend free tier, or a verified-domain address in production |
+
+Plus the automatically-injected `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` (the function uses the service-role key to
+read the `users` table past RLS).
+
+See [07-setup-deployment.md](./07-setup-deployment.md) for the deploy
+sequence (Resend signup → secrets → function deploy).
 
 ## Audit
 

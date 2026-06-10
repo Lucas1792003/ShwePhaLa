@@ -75,6 +75,69 @@ fallback in [`archive/31-product-images-storage-setup.md`](./archive/31-product-
 The phone QR upload sessions table and helpers are added by
 `019_product_image_upload_sessions.sql`.
 
+## Daily Sales Email Function
+
+The admin-only "Email today's CSV" button calls a Supabase Edge Function
+that emails per-shop CSVs via [Resend](https://resend.com). Feature spec
+in [04-features-workflows.md](./04-features-workflows.md#daily-sales-email-report).
+
+### One-time setup
+
+1. **Sign up to Resend** (https://resend.com) with the email address
+   that should receive the report. The Resend free tier (3 000
+   emails/month, 100/day) only delivers from `onboarding@resend.dev` to
+   the signed-up email. For multi-recipient or production use, verify a
+   custom domain in Resend instead.
+2. **Create a Resend API key** → Resend dashboard → **API Keys** →
+   `Create API Key` → Full access → copy the `re_…` value (only shown
+   once).
+3. **Set Supabase secrets** — either via CLI:
+   ```bash
+   supabase secrets set RESEND_API_KEY=re_xxx
+   supabase secrets set REPORT_EMAIL_FROM="Shwe PhaLar <onboarding@resend.dev>"
+   ```
+   …or via the dashboard: **Edge Functions → email-sales-report →
+   Secrets → Add new secret**.
+4. **Deploy the function** — either CLI:
+   ```bash
+   supabase functions deploy email-sales-report
+   ```
+   …or paste the contents of
+   `supabase/functions/email-sales-report/index.ts` into **Edge
+   Functions → email-sales-report → Code editor** and click **Deploy
+   function**. The function name must match exactly so
+   `supabase.functions.invoke("email-sales-report", …)` reaches it.
+
+### Required configuration
+
+| Secret | Value | Notes |
+| --- | --- | --- |
+| `RESEND_API_KEY` | `re_…` | From Resend dashboard |
+| `REPORT_EMAIL_FROM` | `Shwe PhaLar <onboarding@resend.dev>` | Free tier; replace with a verified-domain address for production |
+| `SUPABASE_URL` | (auto) | Injected by Supabase at runtime |
+| `SUPABASE_SERVICE_ROLE_KEY` | (auto) | Used to read `users` past RLS for the admin-role check |
+
+### Recipient resolution
+
+The function emails the address on the admin's row in `users` (falling
+back to `auth.users.email`). For Resend's free tier to deliver, that
+address must equal the email the Resend account was signed up with. If
+the admin email changes, either:
+- update the Resend account's email, or
+- verify a custom sender domain and edit `REPORT_EMAIL_FROM` to a
+  verified address — then any recipient is allowed.
+
+### Verify
+
+After deploy:
+1. Log in as an admin user with a valid email
+2. Sales page → **Email today's CSV** (admin-only button)
+3. Inbox should receive an email within ~30 s with one CSV attachment
+   per shop with sales today
+4. If it errors, check **Edge Functions → email-sales-report → Logs**;
+   the latest invocation reports the failing branch (config, admin
+   lookup, Resend response)
+
 ## Vercel Deployment
 
 The app is a static SPA. `vercel.json` rewrites all routes to

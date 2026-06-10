@@ -52,13 +52,59 @@ isolate the 80 mm `<div class="receipt">`:
 - `@media print { body * { visibility: hidden; } .receipt, .receipt * { visibility: visible; } .receipt { position: absolute; top: 0; left: 0; …} }`
 - `.print-hidden { display: none !important; }` for Topbar, Sidebar,
   Toasts, etc.
-- `@page { size: 80mm auto; margin: 4mm; }` hints the thermal printer
+- `@page { size: 80mm auto; margin: 0; }` hints the thermal printer
   roll; A4 fallback works as a narrow band on full paper.
 
-### Print vs Reprint
+### POS inline print (F3) — portal trick
 
-`ReceiptDetail` (used both at `/app/sales/:saleId` and inside the Sales
-History drawer) exposes two buttons:
+After F3 checkout, POS stays on the page and prints inline. The receipt
+is **not** rendered in the POS tree — it's portaled directly into
+`<body>` via `createPortal` so no POS ancestor establishes a positioning
+context for the absolute receipt:
+
+```jsx
+{printReceipt && createPortal(
+  <div className="print-only-host">
+    <ReceiptPreview … />
+  </div>,
+  document.body,
+)}
+```
+
+The `print-only-host` rule (also in `receipt.css`) uses
+`display: contents` on screen so the host establishes no layout box,
+and the inner `.receipt` is sized to 0×0 + `visibility: hidden` so it
+takes no screen space. On print, the existing visibility cascade
+reveals only the receipt subtree and the `@media print`
+`position: absolute; top: 0; left: 0` rule positions it against
+`<body>` (now the only positioned ancestor).
+
+**Without the portal**, an earlier version placed the receipt host
+inside POS with `position: fixed; left: -10000px` to keep it off
+screen. That made the wrapper a positioned ancestor, so the
+absolute receipt printed at `-10000px` off the paper edge — blank
+output. The portal sidesteps this entirely.
+
+### Silent printing (skip the print preview dialog)
+
+`window.print()` always shows the browser preview by default. For
+production tills, launch Chrome/Edge with `--kiosk-printing` so prints
+go straight to the default printer with no dialog. Windows shortcut:
+
+```
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing
+```
+
+Set the thermal printer as the system default and F3 will print silently
+on every sale. Firefox equivalent: `print.always_print_silent = true` in
+`about:config`.
+
+### Print vs Reprint (Sales voucher page)
+
+`ReceiptDetail` (the `/app/sales/:saleId` page) shows the on-screen
+**Sales Voucher** and keeps the 80 mm `ReceiptPreview` mounted inside a
+`.print-only-host` wrapper so the buttons below still print the thermal
+receipt, not the voucher. It exposes two buttons:
 
 | Button | Behavior |
 | --- | --- |
@@ -67,6 +113,16 @@ History drawer) exposes two buttons:
 
 Cancelling the print dialog after **Reprint** does not roll back the log
 row — by design, a logged reprint is a reprint *intent*.
+
+### Receipt layout
+
+| Block | Content |
+| --- | --- |
+| Brand header | Logo (`/logo_real.png`, `mix-blend-multiply` so a white PNG bg blends out) → `Shwe PhaLar` → shop name → address + phone → receipt no |
+| Meta | Stacked grid rows: Branch · Date · Cashier · Price · Payment · Items. Fixed-width label column so colons align |
+| Items table | 4 columns: Description / Qty / Price / Amount. Plain integers in numeric columns (no `MMK` per row). Dashed rule above and below the header |
+| Totals | Subtotal / Discount → dashed rule → **Total** (sm + semibold) → dashed rule → Paid / Change |
+| Footer | Burmese thank-you: `ဝယ်ပြီးပစ္စည်းပြန်မလဲပါ။` and `ဝယ်ယူအားပေးမှုကိုအထူးကျေးဇူးတင်ပါသည်။` |
 
 ## Barcode Labels
 
