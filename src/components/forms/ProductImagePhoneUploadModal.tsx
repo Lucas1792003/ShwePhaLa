@@ -48,6 +48,8 @@ export const ProductImagePhoneUploadModal = ({
   const [uploadedBytes, setUploadedBytes] = useState<number | undefined>();
   const [uploadedUrl, setUploadedUrl] = useState<string | undefined>();
   const [secondsLeft, setSecondsLeft] = useState(0);
+  // Bumped by the Reupload button to start a fresh upload session (new QR).
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   const statusTone = useMemo(() => {
     if (phase === "COMPLETED") return "text-emerald-700";
@@ -82,7 +84,7 @@ export const ProductImagePhoneUploadModal = ({
     return () => {
       active = false;
     };
-  }, [open, productId, shopId]);
+  }, [open, productId, shopId, reloadNonce]);
 
   useEffect(() => {
     if (!open || !session || phase !== "PENDING") return;
@@ -129,6 +131,14 @@ export const ProductImagePhoneUploadModal = ({
     onClose();
   };
 
+  // Start over with a fresh QR / upload session (after a completed upload
+  // the user wants a different photo, or after a failed / expired one).
+  const handleReupload = () => setReloadNonce((n) => n + 1);
+
+  // Terminal states where starting a new upload makes sense.
+  const canReupload =
+    phase === "COMPLETED" || phase === "FAILED" || phase === "EXPIRED" || phase === "CANCELED";
+
   const countdown =
     phase === "PENDING" && secondsLeft > 0
       ? `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`
@@ -141,9 +151,20 @@ export const ProductImagePhoneUploadModal = ({
       title="Upload from phone"
       description="Scan with your phone to take or choose a product photo."
       footer={
-        <Button type="button" onClick={handleClose} variant={phase === "COMPLETED" ? "primary" : "secondary"}>
-          {phase === "COMPLETED" ? "Use this image" : "Close"}
-        </Button>
+        <>
+          {canReupload && (
+            <Button
+              type="button"
+              variant={phase === "COMPLETED" ? "secondary" : "primary"}
+              onClick={handleReupload}
+            >
+              {phase === "COMPLETED" ? "Reupload" : "Try again"}
+            </Button>
+          )}
+          <Button type="button" onClick={handleClose} variant={phase === "COMPLETED" ? "primary" : "secondary"}>
+            {phase === "COMPLETED" ? "Use this image" : "Close"}
+          </Button>
+        </>
       }
     >
       <div className="grid gap-5 sm:grid-cols-[260px_1fr] sm:items-center">
