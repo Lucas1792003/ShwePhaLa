@@ -45,6 +45,9 @@ body {
   margin: 0 auto;
   background: #ffffff;
   color: #111827;
+  /* Match the printed receipt font (see print/receipt.css) so the on-screen
+     preview — meta block included — doesn't fall back to the app's Poppins. */
+  font-family: Arial, "Helvetica Neue", Helvetica, "Segoe UI", Roboto, sans-serif;
 }
 
 .buyer-container {
