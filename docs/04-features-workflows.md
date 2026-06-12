@@ -143,7 +143,7 @@ silent thermal printing.
   print-host portal trick, `display: contents` rule, and the
   `--kiosk-printing` Chrome flag.
 
-### Cashier sales history
+### Sales history
 
 - `/app/sales` is gated by `sales:view_own_shift` (cashiers have this).
 - RLS narrows rows: a caller without `sale:view` only sees sales they rang
@@ -151,6 +151,22 @@ silent thermal printing.
 - The client mirrors RLS: cashier filter hidden, "Void sale" swapped for
   "Request void", approve buttons hidden unless the caller has the
   corresponding `pos:refund` / `pos:void_sale`.
+- **Scoped to the current month.** The list shows only the current calendar
+  month (`This month · <Month Year>`); older months are not browsed here.
+  Helpers in [src/features/sales/monthCycle.ts](../src/features/sales/monthCycle.ts).
+- **Grouped by day, defaults to today.** Sales render in per-day sections,
+  each with a header (date · sale count · NORMAL-sales total). The page opens
+  on **today** (so it isn't one mixed blob); a **Filter by date** button
+  opens a calendar (limited to the current month) to switch days or **show
+  all days**.
+- **Filters:** Search (receipt / product / cashier / amount) · Status · Cashier
+  · the date-filter button. (The old free-form date-range picker was removed —
+  the month scope + calendar replace it.)
+- **Admin weekly-report countdown** (`WeeklyReportCountdown`) shows time to
+  next Monday 00:00, when the all-shops weekly CSV is meant to auto-email.
+  ⚠️ The backend job is **not built yet** — the countdown is currently
+  informational only (see *Weekly sales report* under
+  [Daily Sales Email Report](#daily-sales-email-report)).
 
 ## Shifts
 
@@ -844,9 +860,24 @@ rules baked into migration `020`:
 
 ## Daily Sales Email Report
 
-Admin-only "Email today's CSV" button on `/app/sales`. Calls the
-`email-sales-report` Supabase edge function which builds **one CSV per
-shop** for the report date and emails them as attachments via Resend.
+Admin-only email button on `/app/sales`. Calls the `email-sales-report`
+Supabase edge function which builds **one CSV per shop** for the report date
+and emails them as attachments via Resend.
+
+**Date-aware button.** The button targets the day the admin is viewing:
+- Default (viewing today) → **"Email today's CSV"** → reports today.
+- A different day picked in the calendar filter → **"Email \<date\> CSV"** →
+  reports that day. Same flow, only `reportDate` changes
+  (`buildDailySalesReportsByShop({ reportDate })`).
+
+### Weekly sales report (planned — not built yet)
+
+The Sales page shows an admin countdown to next Monday for an **automatic
+weekly** all-shops CSV email. Decision: **email-only, no delete** — sales are
+kept (so the monthly view and the dashboard stay complete; the data is small,
+~8–15 MB/month). When built it'll be a Monday `pg_cron` job + Edge Function
+that emails the previous week's per-shop CSVs (same pattern as the audit-log
+rotation, minus the delete). Until then the countdown is cosmetic.
 
 ### What the email contains
 

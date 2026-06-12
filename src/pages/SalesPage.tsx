@@ -7,27 +7,34 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Select } from "../components/ui/Select";
 import { SearchInput } from "../components/forms/SearchInput";
-import { DateRangePicker } from "../components/forms/DateRangePicker";
 import { SalesTable } from "../components/sales/SalesTable";
 import { Button } from "../components/ui/Button";
 import { useToast } from "../components/ui/Toast";
 import { downloadCsv } from "../lib/csv";
 import { getErrorMessage } from "../lib/errors";
 import { supabase } from "../lib/supabase";
-import { formatMmk, getEffectiveShopId } from "../lib/utils";
+import { formatDate, formatMmk, getEffectiveShopId } from "../lib/utils";
+import { Input } from "../components/ui/Input";
 import { hasPermission } from "../lib/permissions";
 import {
   buildDailySalesReportsByShop,
   getLocalDateValue,
   getOpenShiftReportNotice,
 } from "../features/sales/dailySalesReport";
+import { formatMonthLabel, getMonthBounds, inCurrentMonth } from "../features/sales/monthCycle";
+import { WeeklyReportCountdown } from "../features/sales/WeeklyReportCountdown";
 
 export const SalesPage = () => {
   const navigate = useNavigate();
   const [status, setStatus] = useState("all");
   const [cashier, setCashier] = useState("all");
   const [search, setSearch] = useState("");
-  const [range, setRange] = useState({ start: "", end: "" });
+  // Default to today's sales; the calendar filter / "show all days" can widen it.
+  const [dayFilter, setDayFilter] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+  const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [sendingDailyReport, setSendingDailyReport] = useState(false);
   const toast = useToast();
 
@@ -63,12 +70,32 @@ export const SalesPage = () => {
     return itemsBySale;
   }, [saleItems]);
 
+  // Recomputed each render (cheap) so the month boundaries stay current.
+  const monthBounds = getMonthBounds();
+  // Local YYYY-MM-DD for the date input + its min/max (the calendar is
+  // limited to the current month, which is all this page shows).
+  const toDateInput = (ms: number) => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const monthMin = toDateInput(monthBounds.thisStart);
+  const monthMax = toDateInput(monthBounds.nextStart - 86_400_000);
+
+  // The "Email …'s CSV" button targets the day the admin is viewing: today
+  // by default, or the day picked in the calendar filter.
+  const todayKey = getLocalDateValue();
+  const emailTargetDate = dayFilter !== "all" ? dayFilter : todayKey;
+  const emailIsToday = emailTargetDate === todayKey;
+
   const filteredSales = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
 
     return sales.filter((sale) => {
       const matchesShop = sale.shopId === shopId;
       const matchesOwner = !ownSalesOnly || sale.cashierId === currentUserId;
+      // Only the current month is shown here; past months are archived +
+      // emailed away by the monthly job.
+      const matchesMonth = inCurrentMonth(sale.createdAt, monthBounds);
       const matchesStatus = status === "all" || sale.status === status;
       const matchesCashier = ownSalesOnly || cashier === "all" || sale.cashierId === cashier;
       const cashierName = usersById.get(sale.cashierId)?.name ?? "";
@@ -101,24 +128,42 @@ export const SalesPage = () => {
         .join(" ")
         .toLowerCase();
       const matchesSearch = !searchTerm || searchableText.includes(searchTerm);
-      const saleDate = sale.createdAt.slice(0, 10);
-      const afterStart = !range.start || saleDate >= range.start;
-      const beforeEnd = !range.end || saleDate <= range.end;
-      return matchesShop && matchesOwner && matchesStatus && matchesCashier && matchesSearch && afterStart && beforeEnd;
+      return matchesShop && matchesOwner && matchesMonth && matchesStatus && matchesCashier && matchesSearch;
     }).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.receiptNo.localeCompare(a.receiptNo));
   }, [
     sales,
     shopId,
     ownSalesOnly,
     currentUserId,
+    monthBounds,
     status,
     cashier,
     search,
-    range,
     usersById,
     saleItemsBySaleId,
     productsById,
   ]);
+
+  const displayedSales = useMemo(
+    () => (dayFilter === "all" ? filteredSales : filteredSales.filter((s) => s.createdAt.slice(0, 10) === dayFilter)),
+    [filteredSales, dayFilter]
+  );
+
+  // Group the displayed sales by day so each day is a clearly-headed section.
+  const groupedByDay = useMemo(() => {
+    const groups = new Map<string, typeof displayedSales>();
+    for (const sale of displayedSales) {
+      const day = sale.createdAt.slice(0, 10);
+      const bucket = groups.get(day);
+      if (bucket) bucket.push(sale);
+      else groups.set(day, [sale]);
+    }
+    return [...groups.entries()].map(([day, daySales]) => ({
+      day,
+      sales: daySales,
+      normalTotal: daySales.reduce((sum, s) => sum + (s.status === "NORMAL" ? s.totalMmk : 0), 0),
+    }));
+  }, [displayedSales]);
 
   const exportSales = () => {
     const rows = filteredSales.map((sale) => ({
@@ -132,7 +177,7 @@ export const SalesPage = () => {
     downloadCsv("sales.csv", rows);
   };
 
-  const emailDailySalesReport = async () => {
+  const emailDailySalesReport = async (reportDate: string = getLocalDateValue()) => {
     if (!currentUser || currentUser.role !== "ADMIN") {
       toast({
         title: "Admin only",
@@ -163,7 +208,7 @@ export const SalesPage = () => {
     // report date. Empty shops are skipped so the admin doesn't get a
     // wall of zero-row files.
     const bundle = buildDailySalesReportsByShop({
-      reportDate: getLocalDateValue(),
+      reportDate,
       sales,
       saleItems,
       products,
@@ -230,10 +275,15 @@ export const SalesPage = () => {
         subtitle="Track sales, voids, refunds, and reprints."
         actions={
           <>
+            {isAdmin && <WeeklyReportCountdown />}
             <Button variant="secondary" onClick={exportSales}>Export CSV</Button>
             {isAdmin && (
-              <Button onClick={emailDailySalesReport} disabled={sendingDailyReport}>
-                {sendingDailyReport ? "Sending..." : "Email today's CSV"}
+              <Button onClick={() => emailDailySalesReport(emailTargetDate)} disabled={sendingDailyReport}>
+                {sendingDailyReport
+                  ? "Sending..."
+                  : emailIsToday
+                    ? "Email today's CSV"
+                    : `Email ${formatDate(emailTargetDate)} CSV`}
               </Button>
             )}
           </>
@@ -241,9 +291,14 @@ export const SalesPage = () => {
       />
 
       <Card>
+        <div className="mb-4 flex items-center gap-2 text-sm">
+          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+            This month
+          </span>
+          <span className="text-slate-500">{formatMonthLabel(monthBounds)}</span>
+        </div>
         <div className="flex flex-wrap gap-3">
           <SearchInput value={search} onChange={setSearch} placeholder="Search receipt, product, cashier, amount" className="min-w-64 flex-1 md:w-72 md:flex-none" />
-          <DateRangePicker start={range.start} end={range.end} onChange={setRange} />
           <Select value={status} onChange={(event) => setStatus(event.target.value)} className="min-w-44 flex-1 md:w-auto md:flex-none">
             <option value="all">All statuses</option>
             <option value="NORMAL">Normal</option>
@@ -258,18 +313,72 @@ export const SalesPage = () => {
               ))}
             </Select>
           )}
+
+          {/* Date filter — a button that opens a calendar; picking a day in
+              this month replaces the list with that day's sales. */}
+          <div className="relative md:ml-auto">
+            <Button
+              variant={dayFilter === "all" ? "secondary" : "primary"}
+              onClick={() => setDateFilterOpen((open) => !open)}
+            >
+              <span className="material-symbols-rounded mr-1 text-base">calendar_month</span>
+              {dayFilter === "all" ? "Filter by date" : formatDate(dayFilter)}
+            </Button>
+            {dateFilterOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setDateFilterOpen(false)} />
+                <div className="absolute right-0 z-40 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                  <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Pick a date ({formatMonthLabel(monthBounds)})
+                  </div>
+                  <Input
+                    type="date"
+                    min={monthMin}
+                    max={monthMax}
+                    value={dayFilter === "all" ? "" : dayFilter}
+                    onChange={(event) => {
+                      setDayFilter(event.target.value || "all");
+                      setDateFilterOpen(false);
+                    }}
+                  />
+                  {dayFilter !== "all" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDayFilter("all");
+                        setDateFilterOpen(false);
+                      }}
+                      className="mt-2 w-full rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200"
+                    >
+                      Clear — show all days
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
-        <div className="mt-6">
-          {filteredSales.length === 0 ? (
+        <div className="mt-6 space-y-6">
+          {displayedSales.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300/70 bg-slate-50/60 p-6 text-center text-sm text-slate-500">
               No sales found.
             </div>
           ) : (
-            <SalesTable
-              sales={filteredSales}
-              users={users}
-              onView={(saleId) => navigate(`/app/sales/${saleId}`)}
-            />
+            groupedByDay.map((group) => (
+              <div key={group.day} className="space-y-2">
+                <div className="flex items-center justify-between px-1">
+                  <div className="text-sm font-semibold text-slate-700">{formatDate(group.day)}</div>
+                  <div className="text-xs text-slate-500">
+                    {group.sales.length} sale{group.sales.length === 1 ? "" : "s"} · {formatMmk(group.normalTotal)}
+                  </div>
+                </div>
+                <SalesTable
+                  sales={group.sales}
+                  users={users}
+                  onView={(saleId) => navigate(`/app/sales/${saleId}`)}
+                />
+              </div>
+            ))
           )}
         </div>
       </Card>

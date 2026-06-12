@@ -44,6 +44,14 @@ Open work, grouped by area.
       row for every active product × active shop on **product creation** and
       **shop creation** so POS and the dashboard always agree. One-off
       backfill for existing data: [`supabase/backfill_inventory_rows.sql`](../supabase/backfill_inventory_rows.sql).
+- [ ] **Weekly sales report (auto-email).** The Sales page already shows an
+      admin countdown to next Monday (`WeeklyReportCountdown`). Build the
+      backend: a Monday `pg_cron` job + `weekly-sales-report` Edge Function
+      that emails the previous week's (Mon–Sun) per-shop CSVs to all active
+      admins via Resend — **email-only, no delete** (sales are kept so the
+      monthly Sales view + dashboard stay complete). Mirror the
+      `email-sales-report` / `rotate-audit-log` patterns. Until built, the
+      countdown is cosmetic.
 - [ ] **Live Supabase RLS/RPC verification.** Run the full
       [`archive/29-live-supabase-rls-rpc-verification.md`](./archive/29-live-supabase-rls-rpc-verification.md)
       checklist against the production project. Required after every

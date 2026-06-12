@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Role, Shift } from "../../../types";
+import type { Role, Sale, Shift } from "../../../types";
 import { useAuthStore } from "../../../stores/authStore";
 import { useAppStore } from "../../../stores/appStore";
 import { useDataStore } from "../../../stores/dataStore";
@@ -26,7 +26,7 @@ import {
   validateCloseShift,
 } from "../shiftRecords";
 import { downloadCsv } from "../../../lib/csv";
-import { formatDateTime, formatMmk } from "../../../lib/utils";
+import { formatDate, formatDateTime, formatMmk } from "../../../lib/utils";
 import { getErrorMessage } from "../../../lib/errors";
 import { hasPermission } from "../../../lib/permissions";
 import { WorkHoursPanel } from "../components/WorkHoursPanel";
@@ -39,9 +39,13 @@ const ROLE_TONES: Record<Role, "amber" | "red" | "green" | "blue" | "slate"> = {
   BUYER: "blue",
 };
 
-type TabId = "records" | "hours";
+type TabId = "sales" | "records" | "hours";
+type SaleStatusFilter = "all" | Sale["status"];
 
 const statusLabel = (shift: Shift) => (shift.endedAt ? "Closed" : "Open");
+
+const saleStatusTone = (status: Sale["status"]) =>
+  status === "NORMAL" ? "green" : status === "VOID" ? "red" : "amber";
 
 export const ShiftsPage = () => {
   const toast = useToast();
@@ -61,7 +65,8 @@ export const ShiftsPage = () => {
   const loadError = useDataStore((state) => state.loadError);
   const retryLoadData = useDataStore((state) => state.retryLoadData);
 
-  const [activeTab, setActiveTab] = useState<TabId>("records");
+  const [activeTab, setActiveTab] = useState<TabId>("sales");
+  const [salesStatusFilter, setSalesStatusFilter] = useState<SaleStatusFilter>("all");
   const [openingCash, setOpeningCash] = useState(0);
   const [closingCash, setClosingCash] = useState<number | undefined>(undefined);
   const [varianceReason, setVarianceReason] = useState("");
@@ -238,6 +243,72 @@ export const ShiftsPage = () => {
     );
   };
 
+  // Sales Records tab — every sale in scope, filtered by the same
+  // month/shop/user controls plus a sale-status filter. Scope mirrors the
+  // Sales page: ADMIN sees all, `sale:view` holders see their shop, others
+  // see only the sales they rang up.
+  const visibleSales = useMemo(() => {
+    if (!currentUser) return [];
+    if (role === "ADMIN") return sales;
+    if (hasPermission(currentUser, "sale:view")) {
+      return sales.filter((sale) => sale.shopId === currentUser.shopId);
+    }
+    return sales.filter((sale) => sale.cashierId === currentUser.id);
+  }, [sales, currentUser, role]);
+
+  const filteredSales = useMemo(() => {
+    return visibleSales
+      .filter((sale) => {
+        if (recordsMonthFilter !== "all" && sale.createdAt.slice(0, 7) !== recordsMonthFilter) return false;
+        if (role === "ADMIN" && recordsShopFilter !== "all" && sale.shopId !== recordsShopFilter) return false;
+        if (
+          (role === "ADMIN" || role === "MANAGER") &&
+          recordsUserFilter !== "all" &&
+          sale.cashierId !== recordsUserFilter
+        )
+          return false;
+        if (salesStatusFilter !== "all" && sale.status !== salesStatusFilter) return false;
+        return true;
+      })
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  }, [visibleSales, recordsMonthFilter, recordsShopFilter, recordsUserFilter, salesStatusFilter, role]);
+
+  const salesTotal = useMemo(
+    () => filteredSales.reduce((sum, sale) => sum + (sale.status === "NORMAL" ? sale.totalMmk : 0), 0),
+    [filteredSales]
+  );
+
+  // Group sales into per-day sections so the list isn't one mixed blob.
+  const salesByDay = useMemo(() => {
+    const groups = new Map<string, typeof filteredSales>();
+    for (const sale of filteredSales) {
+      const day = sale.createdAt.slice(0, 10);
+      const bucket = groups.get(day);
+      if (bucket) bucket.push(sale);
+      else groups.set(day, [sale]);
+    }
+    return [...groups.entries()].map(([day, daySales]) => ({
+      day,
+      sales: daySales,
+      normalTotal: daySales.reduce((sum, s) => sum + (s.status === "NORMAL" ? s.totalMmk : 0), 0),
+    }));
+  }, [filteredSales]);
+
+  const exportSales = () => {
+    downloadCsv(
+      "sales.csv",
+      filteredSales.map((sale) => ({
+        receiptNo: sale.receiptNo,
+        createdAt: sale.createdAt,
+        cashier: users.find((user) => user.id === sale.cashierId)?.name ?? sale.cashierId,
+        shop: shops.find((shop) => shop.id === sale.shopId)?.name ?? sale.shopId,
+        paymentMethod: sale.paymentMethod,
+        status: sale.status,
+        totalMmk: sale.totalMmk,
+      }))
+    );
+  };
+
   const renderShell = (body: ReactNode) => (
     <Card>
       <PageHeader
@@ -292,6 +363,10 @@ export const ShiftsPage = () => {
         actions={
           activeTab === "records" && filteredRecords.length > 0 ? (
             <Button variant="secondary" onClick={exportShifts}>
+              Export CSV
+            </Button>
+          ) : activeTab === "sales" && filteredSales.length > 0 ? (
+            <Button variant="secondary" onClick={exportSales}>
               Export CSV
             </Button>
           ) : undefined
@@ -358,6 +433,7 @@ export const ShiftsPage = () => {
       <div className="mt-6">
         <Tabs
           tabs={[
+            { id: "sales", label: "Sales Records" },
             { id: "records", label: "Shift Records" },
             { id: "hours", label: "Work Hours" },
           ]}
@@ -365,6 +441,146 @@ export const ShiftsPage = () => {
           onChange={(id) => setActiveTab(id as TabId)}
         />
       </div>
+
+      {activeTab === "sales" && (
+        <div className="mt-5 space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Month</label>
+              <Input
+                type="month"
+                value={recordsMonthFilter === "all" ? "" : recordsMonthFilter}
+                onChange={(event) => setRecordsMonthFilter(event.target.value || "all")}
+                className="w-40"
+              />
+            </div>
+            {recordsMonthFilter !== "all" && (
+              <Button variant="secondary" onClick={() => setRecordsMonthFilter("all")}>
+                All dates
+              </Button>
+            )}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Status</label>
+              <Select
+                value={salesStatusFilter}
+                onChange={(event) => setSalesStatusFilter(event.target.value as SaleStatusFilter)}
+                className="w-40"
+              >
+                <option value="all">All</option>
+                <option value="NORMAL">Normal</option>
+                <option value="VOID">Void</option>
+                <option value="REFUNDED">Refunded</option>
+              </Select>
+            </div>
+            {role === "ADMIN" && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Shop</label>
+                <Select
+                  value={recordsShopFilter}
+                  onChange={(event) => {
+                    setRecordsShopFilter(event.target.value);
+                    setRecordsUserFilter("all");
+                  }}
+                  className="w-48"
+                >
+                  <option value="all">All shops</option>
+                  {recordsShopOptions.map((shop) => (
+                    <option key={shop.id} value={shop.id}>
+                      {shop.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+            {(role === "ADMIN" || role === "MANAGER") && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-500">User</label>
+                <Select
+                  value={recordsUserFilter}
+                  onChange={(event) => setRecordsUserFilter(event.target.value)}
+                  className="w-52"
+                >
+                  <option value="all">All users</option>
+                  {recordsUserOptions.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+            <div className="ml-auto text-right text-xs text-slate-500">
+              <div>
+                {filteredSales.length} sale{filteredSales.length === 1 ? "" : "s"}
+              </div>
+              <div className="font-semibold text-slate-700">{formatMmk(salesTotal)}</div>
+            </div>
+          </div>
+
+          {visibleSales.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center text-sm text-slate-500">
+              No sales are available for your role.
+            </div>
+          ) : filteredSales.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center text-sm text-slate-500">
+              No sales match the selected filters.
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {salesByDay.map((group) => (
+                <div key={group.day} className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <div className="text-sm font-semibold text-slate-700">{formatDate(group.day)}</div>
+                    <div className="text-xs text-slate-500">
+                      {group.sales.length} sale{group.sales.length === 1 ? "" : "s"} · {formatMmk(group.normalTotal)}
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
+                    <Table className="min-w-[860px]">
+                      <THead>
+                        <TR>
+                          <TH>Receipt</TH>
+                          <TH>Time</TH>
+                          <TH>Cashier</TH>
+                          <TH>Shop</TH>
+                          <TH>Payment</TH>
+                          <TH>Status</TH>
+                          <TH className="text-right">Total</TH>
+                          <TH></TH>
+                        </TR>
+                      </THead>
+                      <TBody>
+                        {group.sales.map((sale) => (
+                          <TR key={sale.id}>
+                            <TD className="font-mono text-xs">{sale.receiptNo}</TD>
+                            <TD className="text-xs text-slate-600">{formatDateTime(sale.createdAt)}</TD>
+                            <TD>{users.find((user) => user.id === sale.cashierId)?.name ?? "Unknown user"}</TD>
+                            <TD>{shops.find((shop) => shop.id === sale.shopId)?.name ?? sale.shopId}</TD>
+                            <TD>{sale.paymentMethod}</TD>
+                            <TD>
+                              <Badge tone={saleStatusTone(sale.status)}>{sale.status}</Badge>
+                            </TD>
+                            <TD className="text-right tabular-nums">{formatMmk(sale.totalMmk)}</TD>
+                            <TD className="text-right">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => navigate(`/app/sales/${sale.id}`)}
+                              >
+                                View
+                              </Button>
+                            </TD>
+                          </TR>
+                        ))}
+                      </TBody>
+                    </Table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {activeTab === "records" && (
         <div className="mt-5 space-y-4">
