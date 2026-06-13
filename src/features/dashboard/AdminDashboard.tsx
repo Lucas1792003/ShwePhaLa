@@ -54,6 +54,7 @@ import {
   SectionCard,
 } from "./DashboardCommon";
 import { rangeLabel, useDashboardCopy } from "./dashboardCopy";
+import { LowStockCard } from "./LowStockCard";
 import { useDashboardInsights } from "../../hooks/useDashboardInsights";
 import { InventoryIntelligence } from "../../components/dashboard/InventoryIntelligence";
 
@@ -188,9 +189,14 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
     metricShopId,
   });
 
+  // Full low-stock list (active shops only), sorted most-urgent-first. The
+  // card shows a preview and a "View all" modal — do NOT pre-slice here.
   const lowStockRows = useMemo(
     () =>
-      decorateLowStockWithShopName(calculateLowStock(products, inventory, metricShopId), shops).slice(0, 8),
+      decorateLowStockWithShopName(
+        calculateLowStock(products, inventory, metricShopId, shops),
+        shops
+      ),
     [products, inventory, metricShopId, shops]
   );
 
@@ -203,8 +209,8 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
     [purchaseOrders, metricShopId]
   );
   const actionNeeded = useMemo(
-    () => calculateActionNeeded(metricShopId, inventory, products, refunds, purchaseOrders, stockTransfers),
-    [metricShopId, inventory, products, refunds, purchaseOrders, stockTransfers]
+    () => calculateActionNeeded(metricShopId, inventory, products, refunds, purchaseOrders, stockTransfers, shops),
+    [metricShopId, inventory, products, refunds, purchaseOrders, stockTransfers, shops]
   );
   const activeShiftRows = useMemo(
     () => listActiveShiftRows(shifts, users, shops, metricShopId),
@@ -638,23 +644,12 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
 
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         {visibility.canViewInventory && (
-          <SectionCard title={scope.showAllShops ? copy("lowStockAcrossShops") : copy("lowStock")} icon="warning">
-            {lowStockRows.length > 0 ? (
-              <div className="space-y-2">
-                {lowStockRows.map((row) => (
-                  <div key={`${row.shopId}-${row.product.id}`} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-800">{row.product.name}</p>
-                      <p className="truncate text-xs text-slate-500">{row.shopName} - {copy("threshold")} {row.threshold}</p>
-                    </div>
-                    <Badge tone={row.status === "out" ? "red" : "amber"}>{row.qty} {copy("left")}</Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState message={copy("noLowOrOutStock")} icon="task_alt" />
-            )}
-          </SectionCard>
+          <LowStockCard
+            title={scope.showAllShops ? copy("lowStockAcrossShops") : copy("lowStock")}
+            rows={lowStockRows}
+            previewLimit={8}
+            showShop
+          />
         )}
 
         {visibility.canViewApprovals && (

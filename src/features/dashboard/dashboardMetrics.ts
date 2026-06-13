@@ -177,55 +177,75 @@ export interface LowStockRow {
 }
 
 /**
+ * Urgency ordering for low-stock rows (most urgent first):
+ *   1. qty ascending        — fully out (0) before merely low
+ *   2. threshold descending — a higher reorder line means it ran short sooner
+ *   3. product name ascending
+ *   4. shopId ascending     — stable final tiebreak for per-(shop,product) rows
+ */
+const compareLowStock = (a: LowStockRow, b: LowStockRow): number =>
+  a.qty - b.qty ||
+  b.threshold - a.threshold ||
+  a.product.name.localeCompare(b.product.name) ||
+  a.shopId.localeCompare(b.shopId);
+
+/**
  * Low / out-of-stock rows in scope.
  *
- *   shopId = "x"  -> one row per product for shop x where qty <= threshold
+ *   shopId = "x"  -> the rows in shop x's inventory where qty <= threshold
  *   shopId = null -> one row per (shop, product) pair across the inventory
  *                    table where qty <= threshold.
+ *
+ * Both modes are driven by **actual inventory rows** — a product that has no
+ * inventory row for a shop is one the shop does not carry, so it is NOT
+ * reported as "0 left" for that shop. (The shared product catalog is global;
+ * stock is per (shop, product). Listing every catalogue product against a
+ * single shop would flood the alert with items the shop never stocked, and
+ * would also disagree with the all-shops view, which only ever sees real
+ * inventory rows.)
  *
  * **Never sum across shops.** Per the dashboard rules in
  * `docs/04-features-workflows.md`, summing would mask a shop being out
  * of stock when another shop has plenty. ADMIN viewing all shops sees a
  * row per affected (shop, product) pair.
  *
- * Inactive products excluded. Sorted by qty ascending (out-first).
+ * Inactive products are always excluded. When the optional `shops` list is
+ * supplied, inventory belonging to inactive/archived shops is excluded too,
+ * so the card never lists a shop that is hidden from the switcher. (Omitting
+ * `shops` skips that filter for callers already scoped to a known-active shop.)
+ *
+ * Sorted by urgency — see `compareLowStock`.
  */
 export const calculateLowStock = (
   products: Product[],
   inventory: Inventory[],
-  shopId: string | null
+  shopId: string | null,
+  shops?: Shop[]
 ): LowStockRow[] => {
   const productById = new Map(products.map((p) => [p.id, p]));
-  const buildRow = (product: Product, sid: string, qty: number): LowStockRow => ({
-    product,
-    shopId: sid,
-    qty,
-    threshold: product.lowStockThreshold,
-    status: qty <= 0 ? "out" : "low",
-  });
-
-  if (shopId === null) {
-    const rows: LowStockRow[] = [];
-    for (const inv of inventory) {
-      const product = productById.get(inv.productId);
-      if (!product || !product.isActive) continue;
-      if (inv.qtyBaseUnits <= product.lowStockThreshold) {
-        rows.push(buildRow(product, inv.shopId, inv.qtyBaseUnits));
-      }
-    }
-    return rows.sort((a, b) => a.qty - b.qty);
-  }
+  const activeShopIds = shops
+    ? new Set(shops.filter((s) => s.isActive).map((s) => s.id))
+    : null;
+  const shopAllowed = (sid: string): boolean =>
+    activeShopIds === null || activeShopIds.has(sid);
 
   const rows: LowStockRow[] = [];
-  for (const product of products) {
-    if (!product.isActive) continue;
-    const inv = inventory.find((i) => i.shopId === shopId && i.productId === product.id);
-    const qty = inv?.qtyBaseUnits ?? 0;
-    if (qty <= product.lowStockThreshold) {
-      rows.push(buildRow(product, shopId, qty));
+  for (const inv of inventory) {
+    if (shopId !== null && inv.shopId !== shopId) continue;
+    if (!shopAllowed(inv.shopId)) continue;
+    const product = productById.get(inv.productId);
+    if (!product || !product.isActive) continue;
+    if (inv.qtyBaseUnits <= product.lowStockThreshold) {
+      rows.push({
+        product,
+        shopId: inv.shopId,
+        qty: inv.qtyBaseUnits,
+        threshold: product.lowStockThreshold,
+        status: inv.qtyBaseUnits <= 0 ? "out" : "low",
+      });
     }
   }
-  return rows.sort((a, b) => a.qty - b.qty);
+  return rows.sort(compareLowStock);
 };
 
 // ------------------------------------------------------------
@@ -597,9 +617,10 @@ export const calculateActionNeeded = (
   products: Product[],
   refunds: RefundVoidRequest[],
   purchaseOrders: PurchaseOrder[],
-  stockTransfers: StockTransfer[]
+  stockTransfers: StockTransfer[],
+  shops?: Shop[]
 ): ActionNeededSummary => {
-  const lowRows = calculateLowStock(products, inventory, shopId);
+  const lowRows = calculateLowStock(products, inventory, shopId, shops);
   const outOfStockCount = lowRows.filter((r) => r.status === "out").length;
   const lowStockCount = lowRows.filter((r) => r.status === "low").length;
 

@@ -360,16 +360,48 @@ describe("calculateLowStock (per-shop visibility, never sums across shops)", () 
     expect(rows[0]).toMatchObject({ shopId: "shop-a", qty: 0, status: "out" });
   });
 
-  it("treats missing inventory row as qty=0 for the picked shop", () => {
-    const rows = calculateLowStock(products, [], "shop-a");
-    // Both active products show as out for shop-a (no inv rows)
-    expect(rows.every((r) => r.status === "out")).toBe(true);
-    expect(rows.map((r) => r.product.id).sort()).toEqual(["p1", "p2"]);
+  it("ignores products the shop does not carry (no inventory row) instead of reporting them as 0 left", () => {
+    // A product with no inventory row for the shop is not stocked there, so it
+    // must NOT flood the low-stock alert. Only real inventory rows count.
+    expect(calculateLowStock(products, [], "shop-a")).toEqual([]);
+    // p1 has a row (low); p2 has none -> only p1 is reported.
+    const rows = calculateLowStock(products, [inv("shop-a", "p1", 2)], "shop-a");
+    expect(rows.map((r) => r.product.id)).toEqual(["p1"]);
   });
 
   it("returns empty list when nothing is low/out", () => {
     const inventory: Inventory[] = [inv("shop-a", "p1", 10), inv("shop-a", "p2", 10)];
     expect(calculateLowStock(products, inventory, "shop-a")).toEqual([]);
+  });
+
+  it("excludes inventory of inactive/archived shops in all-shops mode when shops are supplied", () => {
+    const shops: Shop[] = [
+      { id: "shop-a", code: "A", name: "Shop A", address: "", isActive: true, createdAt: "" },
+      { id: "shop-x", code: "X", name: "Archived", address: "", isActive: false, createdAt: "" },
+    ];
+    const inventory: Inventory[] = [
+      inv("shop-a", "p1", 0), // active shop -> kept
+      inv("shop-x", "p1", 0), // archived shop -> dropped
+    ];
+    const rows = calculateLowStock(products, inventory, null, shops);
+    expect(rows.map((r) => r.shopId)).toEqual(["shop-a"]);
+  });
+
+  it("returns no rows for a picked shop that is inactive", () => {
+    const shops: Shop[] = [
+      { id: "shop-x", code: "X", name: "Archived", address: "", isActive: false, createdAt: "" },
+    ];
+    expect(calculateLowStock(products, [inv("shop-x", "p1", 0)], "shop-x", shops)).toEqual([]);
+  });
+
+  it("sorts by urgency: qty asc, then higher threshold first", () => {
+    // Equal qty (0) -> the product with the larger threshold is more urgent.
+    const inventory: Inventory[] = [
+      inv("shop-a", "p2", 0), // threshold 3
+      inv("shop-a", "p1", 0), // threshold 5
+    ];
+    const rows = calculateLowStock(products, inventory, "shop-a");
+    expect(rows.map((r) => r.product.id)).toEqual(["p1", "p2"]);
   });
 });
 

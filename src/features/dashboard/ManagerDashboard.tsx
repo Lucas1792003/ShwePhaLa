@@ -40,6 +40,7 @@ import {
   SectionCard,
 } from "./DashboardCommon";
 import { rangeLabel, useDashboardCopy } from "./dashboardCopy";
+import { LowStockCard } from "./LowStockCard";
 
 const COLORS = ["#047857", "#2563eb", "#d97706", "#dc2626", "#7c3aed", "#0891b2"];
 
@@ -88,8 +89,8 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
     [shifts, sales, refunds, shopId]
   );
   const actionNeeded = useMemo(
-    () => calculateActionNeeded(shopId, inventory, products, refunds, purchaseOrders, stockTransfers),
-    [shopId, inventory, products, refunds, purchaseOrders, stockTransfers]
+    () => calculateActionNeeded(shopId, inventory, products, refunds, purchaseOrders, stockTransfers, shops),
+    [shopId, inventory, products, refunds, purchaseOrders, stockTransfers, shops]
   );
 
   const visibleActionCount =
@@ -111,9 +112,11 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
     [rangedSales, saleItems, products]
   );
 
+  // Full low-stock list for this shop, sorted most-urgent-first. The card
+  // shows a preview and a "View all" modal — do NOT pre-slice here.
   const lowStockRows = useMemo(
     () =>
-      decorateLowStockWithShopName(calculateLowStock(products, inventory, shopId), shops).slice(0, 5),
+      decorateLowStockWithShopName(calculateLowStock(products, inventory, shopId, shops), shops),
     [products, inventory, shopId, shops]
   );
 
@@ -296,23 +299,12 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
         )}
 
         {visibility.canViewInventory && (
-          <SectionCard title={copy("inventoryAlerts")} icon="warning">
-            {lowStockRows.length > 0 ? (
-              <div className="space-y-2">
-                {lowStockRows.map((row) => (
-                  <div key={`${row.shopId}-${row.product.id}`} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-800">{row.product.name}</p>
-                      <p className="text-xs text-slate-500">{copy("threshold")} {row.threshold}</p>
-                    </div>
-                    <Badge tone={row.status === "out" ? "red" : "amber"}>{row.qty} {copy("left")}</Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState message={copy("noLowOrOutStock")} icon="task_alt" />
-            )}
-          </SectionCard>
+          <LowStockCard
+            title={copy("inventoryAlerts")}
+            rows={lowStockRows}
+            previewLimit={5}
+            showShop={false}
+          />
         )}
 
         {visibility.canViewPurchases && (
