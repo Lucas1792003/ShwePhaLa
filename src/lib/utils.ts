@@ -21,16 +21,6 @@ export const formatDate = (value: string | number | Date) =>
     year: "numeric",
   });
 
-export const getDateKey = (value: Date = new Date()) => {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}${month}${day}`;
-};
-
-export const buildReceiptNo = (shopCode: string, dateKey: string, seq: number) =>
-  `${shopCode}-${dateKey}-${String(seq).padStart(4, "0")}`;
-
 // Resolve the shop the current user is acting in.
 //
 // ADMIN is global: an admin only has a shop context when they have
