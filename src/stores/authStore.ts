@@ -13,21 +13,53 @@ interface RequestCodeResult {
   email?: string;
 }
 
+interface EnrollTotpResult {
+  error: string | null;
+  factorId?: string;
+  qrCode?: string;
+  secret?: string;
+  uri?: string;
+}
+
 interface AuthState {
   currentUserId: string | null;
   // Role of the signed-in user, captured at login/restore so route guards can
-  // gate the admin email-code step before the data store's users are loaded.
+  // gate the admin verification step before the data store's users are loaded.
   currentRole: string | null;
-  // True once an ADMIN has passed the email-code step this browser session.
-  // Always true for non-admins (the step doesn't apply to them).
+  // True once an ADMIN has passed verification this session — via TOTP (the
+  // Supabase session is aal2) OR the emailed code. Always true for non-admins.
   adminVerified: boolean;
+  // Whether the signed-in admin has a verified authenticator-app (TOTP) factor.
+  // Drives whether the verify page asks for the app code or the email code.
+  hasTotp: boolean;
   isAuthLoading: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
   restoreSession: () => Promise<void>;
-  // Admin 2FA: email a fresh code, then verify the submitted code.
+  // Admin 2FA — email path: send a code, then verify it.
   requestAdminCode: () => Promise<RequestCodeResult>;
   verifyAdminCode: (code: string) => Promise<{ error: string | null }>;
+  // Admin 2FA — authenticator-app (TOTP) path via Supabase built-in MFA.
+  enrollTotp: () => Promise<EnrollTotpResult>;
+  verifyTotpEnrollment: (factorId: string, code: string) => Promise<{ error: string | null }>;
+  verifyTotpLogin: (code: string) => Promise<{ error: string | null }>;
+  unenrollTotp: (factorId: string) => Promise<{ error: string | null }>;
+}
+
+// Read the user's current MFA posture: whether they have a verified TOTP factor
+// and whether this session has already stepped up to aal2 (TOTP passed).
+async function readMfaState(): Promise<{ hasTotp: boolean; isAal2: boolean }> {
+  try {
+    const [factorsRes, aalRes] = await Promise.all([
+      supabase.auth.mfa.listFactors(),
+      supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+    ]);
+    const hasTotp = (factorsRes.data?.totp ?? []).some((f) => f.status === "verified");
+    const isAal2 = aalRes.data?.currentLevel === "aal2";
+    return { hasTotp, isAal2 };
+  } catch {
+    return { hasTotp: false, isAal2: false };
+  }
 }
 
 // Per-browser-session "this admin already passed the code" marker. sessionStorage
@@ -143,24 +175,28 @@ export const useAuthStore = create<AuthState>()((set) => ({
   currentUserId: null,
   currentRole: null,
   adminVerified: false,
+  hasTotp: false,
   isAuthLoading: true,
 
   restoreSession: async () => {
     const { data } = await supabase.auth.getSession();
     const authUser = data.session?.user;
     if (!authUser) {
-      set({ currentUserId: null, currentRole: null, adminVerified: false, isAuthLoading: false });
+      set({ currentUserId: null, currentRole: null, adminVerified: false, hasTotp: false, isAuthLoading: false });
       return;
     }
     const result = await resolveAppUser({ id: authUser.id, email: authUser.email ?? undefined });
     if (result.error) console.error("[auth] restoreSession:", result.error);
     const user = result.user;
     const active = Boolean(user && user.is_active);
+    const isAdmin = active && user!.role === "ADMIN";
+    const { hasTotp, isAal2 } = isAdmin ? await readMfaState() : { hasTotp: false, isAal2: false };
     set({
       currentUserId: active ? user!.id : null,
       currentRole: active ? user!.role : null,
-      // Admins must have verified this session; everyone else is exempt.
-      adminVerified: active && user!.role === "ADMIN" ? isVerifiedThisSession(authUser.id) : true,
+      hasTotp,
+      // Admin is verified if the session is aal2 (TOTP) or the email flag is set.
+      adminVerified: isAdmin ? isAal2 || isVerifiedThisSession(authUser.id) : true,
       isAuthLoading: false,
     });
   },
@@ -215,8 +251,8 @@ export const useAuthStore = create<AuthState>()((set) => ({
         await supabase.auth.signOut();
         return { error: insert.error.message };
       }
-      // First admin must still pass the email-code step.
-      set({ currentUserId: adminId, currentRole: "ADMIN", adminVerified: false });
+      // First admin must still verify (no factor yet → email path).
+      set({ currentUserId: adminId, currentRole: "ADMIN", adminVerified: false, hasTotp: false });
       return { error: null, role: "ADMIN" };
     }
 
@@ -226,10 +262,13 @@ export const useAuthStore = create<AuthState>()((set) => ({
       return { error: "Account is inactive. Contact your administrator." };
     }
 
+    const isAdmin = user.role === "ADMIN";
+    const { hasTotp, isAal2 } = isAdmin ? await readMfaState() : { hasTotp: false, isAal2: false };
     set({
       currentUserId: user.id,
       currentRole: user.role,
-      adminVerified: user.role === "ADMIN" ? isVerifiedThisSession(authUser.id) : true,
+      hasTotp,
+      adminVerified: isAdmin ? isAal2 || isVerifiedThisSession(authUser.id) : true,
     });
     return { error: null, role: user.role, shopId: user.shop_id ?? undefined };
   },
@@ -237,7 +276,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
   logout: async () => {
     await supabase.auth.signOut();
     clearVerified();
-    set({ currentUserId: null, currentRole: null, adminVerified: false });
+    set({ currentUserId: null, currentRole: null, adminVerified: false, hasTotp: false });
   },
 
   requestAdminCode: async () => {
@@ -258,6 +297,59 @@ export const useAuthStore = create<AuthState>()((set) => ({
     const authId = sessionData.session?.user.id;
     if (authId) markVerified(authId);
     set({ adminVerified: true });
+    return { error: null };
+  },
+
+  // Start TOTP enrollment: returns the QR + secret to show the admin.
+  enrollTotp: async () => {
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+    if (error) return { error: error.message };
+    return {
+      error: null,
+      factorId: data.id,
+      qrCode: data.totp.qr_code,
+      secret: data.totp.secret,
+      uri: data.totp.uri,
+    };
+  },
+
+  // Confirm enrollment with the first app code; success upgrades the session
+  // to aal2 and marks the admin verified for this session.
+  verifyTotpEnrollment: async (factorId: string, code: string) => {
+    const challenge = await supabase.auth.mfa.challenge({ factorId });
+    if (challenge.error) return { error: challenge.error.message };
+    const verify = await supabase.auth.mfa.verify({
+      factorId,
+      challengeId: challenge.data.id,
+      code,
+    });
+    if (verify.error) return { error: verify.error.message };
+    set({ adminVerified: true, hasTotp: true });
+    return { error: null };
+  },
+
+  // Step up an existing verified factor at login time.
+  verifyTotpLogin: async (code: string) => {
+    const { data: factors, error: listError } = await supabase.auth.mfa.listFactors();
+    if (listError) return { error: listError.message };
+    const factor = (factors?.totp ?? []).find((f) => f.status === "verified");
+    if (!factor) return { error: "No authenticator app is set up." };
+    const challenge = await supabase.auth.mfa.challenge({ factorId: factor.id });
+    if (challenge.error) return { error: challenge.error.message };
+    const verify = await supabase.auth.mfa.verify({
+      factorId: factor.id,
+      challengeId: challenge.data.id,
+      code,
+    });
+    if (verify.error) return { error: verify.error.message };
+    set({ adminVerified: true });
+    return { error: null };
+  },
+
+  unenrollTotp: async (factorId: string) => {
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) return { error: error.message };
+    set({ hasTotp: false });
     return { error: null };
   },
 }));
