@@ -264,6 +264,9 @@ export interface PurchaseState {
     referenceNo?: string;
     notes?: string;
   }) => Promise<void>;
+  /** Void a recorded supplier payment: reverses the PO balance + stamps the
+   *  payment voided. Throws on failure so the caller can surface it. */
+  voidSupplierPayment: (input: { paymentId: string; reason: string }) => Promise<void>;
 }
 
 export interface PricingState {

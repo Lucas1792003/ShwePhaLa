@@ -79,12 +79,14 @@ export const SupplierDetailPage = () => {
   const approvePurchaseOrder = useDataStore((state) => state.approvePurchaseOrder);
   const cancelPurchaseOrder = useDataStore((state) => state.cancelPurchaseOrder);
   const removeSupplierProduct = useDataStore((state) => state.removeSupplierProduct);
+  const voidSupplierPayment = useDataStore((state) => state.voidSupplierPayment);
 
   const [tab, setTab] = useState<TabId>("overview");
   const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [linkProductsOpen, setLinkProductsOpen] = useState(false);
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
+  const [voidingPaymentId, setVoidingPaymentId] = useState<string | null>(null);
   const [createPoOpen, setCreatePoOpen] = useState(false);
   const [receivePoId, setReceivePoId] = useState<string | null>(null);
   const [paymentPoId, setPaymentPoId] = useState<string | null>(null);
@@ -98,6 +100,9 @@ export const SupplierDetailPage = () => {
   // Linking products writes supplier_products, which RLS gates on product
   // create/update — so only show the controls to users who can actually save.
   const canManageLinks = hasAnyPermission(currentUser, ["product:update", "product:create"]);
+  // Voiding mirrors recording: shop-scoped supplier:payment_create (ADMIN any).
+  const canVoidPayment = (shopOfPayment: string) =>
+    isAdmin || hasShopPermission(currentUser, "supplier:payment_create", shopOfPayment);
   const canRaisePoForShop = hasShopPermission(currentUser, "purchase:create", shopId);
 
   // Mirror the SuppliersPage scoping: ADMIN sees all, others only see records
@@ -153,6 +158,25 @@ export const SupplierDetailPage = () => {
 
   const paymentPo = paymentPoId ? supplierOrders.find((po) => po.id === paymentPoId) ?? null : null;
   const linkedProductIds = new Set(linkedProducts.map((product) => product.id));
+
+  const handleVoidPayment = async (paymentId: string) => {
+    if (voidingPaymentId) return;
+    const reason = prompt("Reason for voiding this payment?");
+    if (!reason || !reason.trim()) return;
+    setVoidingPaymentId(paymentId);
+    try {
+      await voidSupplierPayment({ paymentId, reason: reason.trim() });
+      toast({ variant: "success", title: "Payment voided" });
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not void payment",
+        description: getErrorMessage(error, "Please try again."),
+      });
+    } finally {
+      setVoidingPaymentId(null);
+    }
+  };
 
   const handleUnlinkProduct = async (productId: string) => {
     if (unlinkingId) return;
@@ -523,25 +547,49 @@ export const SupplierDetailPage = () => {
               <th className="px-4 py-3 font-medium">Reference</th>
               <th className="px-4 py-3 font-medium">Notes</th>
               <th className="px-4 py-3 font-medium">Recorded by</th>
+              <th className="px-4 py-3 text-right font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
             {supplierPaymentsList.map((payment) => {
               const po = visiblePurchaseOrders.find((order) => order.id === payment.purchaseOrderId);
               const createdByUser = users.find((u) => u.id === payment.createdBy);
+              const isVoided = Boolean(payment.voidedAt);
               return (
                 <tr key={payment.id} className="border-b last:border-0">
                   <td className="px-4 py-3 text-slate-500">{formatDateTime(payment.paidAt)}</td>
                   <td className="px-4 py-3 font-medium text-slate-900">
                     {po?.orderNo ?? payment.purchaseOrderId}
                   </td>
-                  <td className="px-4 py-3 text-right font-bold tabular-nums text-emerald-700">
+                  <td
+                    className={`px-4 py-3 text-right font-bold tabular-nums ${
+                      isVoided ? "text-slate-400 line-through" : "text-emerald-700"
+                    }`}
+                  >
                     {formatMmk(payment.amountMmk)}
                   </td>
                   <td className="px-4 py-3">{getSupplierPaymentMethodLabel(payment.paymentMethod)}</td>
                   <td className="px-4 py-3">{payment.referenceNo ?? "-"}</td>
-                  <td className="px-4 py-3 text-slate-600">{payment.notes ?? "-"}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {isVoided ? payment.voidReason ?? "Voided" : payment.notes ?? "-"}
+                  </td>
                   <td className="px-4 py-3">{createdByUser?.name ?? payment.createdBy}</td>
+                  <td className="px-4 py-3 text-right">
+                    {isVoided ? (
+                      <Badge color="gray">Voided</Badge>
+                    ) : canVoidPayment(payment.shopId) ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={voidingPaymentId === payment.id}
+                        onClick={() => handleVoidPayment(payment.id)}
+                      >
+                        {voidingPaymentId === payment.id ? "Voiding…" : "Void"}
+                      </Button>
+                    ) : (
+                      <span className="text-slate-300">-</span>
+                    )}
+                  </td>
                 </tr>
               );
             })}

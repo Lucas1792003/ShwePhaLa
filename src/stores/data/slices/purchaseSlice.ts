@@ -187,5 +187,25 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
       auditLogs: [...result.auditLogs, ...s.auditLogs],
     }));
   },
+
+  voidSupplierPayment: async ({ paymentId, reason }) => {
+    const { data, error } = await supabase.rpc("void_supplier_payment", {
+      p_payment_id: paymentId,
+      p_reason: reason,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Void supplier payment returned no data.");
+    const result = data as RecordSupplierPaymentResult;
+
+    set((s) => ({
+      purchaseOrders: s.purchaseOrders.map((p) =>
+        p.id === result.purchaseOrder.id ? result.purchaseOrder : p
+      ),
+      supplierPayments: s.supplierPayments.map((p) =>
+        p.id === result.supplierPayment.id ? result.supplierPayment : p
+      ),
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+  },
 });
 
