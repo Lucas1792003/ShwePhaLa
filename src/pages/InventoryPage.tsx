@@ -16,10 +16,12 @@ import { downloadCsv } from "../lib/csv";
 import { hasPermission } from "../lib/permissions";
 import { CategoryFilter } from "../features/categories/CategoryFilter";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
+import { useTranslation } from "../hooks/useTranslation";
 
 const PAGE_SIZE = 10;
 
 export const InventoryPage = () => {
+  const { t } = useTranslation();
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) => state.users.find((user) => user.id === currentUserId));
   const { currentShopId, setShopId } = useAppStore();
@@ -108,18 +110,17 @@ export const InventoryPage = () => {
   return (
     <Card>
       <PageHeader
-        title="Inventory"
-        subtitle="Track on-hand and adjustments."
-        actions={<Button variant="secondary" onClick={exportInventory}>Export CSV</Button>}
+        title={t("inventory", "title")}
+        subtitle={t("inventory", "subtitle")}
+        actions={<Button variant="secondary" onClick={exportInventory}>{t("inventory", "exportCsv")}</Button>}
       />
 
       {!hasShop && (
         <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-600">
-          Select a shop before adjusting inventory. On-hand stock and movements
-          are shop-specific.
+          {t("inventory", "noShopSelected")}
           {currentUser?.role === "ADMIN"
-            ? " Pick one from the shop pills below."
-            : " Contact your administrator if you have not been assigned to a shop."}
+            ? t("inventory", "noShopAdminHint")
+            : t("inventory", "noShopStaffHint")}
         </div>
       )}
 
@@ -152,8 +153,8 @@ export const InventoryPage = () => {
       <div className="mt-4">
         <Tabs
           tabs={[
-            { id: "stock", label: "Stock" },
-            ...(canViewMovements ? [{ id: "movements", label: "Movements" }] : []),
+            { id: "stock", label: t("inventory", "stockTab") },
+            ...(canViewMovements ? [{ id: "movements", label: t("inventory", "movementsTab") }] : []),
           ]}
           active={effectiveTab}
           onChange={setActiveTab}
@@ -163,7 +164,7 @@ export const InventoryPage = () => {
       {effectiveTab === "stock" && (
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center gap-3">
-            <SearchInput value={search} onChange={setSearch} placeholder="Search product" className="min-w-64 flex-1 md:w-96 md:flex-none" />
+            <SearchInput value={search} onChange={setSearch} placeholder={t("inventory", "searchProduct")} className="min-w-64 flex-1 md:w-96 md:flex-none" />
           </div>
           {/* Category filter — shared icon-chip filter (no native dropdown) */}
           <CategoryFilter
@@ -179,7 +180,7 @@ export const InventoryPage = () => {
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm text-slate-500">
-              Showing {stockRows.length === 0 ? 0 : ((stockPage - 1) * PAGE_SIZE) + 1}-{Math.min(stockPage * PAGE_SIZE, stockRows.length)} of {stockRows.length} products
+              {t("inventory", "showing")} {stockRows.length === 0 ? 0 : ((stockPage - 1) * PAGE_SIZE) + 1}-{Math.min(stockPage * PAGE_SIZE, stockRows.length)} {t("inventory", "of")} {stockRows.length} {t("inventory", "products")}
             </span>
             <Pagination page={stockPage} totalPages={stockTotalPages} onChange={setStockPage} />
           </div>
@@ -189,19 +190,19 @@ export const InventoryPage = () => {
       {effectiveTab === "movements" && canViewMovements && (
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center gap-3">
-            <SearchInput value={movementSearch} onChange={setMovementSearch} placeholder="Filter by product" className="min-w-64 flex-1 md:w-96 md:flex-none" />
+            <SearchInput value={movementSearch} onChange={setMovementSearch} placeholder={t("inventory", "filterByProduct")} className="min-w-64 flex-1 md:w-96 md:flex-none" />
             <DateRangePicker start={range.start} end={range.end} onChange={setRange} />
           </div>
           {filteredMovements.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300/70 bg-slate-50/60 p-6 text-center text-sm text-slate-500">
-              No movements yet.
+              {t("inventory", "noMovements")}
             </div>
           ) : (
             <>
               <MovementsTable movements={paginatedMovements} products={products} />
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm text-slate-500">
-                  Showing {filteredMovements.length === 0 ? 0 : ((movementPage - 1) * PAGE_SIZE) + 1}-{Math.min(movementPage * PAGE_SIZE, filteredMovements.length)} of {filteredMovements.length} movements
+                  {t("inventory", "showing")} {filteredMovements.length === 0 ? 0 : ((movementPage - 1) * PAGE_SIZE) + 1}-{Math.min(movementPage * PAGE_SIZE, filteredMovements.length)} {t("inventory", "of")} {filteredMovements.length} {t("inventory", "movements")}
                 </span>
                 <Pagination page={movementPage} totalPages={movementTotalPages} onChange={setMovementPage} />
               </div>
@@ -230,7 +231,7 @@ export const InventoryPage = () => {
             });
             setAdjustProductId(null);
           } catch (error) {
-            alert(error instanceof Error ? error.message : "Failed to adjust stock");
+            alert(error instanceof Error ? error.message : t("inventory", "adjustFailed"));
           }
         }}
       />
