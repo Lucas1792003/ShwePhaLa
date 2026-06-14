@@ -69,8 +69,11 @@ export const ProfitReportsPage = () => {
       shopSales.forEach((sale) => {
         const items = saleItems.filter((i) => i.saleId === sale.id);
         items.forEach((item) => {
-          const product = products.find((p) => p.id === item.productId);
-          cost += (product?.costMmk ?? 0) * item.qtyUnits;
+          // Prefer the cost captured at sale time (migration 041); fall back to
+          // the product's current cost for sales made before the snapshot.
+          const unitCost =
+            item.unitCostMmkSnapshot ?? products.find((p) => p.id === item.productId)?.costMmk ?? 0;
+          cost += unitCost * item.qtyUnits;
         });
       });
 

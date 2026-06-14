@@ -264,6 +264,7 @@ const mapSaleItem = (r: any): SaleItem => ({
   unitBaseQuantitySnapshot: r.unit_base_quantity_snapshot ?? undefined,
   unitPriceMmkSnapshot: r.unit_price_mmk_snapshot ?? undefined,
   baseQuantitySold: r.base_quantity_sold ?? undefined,
+  unitCostMmkSnapshot: r.unit_cost_mmk_snapshot ?? undefined,
   stockOverrideBy: r.stock_override_by ?? undefined,
   priceLevelId: r.price_level_id ?? undefined,
   priceLevelNameSnapshot: r.price_level_name_snapshot ?? undefined,

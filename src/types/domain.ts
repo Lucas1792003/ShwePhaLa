@@ -506,6 +506,9 @@ export interface SaleItem {
   unitBaseQuantitySnapshot?: number;
   unitPriceMmkSnapshot?: number;
   baseQuantitySold?: number;
+  /** Product base-unit cost captured at sale time (migration 041) for true
+   *  COGS. NULL on rows sold before the snapshot shipped. */
+  unitCostMmkSnapshot?: number;
   stockOverrideBy?: string;
   // Price-level snapshot (migration 030). NULL on pre-030 rows.
   priceLevelId?: string;

@@ -21,6 +21,8 @@ export interface RangedSaleItem {
   saleId: string;
   productId: string;
   qtyUnits: number;
+  /** Cost captured at sale time (migration 041); undefined on legacy rows. */
+  unitCostMmkSnapshot?: number;
 }
 
 interface RangedSalesResult {
@@ -90,12 +92,17 @@ export const useRangedSales = (
           if (batch.length === 0) continue;
           const itemsRes = await supabase
             .from("sale_items")
-            .select("sale_id, product_id, qty_units")
+            .select("sale_id, product_id, qty_units, unit_cost_mmk_snapshot")
             .in("sale_id", batch);
           if (itemsRes.error) throw itemsRes.error;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           for (const r of (itemsRes.data ?? []) as any[]) {
-            rangedItems.push({ saleId: r.sale_id, productId: r.product_id, qtyUnits: r.qty_units });
+            rangedItems.push({
+              saleId: r.sale_id,
+              productId: r.product_id,
+              qtyUnits: r.qty_units,
+              unitCostMmkSnapshot: r.unit_cost_mmk_snapshot ?? undefined,
+            });
           }
         }
 

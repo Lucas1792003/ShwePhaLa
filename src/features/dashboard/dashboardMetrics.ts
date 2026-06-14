@@ -111,7 +111,8 @@ export const calculateNetRevenue = (
 /** Number of valid orders. */
 export const calculateSalesCount = (sales: Sale[]): number => sales.length;
 
-/** Cost of goods sold — current-product-cost approximation; see header. */
+/** Cost of goods sold — uses the per-line cost captured at sale time when
+ *  present (migration 041), else the current product cost (legacy rows). */
 export const calculateCostOfGoods = (
   sales: Sale[],
   saleItems: SaleItem[],
@@ -122,8 +123,9 @@ export const calculateCostOfGoods = (
   return saleItems
     .filter((i) => saleIds.has(i.saleId))
     .reduce((sum, item) => {
-      const product = productById.get(item.productId);
-      const cost = product?.costMmk ?? 0;
+      // Prefer the cost captured at sale time (migration 041); fall back to the
+      // product's current cost for sales made before the snapshot shipped.
+      const cost = item.unitCostMmkSnapshot ?? productById.get(item.productId)?.costMmk ?? 0;
       return sum + cost * item.qtyUnits;
     }, 0);
 };
