@@ -6,8 +6,10 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { CategoryFilter } from "../features/categories/CategoryFilter";
 import { getActiveProductUnits } from "../features/catalog/productUnits";
 import { formatMmk } from "../lib/utils";
+import { useTranslation } from "../hooks/useTranslation";
 
 export const ProductsPage = () => {
+  const { t } = useTranslation();
   const products = useDataStore((state) => state.products);
   const productUnits = useDataStore((state) => state.productUnits);
   const categories = useDataStore((state) => state.categories);
@@ -22,7 +24,7 @@ export const ProductsPage = () => {
 
   return (
     <Card>
-      <PageHeader title="Products" subtitle="Read-only catalog with barcodes and base stock units." />
+      <PageHeader title={t("products", "catalogTitle")} subtitle={t("products", "catalogSubtitle")} />
       <div className="mt-6 space-y-3">
         <SearchInput value={search} onChange={setSearch} />
         <CategoryFilter
@@ -44,13 +46,13 @@ export const ProductsPage = () => {
               <div className="shrink-0 text-sm font-semibold">{formatMmk(product.priceMmk)}</div>
             </div>
             <div className="mt-2 text-xs text-slate-500">
-              Unit: {product.unitType} - Low stock alert at {product.lowStockThreshold}
+              {t("products", "unitLine", { unitType: product.unitType, threshold: product.lowStockThreshold })}
             </div>
             {units.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {units.map((unit) => (
                   <span key={unit.id} className="rounded-full bg-white px-2 py-1 text-xs text-slate-600">
-                    {unit.name}: {unit.baseQuantity} {product.unitType} - {formatMmk(unit.salePriceMmk)}
+                    {t("products", "unitChip", { name: unit.name, qty: unit.baseQuantity, unitType: product.unitType, price: formatMmk(unit.salePriceMmk) })}
                   </span>
                 ))}
               </div>

@@ -7,6 +7,7 @@ import { useDataStore } from "../stores/dataStore";
 import type { ProductCategory, Brand, Category, Product } from "../types";
 import { getErrorMessage } from "../lib/errors";
 import { hasPermission } from "../lib/permissions";
+import { useTranslation } from "../hooks/useTranslation";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
@@ -37,6 +38,7 @@ const PAGE_SIZE = 10;
 
 export const ProductsManagePage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentShopId = useAppStore((state) => state.currentShopId);
   const currentUser = useDataStore((state) => state.users.find((u) => u.id === currentUserId));
@@ -201,7 +203,7 @@ export const ProductsManagePage = () => {
   // never summed into a fake global quantity. Switch shops in the sidebar to
   // see another shop's stock for the same shared product.
   const currentShopName =
-    shops.find((s) => s.id === currentShopId)?.name ?? "No shop selected";
+    shops.find((s) => s.id === currentShopId)?.name ?? t("products", "noShopSelected");
   const getProductStock = (productId: string) => {
     if (!currentShopId) return 0;
     const record = inventory.find(
@@ -227,12 +229,12 @@ export const ProductsManagePage = () => {
   };
 
   const handleDeleteProduct = async (product: Product) => {
-    if (!confirm(`Permanently delete "${product.name}"? This cannot be undone.`)) return;
+    if (!confirm(t("products", "confirmDeleteProduct", { name: product.name }))) return;
 
     try {
       await deleteProduct(product.id);
     } catch (error) {
-      alert(getErrorMessage(error) || "Could not delete the product.");
+      alert(getErrorMessage(error) || t("products", "couldNotDeleteProduct"));
       return;
     }
 
@@ -276,12 +278,12 @@ export const ProductsManagePage = () => {
       const text = await file.text();
       const records = parseCsvRecords(text);
       if (records.length === 0) {
-        setImportError("The CSV file has no product rows.");
+        setImportError(t("products", "csvNoRows"));
         return;
       }
       setImportPlan(buildProductCsvImportPlan(records, productCsvContext));
     } catch (error) {
-      setImportError(getErrorMessage(error) || "Could not read the CSV file.");
+      setImportError(getErrorMessage(error) || t("products", "csvReadError"));
     }
   };
 
@@ -312,10 +314,10 @@ export const ProductsManagePage = () => {
         entityId: "bulk-import",
         createdAt: new Date().toISOString(),
       });
-      alert(`Imported ${importPlan.items.length} product(s).`);
+      alert(t("products", "importedAlert", { n: importPlan.items.length }));
       resetImportState();
     } catch (error) {
-      setImportError(getErrorMessage(error) || "Product import failed.");
+      setImportError(getErrorMessage(error) || t("products", "importFailed"));
     } finally {
       setIsImporting(false);
     }
@@ -332,7 +334,7 @@ export const ProductsManagePage = () => {
       (c) => c.name.toLowerCase() === categoryName && c.id !== editingCategory?.id
     );
     if (existing) {
-      alert("Category already exists");
+      alert(t("products", "categoryExists"));
       return;
     }
 
@@ -349,9 +351,7 @@ export const ProductsManagePage = () => {
       return otherIconKey === effectiveIconKey && c.color === newCategoryColor;
     });
     if (sameLook) {
-      alert(
-        `Category "${sameLook.name}" already uses this icon and color combination. Please choose a different icon or color.`,
-      );
+      alert(t("products", "categorySameLook", { name: sameLook.name }));
       return;
     }
 
@@ -418,13 +418,13 @@ export const ProductsManagePage = () => {
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete "${category.name}"?`)) return;
+    if (!confirm(t("products", "confirmDeleteCategory", { name: category.name }))) return;
 
     try {
       // deleteCategory re-checks usage in the data layer and throws if unsafe.
       deleteCategory(category.id);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Could not delete the category.");
+      alert(e instanceof Error ? e.message : t("products", "couldNotDeleteCategory"));
       return;
     }
 
@@ -471,11 +471,11 @@ export const ProductsManagePage = () => {
   const handleSaveBrand = async () => {
     const trimmed = newBrandName.trim();
     if (!trimmed) {
-      setBrandSaveError("Brand name is required.");
+      setBrandSaveError(t("products", "brandNameRequired"));
       return;
     }
     if (!newBrandCategoryId) {
-      setBrandSaveError("Category is required.");
+      setBrandSaveError(t("products", "categoryRequired"));
       return;
     }
     // Mirror category duplicate guard — case + whitespace insensitive,
@@ -488,7 +488,7 @@ export const ProductsManagePage = () => {
         b.id !== editingBrand?.id,
     );
     if (duplicate) {
-      setBrandSaveError("A brand with this name already exists in this category.");
+      setBrandSaveError(t("products", "brandExists"));
       return;
     }
 
@@ -523,16 +523,16 @@ export const ProductsManagePage = () => {
       // newly created brand is visible without a second click.
       setBrandsListCategoryId(targetCategoryId);
     } catch (error) {
-      setBrandSaveError(getErrorMessage(error) || "Could not save the brand.");
+      setBrandSaveError(getErrorMessage(error) || t("products", "couldNotSaveBrand"));
     }
   };
 
   const handleDeactivateBrand = async (brand: Brand) => {
-    if (!confirm(`Deactivate "${brand.name}"? It will be hidden from new products.`)) return;
+    if (!confirm(t("products", "confirmDeactivateBrand", { name: brand.name }))) return;
     try {
       await deactivateBrand(brand.id);
     } catch (error) {
-      alert(getErrorMessage(error) || "Could not deactivate the brand.");
+      alert(getErrorMessage(error) || t("products", "couldNotDeactivateBrand"));
     }
   };
 
@@ -546,13 +546,13 @@ export const ProductsManagePage = () => {
         onChange={(event) => void handleProductCsvSelected(event)}
       />
       <PageHeader
-        title="Product Management"
-        subtitle="Products are a shared catalog; the Stock column shows on-hand units for the selected shop only."
+        title={t("products", "title")}
+        subtitle={t("products", "subtitle")}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" onClick={handleExportProducts}>
               <span className="material-symbols-rounded mr-1 text-sm">download</span>
-              Export CSV
+              {t("products", "exportCsv")}
             </Button>
             {canCreateProducts && (
               <Button
@@ -560,13 +560,13 @@ export const ProductsManagePage = () => {
                 onClick={() => importFileInputRef.current?.click()}
               >
                 <span className="material-symbols-rounded mr-1 text-sm">upload</span>
-                Import CSV
+                {t("products", "importCsv")}
               </Button>
             )}
             {canCreateProducts && (
               <Button onClick={handleAddProduct}>
                 <span className="material-symbols-rounded mr-1 text-sm">add</span>
-                Add Product
+                {t("products", "addProduct")}
               </Button>
             )}
           </div>
@@ -578,7 +578,7 @@ export const ProductsManagePage = () => {
         <SearchInput
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder="Search by name, SKU, or barcode..."
+          placeholder={t("products", "searchPlaceholder")}
           className="min-w-64 flex-1 md:w-96 md:flex-none"
         />
         <Select
@@ -586,9 +586,9 @@ export const ProductsManagePage = () => {
           onChange={(e) => setFilterStatus(e.target.value as "all" | "active" | "inactive")}
           className="min-w-44 flex-1 md:w-auto md:flex-none"
         >
-          <option value="all">All Status</option>
-          <option value="active">Active Only</option>
-          <option value="inactive">Inactive Only</option>
+          <option value="all">{t("products", "allStatus")}</option>
+          <option value="active">{t("products", "activeOnly")}</option>
+          <option value="inactive">{t("products", "inactiveOnly")}</option>
         </Select>
       </div>
 
@@ -606,7 +606,7 @@ export const ProductsManagePage = () => {
       {filterBrandsForCategory.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Brand
+            {t("products", "brand")}
           </span>
           <button
             type="button"
@@ -617,14 +617,14 @@ export const ProductsManagePage = () => {
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            All
+            {t("common", "all")}
           </button>
           <select
             value={filterBrandId}
             onChange={(event) => setFilterBrandId(event.target.value)}
             className="min-h-9 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           >
-            <option value="">Select a brand…</option>
+            <option value="">{t("products", "selectBrand")}</option>
             {filterBrandsForCategory.map((brand) => (
               <option key={brand.id} value={brand.id}>
                 {brand.name}
@@ -633,7 +633,7 @@ export const ProductsManagePage = () => {
           </select>
           {filterBrandId && (
             <Badge tone="green">
-              {filterBrandsForCategory.find((b) => b.id === filterBrandId)?.name ?? "Brand"}
+              {filterBrandsForCategory.find((b) => b.id === filterBrandId)?.name ?? t("products", "brandFallback")}
             </Badge>
           )}
         </div>
@@ -644,26 +644,26 @@ export const ProductsManagePage = () => {
         <Table className="min-w-[980px]">
           <THead>
             <TR>
-              <TH>Product</TH>
-              <TH>Category</TH>
-              <TH className="text-right">Price</TH>
-              <TH className="text-right">Cost</TH>
-              <TH className="text-right">GP %</TH>
+              <TH>{t("products", "product")}</TH>
+              <TH>{t("common", "category")}</TH>
+              <TH className="text-right">{t("common", "price")}</TH>
+              <TH className="text-right">{t("products", "cost")}</TH>
+              <TH className="text-right">{t("products", "gpPct")}</TH>
               <TH className="text-right">
-                Stock
+                {t("products", "stock")}
                 <span className="block text-[10px] font-normal text-slate-400">
                   {currentShopName}
                 </span>
               </TH>
-              <TH>Status</TH>
-              <TH className="text-right">Actions</TH>
+              <TH>{t("common", "status")}</TH>
+              <TH className="text-right">{t("common", "actions")}</TH>
             </TR>
           </THead>
           <TBody>
             {paginatedProducts.length === 0 ? (
               <TR>
                 <TD colSpan={8} className="py-8 text-center text-slate-500">
-                  No products found
+                  {t("products", "noProductsFound")}
                 </TD>
               </TR>
             ) : (
@@ -746,12 +746,12 @@ export const ProductsManagePage = () => {
                       <span className={isLowStock ? "font-medium text-amber-600" : ""}>
                         {stock} {product.unitType}
                       </span>
-                      {isLowStock && stock > 0 && <div className="text-xs text-amber-500">Low</div>}
-                      {stock === 0 && <div className="text-xs text-red-500">Out</div>}
+                      {isLowStock && stock > 0 && <div className="text-xs text-amber-500">{t("products", "low")}</div>}
+                      {stock === 0 && <div className="text-xs text-red-500">{t("products", "out")}</div>}
                     </TD>
                     <TD>
                       <Badge tone={product.isActive ? "green" : "slate"}>
-                        {product.isActive ? "Active" : "Inactive"}
+                        {product.isActive ? t("common", "active") : t("common", "inactive")}
                       </Badge>
                     </TD>
                     <TD className="text-right">
@@ -777,8 +777,11 @@ export const ProductsManagePage = () => {
       {/* Pagination */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-slate-500">
-          Showing {filteredProducts.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}-
-          {Math.min(page * PAGE_SIZE, filteredProducts.length)} of {filteredProducts.length} products
+          {t("products", "showingProducts", {
+            from: filteredProducts.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1,
+            to: Math.min(page * PAGE_SIZE, filteredProducts.length),
+            total: filteredProducts.length,
+          })}
         </span>
         <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </div>
@@ -787,8 +790,8 @@ export const ProductsManagePage = () => {
       <div className="mt-8 border-t border-slate-200 pt-6">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-slate-800">Categories</h3>
-            <p className="text-sm text-slate-500">Manage product categories.</p>
+            <h3 className="text-lg font-semibold text-slate-800">{t("products", "categories")}</h3>
+            <p className="text-sm text-slate-500">{t("products", "manageCategories")}</p>
           </div>
           {canCreateProducts && (
             <Button
@@ -802,7 +805,7 @@ export const ProductsManagePage = () => {
               }}
             >
               <span className="material-symbols-rounded mr-1 text-sm">add</span>
-              Add Category
+              {t("products", "addCategory")}
             </Button>
           )}
         </div>
@@ -829,7 +832,7 @@ export const ProductsManagePage = () => {
                         {category.name}
                       </div>
                       <p className="text-xs text-slate-500">
-                        {productCount} product(s) · {brandsHere.length} brand(s)
+                        {t("products", "categoryCounts", { n: productCount, m: brandsHere.length })}
                       </p>
                     </div>
                   </div>
@@ -839,7 +842,7 @@ export const ProductsManagePage = () => {
                         type="button"
                         onClick={() => handleEditCategory(category)}
                         className="rounded p-1 text-slate-500 hover:bg-slate-100"
-                        title="Edit"
+                        title={t("common", "edit")}
                       >
                         <span className="material-symbols-rounded text-sm">edit</span>
                       </button>
@@ -849,7 +852,7 @@ export const ProductsManagePage = () => {
                         type="button"
                         onClick={() => handleDeleteCategory(category)}
                         className="rounded p-1 text-slate-500 hover:bg-slate-100"
-                        title="Delete"
+                        title={t("common", "delete")}
                       >
                         <span className="material-symbols-rounded text-sm">delete</span>
                       </button>
@@ -862,7 +865,7 @@ export const ProductsManagePage = () => {
                   onClick={() => setBrandsListCategoryId(category.id)}
                   className="mt-3 flex w-full items-center justify-between rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
                 >
-                  <span>Brands ({brandsHere.length})</span>
+                  <span>{t("products", "brandsCount", { n: brandsHere.length })}</span>
                   <span className="material-symbols-rounded text-sm">open_in_new</span>
                 </button>
               </div>
@@ -878,13 +881,13 @@ export const ProductsManagePage = () => {
         onClose={() => {
           if (!isImporting) resetImportState();
         }}
-        title="Import Products CSV"
-        description="Review the dry-run result before writing products."
+        title={t("products", "importTitle")}
+        description={t("products", "importDesc")}
         size="xl"
         footer={
           <>
             <Button variant="secondary" onClick={resetImportState} disabled={isImporting}>
-              Cancel
+              {t("common", "cancel")}
             </Button>
             <Button
               onClick={() => void handleApplyProductImport()}
@@ -895,7 +898,7 @@ export const ProductsManagePage = () => {
                 importPlan.items.length === 0
               }
             >
-              {isImporting ? "Importing..." : "Import Products"}
+              {isImporting ? t("products", "importing") : t("products", "importProducts")}
             </Button>
           </>
         }
@@ -904,10 +907,10 @@ export const ProductsManagePage = () => {
           <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="text-sm font-medium text-slate-800">
-                {importFileName || "No file selected"}
+                {importFileName || t("products", "noFileSelected")}
               </div>
               <p className="text-xs text-slate-500">
-                Export CSV first to get the supported product columns and active price-level columns.
+                {t("products", "importHint")}
               </p>
             </div>
             <Button
@@ -915,7 +918,7 @@ export const ProductsManagePage = () => {
               onClick={() => importFileInputRef.current?.click()}
               disabled={isImporting}
             >
-              Choose CSV
+              {t("products", "chooseCsv")}
             </Button>
           </div>
 
@@ -929,19 +932,19 @@ export const ProductsManagePage = () => {
             <>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  <div className="text-xs uppercase text-slate-500">Valid Rows</div>
+                  <div className="text-xs uppercase text-slate-500">{t("products", "validRows")}</div>
                   <div className="text-lg font-semibold text-slate-800">{importPlan.items.length}</div>
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  <div className="text-xs uppercase text-slate-500">Create</div>
+                  <div className="text-xs uppercase text-slate-500">{t("products", "create")}</div>
                   <div className="text-lg font-semibold text-emerald-700">{importPlan.createCount}</div>
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  <div className="text-xs uppercase text-slate-500">Update</div>
+                  <div className="text-xs uppercase text-slate-500">{t("products", "update")}</div>
                   <div className="text-lg font-semibold text-blue-700">{importPlan.updateCount}</div>
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  <div className="text-xs uppercase text-slate-500">Errors</div>
+                  <div className="text-xs uppercase text-slate-500">{t("products", "errors")}</div>
                   <div className="text-lg font-semibold text-rose-700">{importPlan.errorCount}</div>
                 </div>
               </div>
@@ -951,11 +954,11 @@ export const ProductsManagePage = () => {
                   <Table className="min-w-[720px]">
                     <THead>
                       <TR>
-                        <TH>Row</TH>
-                        <TH>Status</TH>
-                        <TH>SKU</TH>
-                        <TH>Name</TH>
-                        <TH>Details</TH>
+                        <TH>{t("products", "row")}</TH>
+                        <TH>{t("common", "status")}</TH>
+                        <TH>{t("products", "sku")}</TH>
+                        <TH>{t("common", "name")}</TH>
+                        <TH>{t("products", "detailsCol")}</TH>
                       </TR>
                     </THead>
                     <TBody>
@@ -967,7 +970,7 @@ export const ProductsManagePage = () => {
                             <TD>{row.rowNumber}</TD>
                             <TD>
                               <Badge tone={hasErrors ? "red" : hasWarnings ? "amber" : "green"}>
-                                {hasErrors ? "Error" : row.action}
+                                {hasErrors ? t("products", "errorBadge") : row.action}
                               </Badge>
                             </TD>
                             <TD className="font-mono text-xs">{row.sku || "-"}</TD>
@@ -978,7 +981,7 @@ export const ProductsManagePage = () => {
                               ) : hasWarnings ? (
                                 <span className="text-amber-700">{row.warnings.join(" ")}</span>
                               ) : (
-                                <span className="text-slate-500">Ready</span>
+                                <span className="text-slate-500">{t("products", "ready")}</span>
                               )}
                             </TD>
                           </TR>
@@ -990,14 +993,14 @@ export const ProductsManagePage = () => {
               </div>
               {importPlan.previewRows.length > 50 && (
                 <p className="text-xs text-slate-500">
-                  Showing first 50 rows of {importPlan.previewRows.length}. Fix any errors, then choose the file again.
+                  {t("products", "showingFirst50", { total: importPlan.previewRows.length })}
                 </p>
               )}
             </>
           )}
 
           {!importPlan && !importError && (
-            <p className="text-sm text-slate-500">Reading CSV...</p>
+            <p className="text-sm text-slate-500">{t("products", "readingCsv")}</p>
           )}
         </div>
       </Modal>
@@ -1012,20 +1015,20 @@ export const ProductsManagePage = () => {
           setNewCategoryColor("blue");
           setNewCategoryIconKey("");
         }}
-        title={editingCategory ? "Edit Category" : "Add New Category"}
+        title={editingCategory ? t("products", "editCategory") : t("products", "addNewCategory")}
       >
         <div className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Category Name *</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">{t("products", "categoryNameLabel")}</label>
             <Input
-              placeholder="e.g. snacks, beverages"
+              placeholder={t("products", "categoryNamePlaceholder")}
               value={newCategoryName}
               onChange={(e) => setNewCategoryName(e.target.value)}
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Icon</label>
+            <label className="mb-2 block text-sm font-medium text-slate-700">{t("products", "icon")}</label>
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
               {CATEGORY_ICONS.map((opt) => (
                 <button
@@ -1045,13 +1048,13 @@ export const ProductsManagePage = () => {
             </div>
             <p className="mt-1 text-xs text-slate-500">
               {newCategoryIconKey
-                ? `Selected: ${CATEGORY_ICONS.find((i) => i.key === newCategoryIconKey)?.label ?? newCategoryIconKey}`
-                : "Pick an icon (optional — otherwise resolved from the category name)."}
+                ? t("products", "iconSelected", { label: CATEGORY_ICONS.find((i) => i.key === newCategoryIconKey)?.label ?? newCategoryIconKey })
+                : t("products", "iconHint")}
             </p>
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Color Accent</label>
+            <label className="mb-2 block text-sm font-medium text-slate-700">{t("products", "colorAccent")}</label>
             {/* Compute which colors are already paired with the
                 currently-picked icon by another active category. Same
                 icon + same color is blocked at submit time too — this
@@ -1084,7 +1087,7 @@ export const ProductsManagePage = () => {
                           type="button"
                           disabled={taken && !selected}
                           onClick={() => setNewCategoryColor(color)}
-                          title={taken ? "Already used with this icon by another category" : undefined}
+                          title={taken ? t("products", "colorTaken") : undefined}
                           className={`flex h-8 w-8 items-center justify-center rounded-full ${colorStyles[color]} transition-transform ${
                             selected
                               ? "scale-110 ring-2 ring-offset-2"
@@ -1102,8 +1105,7 @@ export const ProductsManagePage = () => {
                   </div>
                   {usedColorsForIcon.size > 0 && (
                     <p className="mt-2 text-xs text-slate-500">
-                      Greyed swatches are already paired with this icon by another category.
-                      Pick a different colour, or change the icon.
+                      {t("products", "colorHint")}
                     </p>
                   )}
                 </>
@@ -1122,10 +1124,10 @@ export const ProductsManagePage = () => {
                 setNewCategoryIconKey("");
               }}
             >
-              Cancel
+              {t("common", "cancel")}
             </Button>
             <Button onClick={handleSaveCategory} disabled={!newCategoryName.trim()}>
-              {editingCategory ? "Update" : "Create"}
+              {editingCategory ? t("products", "update") : t("products", "create")}
             </Button>
           </div>
         </div>
@@ -1141,17 +1143,17 @@ export const ProductsManagePage = () => {
           setNewBrandCategoryId("");
           setBrandSaveError(null);
         }}
-        title={editingBrand ? "Edit Brand" : "Add New Brand"}
+        title={editingBrand ? t("products", "editBrand") : t("products", "addNewBrand")}
       >
         <div className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Category *</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">{t("products", "categoryLabel")}</label>
             <Select
               value={newBrandCategoryId}
               onChange={(e) => setNewBrandCategoryId(e.target.value)}
               disabled={!!editingBrand}
             >
-              <option value="">Select a category…</option>
+              <option value="">{t("products", "selectCategory")}</option>
               {activeCategories.map((cat) => (
                 <option key={cat.id} value={cat.id}>
                   {cat.name.charAt(0).toUpperCase() + cat.name.slice(1)}
@@ -1160,15 +1162,15 @@ export const ProductsManagePage = () => {
             </Select>
             {editingBrand && (
               <p className="mt-1 text-xs text-slate-500">
-                Category cannot be changed while editing. Deactivate this brand and create a new one under the target category instead.
+                {t("products", "categoryLocked")}
               </p>
             )}
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Brand Name *</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">{t("products", "brandNameLabel")}</label>
             <Input
-              placeholder="e.g. Grand Royal, Royal Club"
+              placeholder={t("products", "brandNamePlaceholder")}
               value={newBrandName}
               onChange={(e) => setNewBrandName(e.target.value)}
               autoFocus
@@ -1192,13 +1194,13 @@ export const ProductsManagePage = () => {
                 setBrandSaveError(null);
               }}
             >
-              Cancel
+              {t("common", "cancel")}
             </Button>
             <Button
               onClick={() => void handleSaveBrand()}
               disabled={!newBrandName.trim() || !newBrandCategoryId}
             >
-              {editingBrand ? "Update" : "Create"}
+              {editingBrand ? t("products", "update") : t("products", "create")}
             </Button>
           </div>
         </div>
@@ -1219,13 +1221,13 @@ export const ProductsManagePage = () => {
           <Modal
             open={Boolean(brandsListCategoryId)}
             onClose={() => setBrandsListCategoryId(null)}
-            title={activeCategory ? `Brands in ${activeCategory.name}` : "Brands"}
-            description="Manage the brands grouped under this category."
+            title={activeCategory ? t("products", "brandsIn", { name: activeCategory.name }) : t("products", "brandsTitle")}
+            description={t("products", "brandsListDesc")}
           >
             <div className="space-y-3">
               {brandsForList.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm italic text-slate-500">
-                  No brands yet. Add the first one below.
+                  {t("products", "noBrands")}
                 </p>
               ) : (
                 <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
@@ -1243,7 +1245,7 @@ export const ProductsManagePage = () => {
                             {brand.name}
                           </div>
                           <div className="text-xs text-slate-500">
-                            {brandProductCount} product(s)
+                            {t("products", "productCount", { n: brandProductCount })}
                           </div>
                         </div>
                         {canCreateProducts && (
@@ -1252,7 +1254,7 @@ export const ProductsManagePage = () => {
                               type="button"
                               onClick={() => handleEditBrand(brand)}
                               className="rounded p-1 text-slate-500 hover:bg-slate-100"
-                              title="Edit brand"
+                              title={t("products", "editBrandTitle")}
                             >
                               <span className="material-symbols-rounded text-sm">edit</span>
                             </button>
@@ -1260,7 +1262,7 @@ export const ProductsManagePage = () => {
                               type="button"
                               onClick={() => void handleDeactivateBrand(brand)}
                               className="rounded p-1 text-slate-500 hover:bg-slate-100"
-                              title="Deactivate brand"
+                              title={t("products", "deactivateBrandTitle")}
                             >
                               <span className="material-symbols-rounded text-sm">delete</span>
                             </button>
@@ -1277,7 +1279,7 @@ export const ProductsManagePage = () => {
                   variant="secondary"
                   onClick={() => setBrandsListCategoryId(null)}
                 >
-                  Close
+                  {t("common", "close")}
                 </Button>
                 {canCreateProducts && (
                   <Button
@@ -1287,7 +1289,7 @@ export const ProductsManagePage = () => {
                     disabled={!activeCategory}
                   >
                     <span className="material-symbols-rounded mr-1 text-sm">add</span>
-                    Add Brand
+                    {t("products", "addBrand")}
                   </Button>
                 )}
               </div>
