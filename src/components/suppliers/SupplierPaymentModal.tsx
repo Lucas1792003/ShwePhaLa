@@ -7,6 +7,7 @@ import { MoneyInput } from "../forms/MoneyInput";
 import { formatMmk } from "../../lib/utils";
 import { getErrorMessage } from "../../lib/errors";
 import { useDataStore } from "../../stores/dataStore";
+import { useTranslation } from "../../hooks/useTranslation";
 import { getPurchaseOrderBalanceMmk } from "../../features/suppliers/debt";
 import { supplierPaymentMethods } from "../../features/suppliers/uiConstants";
 import type { PurchaseOrder, SupplierPaymentMethod } from "../../types";
@@ -27,6 +28,7 @@ interface FormState {
 export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPaymentModalProps) => {
   const recordSupplierPayment = useDataStore((state) => state.recordSupplierPayment);
   const toast = useToast();
+  const { t } = useTranslation();
 
   const balance = purchaseOrder ? getPurchaseOrderBalanceMmk(purchaseOrder) : 0;
 
@@ -67,11 +69,11 @@ export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPayment
     if (!purchaseOrder) return;
     if (submitting) return;
     if (purchaseOrder.status !== "RECEIVED") {
-      setError("Only received purchase orders can be paid.");
+      setError(t("suppliers", "onlyReceivedPaid"));
       return;
     }
     if (form.amountMmk <= 0 || form.amountMmk > balance) {
-      setError(`Amount must be between MMK 1 and ${formatMmk(balance)}.`);
+      setError(t("suppliers", "amountRange", { max: formatMmk(balance) }));
       return;
     }
     setSubmitting(true);
@@ -85,14 +87,14 @@ export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPayment
       });
       toast({
         variant: "success",
-        title: "Supplier payment recorded",
-        description: `${purchaseOrder.orderNo} updated.`,
+        title: t("suppliers", "paymentRecorded"),
+        description: t("suppliers", "poUpdated", { orderNo: purchaseOrder.orderNo }),
       });
       onClose();
     } catch (err) {
-      const message = getErrorMessage(err, "Could not record supplier payment.");
+      const message = getErrorMessage(err, t("suppliers", "couldNotRecord"));
       setError(message);
-      toast({ variant: "error", title: "Payment failed", description: message });
+      toast({ variant: "error", title: t("suppliers", "paymentFailed"), description: message });
     } finally {
       setSubmitting(false);
     }
@@ -102,7 +104,7 @@ export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPayment
     <Modal
       open={Boolean(purchaseOrder)}
       onClose={requestClose}
-      title="Record supplier payment"
+      title={t("suppliers", "payTitle")}
       description={purchaseOrder?.orderNo}
     >
       {purchaseOrder && (
@@ -110,18 +112,18 @@ export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPayment
           <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <div className="text-xs uppercase tracking-wide text-slate-500">Total</div>
+                <div className="text-xs uppercase tracking-wide text-slate-500">{t("suppliers", "total")}</div>
                 <div className="mt-0.5 font-semibold">{formatMmk(purchaseOrder.totalMmk)}</div>
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wide text-slate-500">Outstanding</div>
+                <div className="text-xs uppercase tracking-wide text-slate-500">{t("suppliers", "outstanding")}</div>
                 <div className="mt-0.5 font-semibold text-rose-700">{formatMmk(balance)}</div>
               </div>
             </div>
           </div>
 
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Amount</span>
+            <span className="mb-1 block text-sm font-medium text-slate-700">{t("suppliers", "amount")}</span>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
                 <MoneyInput
@@ -135,16 +137,16 @@ export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPayment
                 onClick={() => setForm((prev) => ({ ...prev, amountMmk: balance }))}
                 disabled={balance <= 0}
               >
-                Pay outstanding
+                {t("suppliers", "payOutstanding")}
               </Button>
             </div>
             <div className="mt-1 text-xs text-slate-500">
-              Outstanding balance: {formatMmk(balance)}
+              {t("suppliers", "outstandingBalanceLine", { amount: formatMmk(balance) })}
             </div>
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Payment method</span>
+            <span className="mb-1 block text-sm font-medium text-slate-700">{t("suppliers", "paymentMethod")}</span>
             <Select
               value={form.paymentMethod}
               onChange={(event) =>
@@ -160,24 +162,24 @@ export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPayment
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Reference no</span>
+            <span className="mb-1 block text-sm font-medium text-slate-700">{t("suppliers", "referenceNo")}</span>
             <input
               type="text"
               value={form.referenceNo}
               onChange={(event) => setForm((prev) => ({ ...prev, referenceNo: event.target.value }))}
                 className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
-              placeholder="Bank slip, mobile transaction, voucher..."
+              placeholder={t("suppliers", "referencePlaceholder")}
             />
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Notes</span>
+            <span className="mb-1 block text-sm font-medium text-slate-700">{t("suppliers", "notes")}</span>
             <textarea
               value={form.notes}
               onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
               className="min-h-24 w-full rounded-lg border px-3 py-2 text-sm"
               rows={2}
-              placeholder="Optional notes"
+              placeholder={t("suppliers", "notesPlaceholder")}
             />
           </label>
 
@@ -189,13 +191,13 @@ export const SupplierPaymentModal = ({ purchaseOrder, onClose }: SupplierPayment
 
           <div className="flex flex-wrap justify-end gap-2 pt-2">
             <Button variant="secondary" disabled={submitting} onClick={requestClose}>
-              Cancel
+              {t("common", "cancel")}
             </Button>
             <Button
               onClick={handleSubmit}
               disabled={submitting || form.amountMmk <= 0 || form.amountMmk > balance}
             >
-              {submitting ? "Recording…" : "Record payment"}
+              {submitting ? t("suppliers", "recording") : t("suppliers", "recordPayment")}
             </Button>
           </div>
         </div>

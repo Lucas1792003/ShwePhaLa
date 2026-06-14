@@ -7,6 +7,7 @@ import { MoneyInput } from "../forms/MoneyInput";
 import { formatMmk } from "../../lib/utils";
 import { getErrorMessage } from "../../lib/errors";
 import { useDataStore } from "../../stores/dataStore";
+import { useTranslation } from "../../hooks/useTranslation";
 import { getPurchaseOrderBalanceMmk } from "../../features/suppliers/debt";
 import { supplierPaymentMethods } from "../../features/suppliers/uiConstants";
 import type { PurchaseOrder, Supplier, SupplierPaymentMethod } from "../../types";
@@ -36,6 +37,7 @@ export const SupplierLumpSumPaymentModal = ({
 }: SupplierLumpSumPaymentModalProps) => {
   const paySupplierLumpSum = useDataStore((state) => state.paySupplierLumpSum);
   const toast = useToast();
+  const { t } = useTranslation();
 
   // Oldest-first — mirrors the server's allocation order.
   const orderedPos = useMemo(
@@ -78,7 +80,7 @@ export const SupplierLumpSumPaymentModal = ({
     setError(null);
     if (submitting) return;
     if (form.amountMmk <= 0 || form.amountMmk > totalOutstanding) {
-      setError(`Amount must be between MMK 1 and ${formatMmk(totalOutstanding)}.`);
+      setError(t("suppliers", "amountRange", { max: formatMmk(totalOutstanding) }));
       return;
     }
     setSubmitting(true);
@@ -93,32 +95,32 @@ export const SupplierLumpSumPaymentModal = ({
       });
       toast({
         variant: "success",
-        title: "Payment recorded",
-        description: `${formatMmk(form.amountMmk)} allocated to ${supplier.name}.`,
+        title: t("suppliers", "paymentRecordedShort"),
+        description: t("suppliers", "allocatedTo", { amount: formatMmk(form.amountMmk), name: supplier.name }),
       });
       onClose();
     } catch (err) {
-      const message = getErrorMessage(err, "Could not record supplier payment.");
+      const message = getErrorMessage(err, t("suppliers", "couldNotRecord"));
       setError(message);
-      toast({ variant: "error", title: "Payment failed", description: message });
+      toast({ variant: "error", title: t("suppliers", "paymentFailed"), description: message });
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Modal open={open} onClose={() => (submitting ? undefined : onClose())} title="Pay supplier" description={supplier.name} size="lg">
+    <Modal open={open} onClose={() => (submitting ? undefined : onClose())} title={t("suppliers", "paySupplierTitle")} description={supplier.name} size="lg">
       <div className="space-y-4">
         <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Total outstanding</div>
+          <div className="text-xs uppercase tracking-wide text-slate-500">{t("suppliers", "totalOutstanding")}</div>
           <div className="mt-0.5 text-lg font-bold tabular-nums text-rose-700">{formatMmk(totalOutstanding)}</div>
           <div className="mt-1 text-xs text-slate-500">
-            {orderedPos.length} unpaid purchase order{orderedPos.length === 1 ? "" : "s"} in this shop.
+            {t("suppliers", "unpaidPosLine", { n: orderedPos.length })}
           </div>
         </div>
 
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">Amount</span>
+          <span className="mb-1 block text-sm font-medium text-slate-700">{t("suppliers", "amount")}</span>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
               <MoneyInput value={form.amountMmk} onChange={(value) => setForm((p) => ({ ...p, amountMmk: value ?? 0 }))} />
@@ -129,13 +131,13 @@ export const SupplierLumpSumPaymentModal = ({
               onClick={() => setForm((p) => ({ ...p, amountMmk: totalOutstanding }))}
               disabled={totalOutstanding <= 0}
             >
-              Pay all
+              {t("suppliers", "payAll")}
             </Button>
           </div>
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">Payment method</span>
+          <span className="mb-1 block text-sm font-medium text-slate-700">{t("suppliers", "paymentMethod")}</span>
           <Select
             value={form.paymentMethod}
             onChange={(e) => setForm((p) => ({ ...p, paymentMethod: e.target.value as SupplierPaymentMethod }))}
@@ -147,20 +149,20 @@ export const SupplierLumpSumPaymentModal = ({
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">Reference no</span>
+          <span className="mb-1 block text-sm font-medium text-slate-700">{t("suppliers", "referenceNo")}</span>
           <input
             type="text"
             value={form.referenceNo}
             onChange={(e) => setForm((p) => ({ ...p, referenceNo: e.target.value }))}
             className="min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
-            placeholder="Bank slip, mobile transaction, voucher..."
+            placeholder={t("suppliers", "referencePlaceholder")}
           />
         </label>
 
         {/* Allocation preview — which invoices this amount settles, oldest-first. */}
         <div className="rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Allocation (oldest first)
+            {t("suppliers", "allocation")}
           </div>
           <div className="max-h-48 overflow-y-auto">
             {allocation.map(({ po, apply }) => (
@@ -179,9 +181,9 @@ export const SupplierLumpSumPaymentModal = ({
         )}
 
         <div className="flex flex-wrap justify-end gap-2 pt-2">
-          <Button variant="secondary" disabled={submitting} onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" disabled={submitting} onClick={onClose}>{t("common", "cancel")}</Button>
           <Button onClick={handleSubmit} disabled={submitting || form.amountMmk <= 0 || form.amountMmk > totalOutstanding}>
-            {submitting ? "Recording…" : "Record payment"}
+            {submitting ? t("suppliers", "recording") : t("suppliers", "recordPayment")}
           </Button>
         </div>
       </div>

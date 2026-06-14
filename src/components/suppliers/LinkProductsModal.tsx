@@ -5,6 +5,7 @@ import { SearchInput } from "../forms/SearchInput";
 import { useToast } from "../ui/Toast";
 import { getErrorMessage } from "../../lib/errors";
 import { useDataStore } from "../../stores/dataStore";
+import { useTranslation } from "../../hooks/useTranslation";
 import type { Product } from "../../types";
 
 interface LinkProductsModalProps {
@@ -32,6 +33,7 @@ export const LinkProductsModal = ({
 }: LinkProductsModalProps) => {
   const addSupplierProducts = useDataStore((state) => state.addSupplierProducts);
   const toast = useToast();
+  const { t } = useTranslation();
 
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -71,15 +73,15 @@ export const LinkProductsModal = ({
       await addSupplierProducts(supplierId, selected);
       toast({
         variant: "success",
-        title: "Products linked",
-        description: `${selected.length} product${selected.length === 1 ? "" : "s"} linked to ${supplierName}.`,
+        title: t("suppliers", "productsLinkedToast"),
+        description: t("suppliers", "productsLinkedDesc", { n: selected.length, name: supplierName }),
       });
       onClose();
     } catch (error) {
       toast({
         variant: "error",
-        title: "Could not link products",
-        description: getErrorMessage(error, "Please try again."),
+        title: t("suppliers", "couldNotLink"),
+        description: getErrorMessage(error, t("suppliers", "tryAgain")),
       });
     } finally {
       setSaving(false);
@@ -90,27 +92,29 @@ export const LinkProductsModal = ({
     <Modal
       open={open}
       onClose={() => (saving ? undefined : onClose())}
-      title="Add products"
-      description={`Link products to ${supplierName}`}
+      title={t("suppliers", "addProductsTitle")}
+      description={t("suppliers", "linkToSupplier", { name: supplierName })}
       size="lg"
       footer={
         <>
           <Button variant="secondary" disabled={saving} onClick={onClose}>
-            Cancel
+            {t("common", "cancel")}
           </Button>
           <Button onClick={handleAdd} disabled={saving || selected.length === 0}>
-            {saving ? "Linking…" : `Add ${selected.length || ""}`.trim()}
+            {saving
+              ? t("suppliers", "linking")
+              : `${t("common", "add")}${selected.length ? ` ${selected.length}` : ""}`}
           </Button>
         </>
       }
     >
-      <SearchInput value={search} onChange={setSearch} placeholder="Search products by name or SKU…" />
+      <SearchInput value={search} onChange={setSearch} placeholder={t("suppliers", "searchProductsPlaceholder")} />
 
       {eligible.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-6 text-center text-sm text-slate-500">
           {products.some((p) => p.isActive && !linkedProductIds.has(p.id))
-            ? "No products match your search."
-            : "Every active product is already linked to this supplier."}
+            ? t("suppliers", "noProductsMatch")
+            : t("suppliers", "allProductsLinked")}
         </div>
       ) : (
         <div className="max-h-80 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
