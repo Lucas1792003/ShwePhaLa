@@ -1,10 +1,94 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../stores/authStore";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
 import { useTranslation } from "../hooks/useTranslation";
+
+const CODE_LENGTH = 6;
+
+// Segmented OTP input: one box per digit. Keeps the joined code in the parent's
+// `value` so the rest of the verify flow is unchanged. Auto-advances on entry,
+// backspaces to the previous box, and accepts a pasted 6-digit code.
+function CodeCells({
+  value,
+  invalid,
+  onChange,
+}: {
+  value: string;
+  invalid?: boolean;
+  onChange: (next: string) => void;
+}) {
+  const refs = useRef<Array<HTMLInputElement | null>>([]);
+  const digits = Array.from({ length: CODE_LENGTH }, (_, i) => value[i] ?? "");
+
+  const handleChange = (index: number, event: ChangeEvent<HTMLInputElement>) => {
+    const digit = event.target.value.replace(/\D/g, "").slice(-1);
+    if (!digit) return;
+    onChange((value.slice(0, index) + digit + value.slice(index + 1)).slice(0, CODE_LENGTH));
+    if (index < CODE_LENGTH - 1) refs.current[index + 1]?.focus();
+  };
+
+  const handleKeyDown = (index: number, event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      if (digits[index]) {
+        onChange(value.slice(0, index) + value.slice(index + 1));
+      } else if (index > 0) {
+        onChange(value.slice(0, index - 1) + value.slice(index));
+        refs.current[index - 1]?.focus();
+      }
+    } else if (event.key === "ArrowLeft" && index > 0) {
+      refs.current[index - 1]?.focus();
+    } else if (event.key === "ArrowRight" && index < CODE_LENGTH - 1) {
+      refs.current[index + 1]?.focus();
+    }
+  };
+
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const pasted = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, CODE_LENGTH);
+    if (!pasted) return;
+    event.preventDefault();
+    onChange(pasted);
+    refs.current[Math.min(pasted.length, CODE_LENGTH - 1)]?.focus();
+  };
+
+  return (
+    <div className="flex justify-between gap-2" onPaste={handlePaste}>
+      {digits.map((digit, index) => (
+        <input
+          key={index}
+          ref={(el) => {
+            refs.current[index] = el;
+          }}
+          type="text"
+          inputMode="numeric"
+          autoComplete={index === 0 ? "one-time-code" : "off"}
+          maxLength={1}
+          autoFocus={index === 0}
+          value={digit}
+          onChange={(event) => handleChange(index, event)}
+          onKeyDown={(event) => handleKeyDown(index, event)}
+          onFocus={(event) => event.target.select()}
+          className={`h-12 w-12 rounded-lg border text-center text-xl font-bold outline-none transition-colors focus:ring-2 ${
+            invalid
+              ? "border-rose-300 text-rose-700 focus:border-rose-400 focus:ring-rose-100"
+              : "border-slate-200 text-slate-800 focus:border-emerald-400 focus:ring-emerald-100"
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
 
 // Admin second-factor page. Reached after an admin's password check (or on a
 // /verify refresh). It emails a 6-digit code on mount, shows a live countdown
@@ -138,19 +222,13 @@ export const AdminVerifyPage = () => {
             <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
               {t("auth", "codeLabel")}
             </div>
-            <Input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              autoFocus
+            <CodeCells
               value={code}
-              onChange={(e) => {
-                setCode(e.target.value.replace(/\D/g, "").slice(0, 6));
+              invalid={!!error}
+              onChange={(next) => {
+                setCode(next);
                 if (error) setError("");
               }}
-              placeholder={t("auth", "codePlaceholder")}
-              className="text-center text-lg tracking-[0.5em]"
-              error={!!error}
             />
             <div className="mt-1 h-4 text-xs text-slate-400">
               {expired
