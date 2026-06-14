@@ -4,6 +4,7 @@ import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toast";
 import { getErrorMessage } from "../../lib/errors";
 import { useDataStore } from "../../stores/dataStore";
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface TransferReceiveModalProps {
   // The transfer being received. When null the modal is closed.
@@ -30,6 +31,7 @@ export const TransferReceiveModal = ({
   const products = useDataStore((state) => state.products);
   const receiveTransfer = useDataStore((state) => state.receiveTransfer);
   const toast = useToast();
+  const { t } = useTranslation();
 
   const transfer = useMemo(
     () => (transferId ? stockTransfers.find((t) => t.id === transferId) ?? null : null),
@@ -69,13 +71,13 @@ export const TransferReceiveModal = ({
           receivedQty: line.receivedQty,
         })),
       });
-      toast({ title: "Transfer received", variant: "success" });
+      toast({ title: t("transfers", "receivedToast"), variant: "success" });
       onReceived?.(transferId);
       onClose();
     } catch (error) {
       toast({
-        title: "Receiving failed",
-        description: getErrorMessage(error, "Could not receive this transfer."),
+        title: t("transfers", "receiveFailed"),
+        description: getErrorMessage(error, t("transfers", "receiveFailedDesc")),
         variant: "error",
       });
     } finally {
@@ -87,24 +89,23 @@ export const TransferReceiveModal = ({
     <Modal
       open={Boolean(transferId)}
       onClose={() => (submitting ? undefined : onClose())}
-      title="Receive transfer"
+      title={t("transfers", "receiveTitle")}
       description={transfer?.transferNo}
       size="lg"
     >
       {transferId && (
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
-            Confirm the quantities received. Stock moves from the source shop to this shop only
-            for what you receive — any shortfall stays at the source.
+            {t("transfers", "receiveHint")}
           </p>
 
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full min-w-[640px] text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-3 py-2 text-left">Product</th>
-                  <th className="px-3 py-2 text-right">Sent</th>
-                  <th className="px-3 py-2 text-right">Received</th>
+                  <th className="px-3 py-2 text-left">{t("transfers", "product")}</th>
+                  <th className="px-3 py-2 text-right">{t("transfers", "sent")}</th>
+                  <th className="px-3 py-2 text-right">{t("transfers", "received")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -121,7 +122,7 @@ export const TransferReceiveModal = ({
                       <td className="px-3 py-2">
                         {product?.name ?? line.productId}
                         {unitHint && (
-                          <div className="text-[11px] text-slate-500">sent as {unitHint}</div>
+                          <div className="text-[11px] text-slate-500">{t("transfers", "sentAs")} {unitHint}</div>
                         )}
                       </td>
                       <td className="px-3 py-2 text-right">
@@ -158,10 +159,10 @@ export const TransferReceiveModal = ({
 
           <div className="flex flex-wrap justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={onClose} disabled={submitting}>
-              Cancel
+              {t("common", "cancel")}
             </Button>
             <Button onClick={handleSubmit} disabled={submitting || lines.length === 0}>
-              {submitting ? "Receiving…" : "Confirm receipt"}
+              {submitting ? t("transfers", "receiving") : t("transfers", "confirmReceipt")}
             </Button>
           </div>
         </div>

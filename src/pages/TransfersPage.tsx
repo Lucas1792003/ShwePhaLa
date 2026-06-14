@@ -11,6 +11,7 @@ import { Modal } from "../components/ui/Modal";
 import { Select } from "../components/ui/Select";
 import { SearchInput } from "../components/forms/SearchInput";
 import { TransferReceiveModal } from "../components/transfers/TransferReceiveModal";
+import { useTranslation } from "../hooks/useTranslation";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
 import { getActiveProductUnits, getDefaultProductUnit } from "../features/catalog/productUnits";
 import { convertToBaseQuantity, formatStockQuantity } from "../features/inventory/stockDisplay";
@@ -32,14 +33,6 @@ const statusColors: Record<TransferStatus, "gray" | "yellow" | "green" | "red" |
   REJECTED: "red",
 };
 
-const statusLabels: Record<TransferStatus, string> = {
-  PENDING: "Pending",
-  APPROVED: "Approved",
-  IN_TRANSIT: "In transit",
-  COMPLETED: "Completed",
-  CANCELED: "Canceled",
-  REJECTED: "Rejected",
-};
 
 interface TransferFormItem extends UnitTransferLine {
   lineId: string;
@@ -95,6 +88,15 @@ export const TransfersPage = () => {
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
   const isAdmin = currentUser?.role === "ADMIN";
   const isManager = currentUser?.role === "MANAGER" || isAdmin;
+  const { t } = useTranslation();
+  const statusLabels: Record<TransferStatus, string> = {
+    PENDING: t("transfers", "pending"),
+    APPROVED: t("transfers", "approved"),
+    IN_TRANSIT: t("transfers", "inTransit"),
+    COMPLETED: t("transfers", "completed"),
+    CANCELED: t("transfers", "canceled"),
+    REJECTED: t("transfers", "rejected"),
+  };
 
   // Filter transfers based on tab and filters
   const filteredTransfers = useMemo(() => {
@@ -178,7 +180,7 @@ export const TransfersPage = () => {
       setShowCreateModal(false);
       setNewTransfer({ toShopId: "", items: [], notes: "" });
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to create transfer");
+      alert(error instanceof Error ? error.message : t("transfers", "failCreate"));
     }
   };
 
@@ -187,7 +189,7 @@ export const TransfersPage = () => {
     try {
       await approveTransfer({ transferId, approverId: currentUserId });
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to approve transfer");
+      alert(error instanceof Error ? error.message : t("transfers", "failApprove"));
     }
   };
 
@@ -198,7 +200,7 @@ export const TransfersPage = () => {
     try {
       await rejectTransfer({ transferId, actorId: currentUserId, reason });
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to reject transfer");
+      alert(error instanceof Error ? error.message : t("transfers", "failReject"));
     }
   };
 
@@ -207,7 +209,7 @@ export const TransfersPage = () => {
     try {
       await dispatchTransfer({ transferId, actorId: currentUserId });
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to dispatch transfer");
+      alert(error instanceof Error ? error.message : t("transfers", "failDispatch"));
     }
   };
 
@@ -218,7 +220,7 @@ export const TransfersPage = () => {
     try {
       await cancelTransfer({ transferId, actorId: currentUserId, reason });
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to cancel transfer");
+      alert(error instanceof Error ? error.message : t("transfers", "failCancel"));
     }
   };
 
@@ -227,7 +229,7 @@ export const TransfersPage = () => {
     const availableBase = getAvailableBase(productId);
     const alreadyRequestedBase = getTransferProductBaseTotal(newTransfer.items, productId, productUnits);
     if (!unit || availableBase - alreadyRequestedBase < unit.baseQuantity) {
-      alert("No stock available for this product");
+      alert(t("transfers", "noStock"));
       return;
     }
     setNewTransfer((prev) => ({
@@ -301,11 +303,11 @@ export const TransfersPage = () => {
   return (
     <Card>
       <PageHeader
-        title="Stock Transfers"
-        subtitle="Transfer inventory between shops"
+        title={t("transfers", "title")}
+        subtitle={t("transfers", "subtitle")}
         actions={
           isManager && (
-            <Button onClick={() => setShowCreateModal(true)}>New Transfer</Button>
+            <Button onClick={() => setShowCreateModal(true)}>{t("transfers", "newTransfer")}</Button>
           )
         }
       />
@@ -321,9 +323,9 @@ export const TransfersPage = () => {
       <div className="mt-6">
         <Tabs
           tabs={[
-            { id: "all", label: "All Transfers" },
-            { id: "outgoing", label: "Outgoing" },
-            { id: "incoming", label: "Incoming" },
+            { id: "all", label: t("transfers", "tabAll") },
+            { id: "outgoing", label: t("transfers", "tabOutgoing") },
+            { id: "incoming", label: t("transfers", "tabIncoming") },
             { id: "pending", label: `Pending Approval (${pendingForApproval.length})` },
           ]}
           active={activeTab}
@@ -332,35 +334,35 @@ export const TransfersPage = () => {
       </div>
 
       <div className="mt-5 flex flex-wrap gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search by transfer #" className="min-w-64 flex-1 md:w-72 md:flex-none" />
+        <SearchInput value={search} onChange={setSearch} placeholder={t("transfers", "searchTransfer")} className="min-w-64 flex-1 md:w-72 md:flex-none" />
         <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="min-w-44 flex-1 md:w-auto md:flex-none">
-          <option value="all">All Status</option>
-          <option value="PENDING">Pending</option>
-          <option value="APPROVED">Approved</option>
-          <option value="IN_TRANSIT">In transit</option>
-          <option value="COMPLETED">Completed</option>
-          <option value="CANCELED">Canceled</option>
-          <option value="REJECTED">Rejected</option>
+          <option value="all">{t("transfers", "allStatus")}</option>
+          <option value="PENDING">{t("transfers", "pending")}</option>
+          <option value="APPROVED">{t("transfers", "approved")}</option>
+          <option value="IN_TRANSIT">{t("transfers", "inTransit")}</option>
+          <option value="COMPLETED">{t("transfers", "completed")}</option>
+          <option value="CANCELED">{t("transfers", "canceled")}</option>
+          <option value="REJECTED">{t("transfers", "rejected")}</option>
         </Select>
       </div>
 
       <div className="mt-5">
         {filteredTransfers.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300/70 bg-slate-50/60 p-6 text-center text-sm text-slate-500">
-            No transfers found.
+            {t("transfers", "none")}
           </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
             <table className="w-full min-w-[900px] text-sm">
               <thead>
                 <tr className="border-b text-left text-slate-500">
-                  <th className="px-3 py-3 font-medium">Transfer #</th>
-                  <th className="px-3 py-3 font-medium">From</th>
-                  <th className="px-3 py-3 font-medium">To</th>
-                  <th className="px-3 py-3 font-medium">Items</th>
-                  <th className="px-3 py-3 font-medium">Status</th>
-                  <th className="px-3 py-3 font-medium">Created</th>
-                  <th className="px-3 py-3 font-medium">Actions</th>
+                  <th className="px-3 py-3 font-medium">{t("transfers", "transferNo")}</th>
+                  <th className="px-3 py-3 font-medium">{t("transfers", "from")}</th>
+                  <th className="px-3 py-3 font-medium">{t("transfers", "to")}</th>
+                  <th className="px-3 py-3 font-medium">{t("transfers", "items")}</th>
+                  <th className="px-3 py-3 font-medium">{t("common", "status")}</th>
+                  <th className="px-3 py-3 font-medium">{t("transfers", "created")}</th>
+                  <th className="px-3 py-3 font-medium">{t("common", "actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -377,42 +379,42 @@ export const TransfersPage = () => {
                       <td className="px-3 py-3 font-medium">{transfer.transferNo}</td>
                       <td className="px-3 py-3">{fromShop?.name ?? transfer.fromShopId}</td>
                       <td className="px-3 py-3">{toShop?.name ?? transfer.toShopId}</td>
-                      <td className="px-3 py-3">{items.length} items</td>
+                      <td className="px-3 py-3">{items.length} {t("transfers", "itemsSuffix")}</td>
                       <td className="px-3 py-3">
                         <Badge color={statusColors[transfer.status]}>{statusLabels[transfer.status]}</Badge>
                       </td>
                       <td className="px-3 py-3">
                         <div>{formatDateTime(transfer.createdAt)}</div>
-                        <div className="text-xs text-slate-500">by {createdByUser?.name ?? "Unknown"}</div>
+                        <div className="text-xs text-slate-500">{t("transfers", "by")} {createdByUser?.name ?? t("transfers", "unknown")}</div>
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex flex-wrap gap-2">
                           <Button size="sm" variant="ghost" onClick={() => setShowDetailModal(transfer.id)}>
-                            View
+                            {t("transfers", "view")}
                           </Button>
                           {isFromCurrentShop && transfer.status === "PENDING" && isManager && (
                             <>
                               <Button size="sm" variant="primary" onClick={() => handleApprove(transfer.id)}>
-                                Approve
+                                {t("transfers", "approve")}
                               </Button>
                               <Button size="sm" variant="danger" onClick={() => handleReject(transfer.id)}>
-                                Reject
+                                {t("transfers", "reject")}
                               </Button>
                             </>
                           )}
                           {isFromCurrentShop && transfer.status === "APPROVED" && isManager && (
                             <Button size="sm" variant="primary" onClick={() => handleDispatch(transfer.id)}>
-                              Dispatch
+                              {t("transfers", "dispatch")}
                             </Button>
                           )}
                           {isToCurrentShop && transfer.status === "IN_TRANSIT" && isManager && (
                             <Button size="sm" variant="primary" onClick={() => setReceiveTransferId(transfer.id)}>
-                              Receive
+                              {t("transfers", "receive")}
                             </Button>
                           )}
                           {transfer.status === "PENDING" && (
                             <Button size="sm" variant="ghost" onClick={() => handleCancel(transfer.id)}>
-                              Cancel
+                              {t("transfers", "cancel")}
                             </Button>
                           )}
                         </div>
@@ -427,15 +429,15 @@ export const TransfersPage = () => {
       </div>
 
       {/* Create Transfer Modal */}
-      <Modal open={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create Stock Transfer" size="xl">
+      <Modal open={showCreateModal} onClose={() => setShowCreateModal(false)} title={t("transfers", "createTitle")} size="xl">
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Destination Shop</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t("transfers", "destinationShop")}</label>
             <Select
               value={newTransfer.toShopId}
               onChange={(e) => setNewTransfer((prev) => ({ ...prev, toShopId: e.target.value }))}
             >
-              <option value="">Select shop...</option>
+              <option value="">{t("transfers", "selectShop")}</option>
               {shops.filter((s) => s.id !== shopId).map((shop) => (
                 <option key={shop.id} value={shop.id}>{shop.name}</option>
               ))}
@@ -443,22 +445,22 @@ export const TransfersPage = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Add Products</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t("transfers", "addProducts")}</label>
             <Select onChange={(e) => { if (e.target.value) addItemToTransfer(e.target.value); e.target.value = ""; }}>
-              <option value="">Select product to add...</option>
+              <option value="">{t("transfers", "selectProduct")}</option>
               {products
                 .filter((p) => canAddProductToTransfer(p.id))
                 .map((product) => {
                   const availableBase = getAvailableBase(product.id);
                   return (
                     <option key={product.id} value={product.id}>
-                      {product.name} (Available: {formatStockQuantity(availableBase, productUnits, product.id, product.unitType)})
+                      {product.name} ({t("transfers", "available")}: {formatStockQuantity(availableBase, productUnits, product.id, product.unitType)})
                     </option>
                   );
                 })}
             </Select>
             <p className="mt-1 text-xs text-slate-500">
-              Choose the sellable unit for each line. The system validates and moves base units internally.
+              {t("transfers", "unitHelp")}
             </p>
           </div>
 
@@ -467,11 +469,11 @@ export const TransfersPage = () => {
               <table className="w-full min-w-[920px] text-sm">
                 <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-3 py-2 text-left">Product</th>
-                    <th className="px-3 py-2 text-left">Unit</th>
-                    <th className="px-3 py-2 text-right">Unit Qty</th>
-                    <th className="px-3 py-2 text-right">Moves (base)</th>
-                    <th className="px-3 py-2 text-left">Available</th>
+                    <th className="px-3 py-2 text-left">{t("transfers", "product")}</th>
+                    <th className="px-3 py-2 text-left">{t("transfers", "colUnit")}</th>
+                    <th className="px-3 py-2 text-right">{t("transfers", "colUnitQty")}</th>
+                    <th className="px-3 py-2 text-right">{t("transfers", "colMoves")}</th>
+                    <th className="px-3 py-2 text-left">{t("transfers", "available")}</th>
                     <th className="px-3 py-2"></th>
                   </tr>
                 </thead>
@@ -534,28 +536,28 @@ export const TransfersPage = () => {
                             onChange={(e) => updateItemQty(item.lineId, parseInt(e.target.value, 10) || 1)}
                             className="min-h-10 w-20 rounded border px-2 py-1 text-right"
                           />
-                          <div className="mt-1 text-xs text-slate-500">Max {maxQty}</div>
+                          <div className="mt-1 text-xs text-slate-500">{t("transfers", "max")} {maxQty}</div>
                         </td>
                         <td className="px-3 py-2 text-right">
                           <div>{previewBase} {baseUnitName}</div>
                           {selectedUnit && (
                             <div className="text-xs text-slate-500">
-                              Entered as {item.selectedUnitQuantity} {selectedUnit.name}
+                              {t("transfers", "enteredAs")} {item.selectedUnitQuantity} {selectedUnit.name}
                             </div>
                           )}
                           {exceedsStock && (
                             <div className="text-xs font-medium text-red-600">
-                              Exceeds available base stock
+                              {t("transfers", "exceeds")}
                             </div>
                           )}
                         </td>
                         <td className="px-3 py-2 text-xs text-slate-600">
                           <div>{formatStockQuantity(availableBase, productUnits, item.productId, baseUnitName)}</div>
-                          <div>{availableBase} {baseUnitName} base</div>
+                          <div>{availableBase} {baseUnitName} {t("transfers", "baseSuffix")}</div>
                         </td>
                         <td className="px-3 py-2">
                           <Button size="sm" variant="ghost" onClick={() => removeItemFromTransfer(item.lineId)}>
-                            Remove
+                            {t("transfers", "remove")}
                           </Button>
                         </td>
                       </tr>
@@ -567,23 +569,23 @@ export const TransfersPage = () => {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Notes (optional)</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t("transfers", "notesOptional")}</label>
             <textarea
               value={newTransfer.notes}
               onChange={(e) => setNewTransfer((prev) => ({ ...prev, notes: e.target.value }))}
               className="w-full rounded-lg border px-3 py-2 text-sm"
               rows={2}
-              placeholder="Reason for transfer..."
+              placeholder={t("transfers", "reasonPlaceholder")}
             />
           </div>
 
           <div className="flex flex-wrap justify-end gap-2 pt-4">
-            <Button variant="secondary" onClick={() => setShowCreateModal(false)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => setShowCreateModal(false)}>{t("common", "cancel")}</Button>
             <Button
               onClick={handleCreateTransfer}
               disabled={!newTransfer.toShopId || newTransfer.items.length === 0 || hasInvalidTransferItems}
             >
-              Create Transfer
+              {t("transfers", "createTransfer")}
             </Button>
           </div>
         </div>
@@ -593,37 +595,37 @@ export const TransfersPage = () => {
       <Modal
         open={!!showDetailModal}
         onClose={() => setShowDetailModal(null)}
-        title={`Transfer Details - ${selectedTransfer?.transferNo}`}
+        title={`${t("transfers", "detailTitle")} - ${selectedTransfer?.transferNo}`}
         size="lg"
       >
         {selectedTransfer && (
           <div className="space-y-4">
             <div className="grid gap-4 text-sm sm:grid-cols-2">
               <div>
-                <span className="text-slate-500">From:</span>
+                <span className="text-slate-500">{t("transfers", "from")}:</span>
                 <span className="ml-2 font-medium">{shops.find((s) => s.id === selectedTransfer.fromShopId)?.name}</span>
               </div>
               <div>
-                <span className="text-slate-500">To:</span>
+                <span className="text-slate-500">{t("transfers", "to")}:</span>
                 <span className="ml-2 font-medium">{shops.find((s) => s.id === selectedTransfer.toShopId)?.name}</span>
               </div>
               <div>
-                <span className="text-slate-500">Status:</span>
+                <span className="text-slate-500">{t("common", "status")}:</span>
                 <span className="ml-2"><Badge color={statusColors[selectedTransfer.status]}>{statusLabels[selectedTransfer.status]}</Badge></span>
               </div>
               <div>
-                <span className="text-slate-500">Created:</span>
+                <span className="text-slate-500">{t("transfers", "created")}:</span>
                 <span className="ml-2">{formatDateTime(selectedTransfer.createdAt)}</span>
               </div>
               {selectedTransfer.approvedAt && (
                 <div>
-                  <span className="text-slate-500">Approved:</span>
+                  <span className="text-slate-500">{t("transfers", "approvedLabel")}:</span>
                   <span className="ml-2">{formatDateTime(selectedTransfer.approvedAt)}</span>
                 </div>
               )}
               {selectedTransfer.completedAt && (
                 <div>
-                  <span className="text-slate-500">Completed:</span>
+                  <span className="text-slate-500">{t("transfers", "completedLabel")}:</span>
                   <span className="ml-2">{formatDateTime(selectedTransfer.completedAt)}</span>
                 </div>
               )}
@@ -631,29 +633,29 @@ export const TransfersPage = () => {
 
             {selectedTransfer.notes && (
               <div className="text-sm">
-                <span className="text-slate-500">Notes:</span>
+                <span className="text-slate-500">{t("transfers", "notes")}:</span>
                 <p className="mt-1">{selectedTransfer.notes}</p>
               </div>
             )}
 
             {selectedTransfer.cancelReason && (
               <div className="text-sm bg-red-50 p-3 rounded-lg">
-                <span className="text-red-700 font-medium">Cancel Reason:</span>
+                <span className="text-red-700 font-medium">{t("transfers", "cancelReason")}:</span>
                 <p className="mt-1 text-red-600">{selectedTransfer.cancelReason}</p>
               </div>
             )}
 
             <div>
-              <h4 className="font-medium mb-2">Items</h4>
+              <h4 className="font-medium mb-2">{t("transfers", "items")}</h4>
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full min-w-[720px] text-sm">
                   <thead className="bg-slate-50">
                     <tr>
-                      <th className="px-3 py-2 text-left">Product</th>
-                      <th className="px-3 py-2 text-right">Entered as</th>
-                      <th className="px-3 py-2 text-right">Base requested</th>
-                      <th className="px-3 py-2 text-right">Base approved</th>
-                      <th className="px-3 py-2 text-right">Base transferred</th>
+                      <th className="px-3 py-2 text-left">{t("transfers", "product")}</th>
+                      <th className="px-3 py-2 text-right">{t("transfers", "enteredAs")}</th>
+                      <th className="px-3 py-2 text-right">{t("transfers", "baseRequested")}</th>
+                      <th className="px-3 py-2 text-right">{t("transfers", "baseApproved")}</th>
+                      <th className="px-3 py-2 text-right">{t("transfers", "baseTransferred")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -686,7 +688,7 @@ export const TransfersPage = () => {
             </div>
 
             <div className="flex flex-wrap justify-end gap-2 pt-4">
-              <Button variant="secondary" onClick={() => setShowDetailModal(null)}>Close</Button>
+              <Button variant="secondary" onClick={() => setShowDetailModal(null)}>{t("common", "close")}</Button>
             </div>
           </div>
         )}
