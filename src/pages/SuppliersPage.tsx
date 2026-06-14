@@ -45,6 +45,22 @@ export const SuppliersPage = () => {
     [purchaseOrders, isAdmin, shopId]
   );
 
+  // Precompute each supplier's financial summary in one pass (group POs by
+  // supplier once) instead of re-filtering all POs per row — O(N+M) not O(N×M).
+  const summaryBySupplier = useMemo(() => {
+    const posBySupplier = new Map<string, typeof visiblePurchaseOrders>();
+    for (const po of visiblePurchaseOrders) {
+      const list = posBySupplier.get(po.supplierId);
+      if (list) list.push(po);
+      else posBySupplier.set(po.supplierId, [po]);
+    }
+    const map = new Map<string, ReturnType<typeof buildSupplierFinancialSummary>>();
+    for (const supplier of suppliers) {
+      map.set(supplier.id, buildSupplierFinancialSummary(supplier.id, posBySupplier.get(supplier.id) ?? []));
+    }
+    return map;
+  }, [suppliers, visiblePurchaseOrders]);
+
   const filteredSuppliers = suppliers.filter(
     (s) =>
       s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -122,7 +138,8 @@ export const SuppliersPage = () => {
               </thead>
               <tbody>
                 {filteredSuppliers.map((supplier) => {
-                  const summary = buildSupplierFinancialSummary(supplier.id, visiblePurchaseOrders);
+                  const summary = summaryBySupplier.get(supplier.id)
+                    ?? buildSupplierFinancialSummary(supplier.id, visiblePurchaseOrders);
                   const debtStatus = getDebtStatus(summary.outstandingDebtMmk);
                   return (
                     <tr

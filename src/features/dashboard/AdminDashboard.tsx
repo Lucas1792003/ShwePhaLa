@@ -720,6 +720,10 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
               <div className="text-xl font-bold text-slate-800">{actionNeeded.pendingTransfers}</div>
               <div className="text-xs text-slate-600">{copy("transfers")}</div>
             </div>
+            <div className="rounded-lg bg-violet-50 p-3">
+              <div className="text-xl font-bold text-violet-700">{actionNeeded.inTransitCount}</div>
+              <div className="text-xs text-violet-700">{copy("toReceive")}</div>
+            </div>
           </div>
 
           {visibility.canViewTransfers && (

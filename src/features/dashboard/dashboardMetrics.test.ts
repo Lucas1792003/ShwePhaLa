@@ -835,8 +835,20 @@ describe("calculateActionNeeded", () => {
       pendingApprovals: 1,
       pendingReceipts: 1,
       pendingTransfers: 2,
+      inTransitCount: 0,
       total: 6,
     });
+  });
+
+  it("counts IN_TRANSIT transfers awaiting receipt at the shop (destination)", () => {
+    const transfers: StockTransfer[] = [
+      { id: "in-1", transferNo: "T1", fromShopId: "shop-b", toShopId: "shop-a", status: "IN_TRANSIT", createdBy: "u", createdAt: "" },
+      { id: "in-2", transferNo: "T2", fromShopId: "shop-a", toShopId: "shop-b", status: "IN_TRANSIT", createdBy: "u", createdAt: "" },
+    ];
+    const r = calculateActionNeeded(shopId, [], [], [], [], transfers);
+    // shop-a is destination of in-1 only; in-2 (shop-a is source) is not its action.
+    expect(r.inTransitCount).toBe(1);
+    expect(r.total).toBe(1);
   });
 
   it("returns all zeros on empty data", () => {
@@ -846,6 +858,7 @@ describe("calculateActionNeeded", () => {
       pendingApprovals: 0,
       pendingReceipts: 0,
       pendingTransfers: 0,
+      inTransitCount: 0,
       total: 0,
     });
   });

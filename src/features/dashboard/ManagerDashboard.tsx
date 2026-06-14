@@ -98,7 +98,7 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
     (visibility.canViewInventory ? actionNeeded.lowStockCount + actionNeeded.outOfStockCount : 0) +
     (visibility.canViewApprovals ? actionNeeded.pendingApprovals : 0) +
     (visibility.canViewPurchases ? actionNeeded.pendingReceipts : 0) +
-    (visibility.canViewTransfers ? actionNeeded.pendingTransfers : 0);
+    (visibility.canViewTransfers ? actionNeeded.pendingTransfers + actionNeeded.inTransitCount : 0);
 
   const recentSales = useMemo(
     () =>

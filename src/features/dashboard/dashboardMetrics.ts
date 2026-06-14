@@ -14,6 +14,7 @@ import type {
   User,
 } from "../../types";
 import { hasPermission } from "../../lib/permissions";
+import { getPurchaseOrderBalanceMmk, getPurchaseOrderPaidMmk } from "../suppliers/debt";
 
 // ============================================================
 // Dashboard calculation helpers
@@ -450,13 +451,15 @@ export const calculateSupplierDebt = (
   purchaseOrders: PurchaseOrder[],
   shopId: string | null
 ): SupplierDebtSummary => {
+  // Per-PO paid/balance math is shared with the suppliers workspace
+  // (features/suppliers/debt.ts) so debt is computed identically everywhere.
   const received = purchaseOrders.filter(
     (po) => po.status === "RECEIVED" && (shopId === null || po.shopId === shopId)
   );
   const receivedTotal = received.reduce((sum, po) => sum + (po.totalMmk || 0), 0);
-  const paid = received.reduce((sum, po) => sum + (po.paidMmk ?? 0), 0);
-  const debt = Math.max(receivedTotal - paid, 0);
-  const openPoCount = received.filter((po) => (po.paidMmk ?? 0) < po.totalMmk).length;
+  const paid = received.reduce((sum, po) => sum + getPurchaseOrderPaidMmk(po), 0);
+  const debt = received.reduce((sum, po) => sum + getPurchaseOrderBalanceMmk(po), 0);
+  const openPoCount = received.filter((po) => getPurchaseOrderBalanceMmk(po) > 0).length;
   return { receivedTotal, paid, debt, openPoCount };
 };
 
@@ -595,6 +598,8 @@ export interface ActionNeededSummary {
   pendingApprovals: number;
   pendingReceipts: number;
   pendingTransfers: number;
+  /** Transfers IN_TRANSIT awaiting receipt at this shop (destination). */
+  inTransitCount: number;
   total: number;
 }
 
@@ -635,6 +640,10 @@ export const calculateActionNeeded = (
   const pendingTransfers = stockTransfers.filter(
     (t) => t.status === "PENDING" && (inShop(t.fromShopId) || inShop(t.toShopId))
   ).length;
+  // Awaiting receipt at the destination — the action is the destination's.
+  const inTransitCount = stockTransfers.filter(
+    (t) => t.status === "IN_TRANSIT" && inShop(t.toShopId)
+  ).length;
 
   return {
     lowStockCount,
@@ -642,7 +651,10 @@ export const calculateActionNeeded = (
     pendingApprovals,
     pendingReceipts,
     pendingTransfers,
-    total: lowStockCount + outOfStockCount + pendingApprovals + pendingReceipts + pendingTransfers,
+    inTransitCount,
+    total:
+      lowStockCount + outOfStockCount + pendingApprovals + pendingReceipts +
+      pendingTransfers + inTransitCount,
   };
 };
 
