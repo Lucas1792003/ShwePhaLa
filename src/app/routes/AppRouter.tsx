@@ -3,6 +3,7 @@ import { AppLayout } from "../layout/AppLayout";
 import { RequireAuth } from "./guards/RequireAuth";
 import { RequireRole } from "./guards/RequireRole";
 import { LoginPage } from "../../features/auth/pages/LoginPage";
+import { AdminVerifyPage } from "../../features/auth/pages/AdminVerifyPage";
 import { PosPage } from "../../features/pos/pages/PosPage";
 import { SalesListPage } from "../../features/sales/pages/SalesListPage";
 import { SaleDetailPage } from "../../features/sales/pages/SaleDetailPage";
@@ -46,6 +47,7 @@ export const AppRouter = () => (
   <Routes>
     <Route path="/phone-upload/product-image/:token" element={<PhoneProductImageUploadPage />} />
     <Route path="/login" element={<LoginPage />} />
+    <Route path="/verify" element={<AdminVerifyPage />} />
     <Route
       path="/app"
       element={

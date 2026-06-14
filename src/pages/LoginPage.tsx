@@ -40,10 +40,13 @@ export const LoginPage = () => {
     if (result.shopId) setAppShopId(result.shopId);
 
     if (result.role === "ADMIN") {
-      navigate("/app/dashboard");
-    } else {
-      navigate("/app");
+      // Admins finish on the verify page (which emails + checks the code),
+      // unless already verified this browser session.
+      navigate(useAuthStore.getState().adminVerified ? "/app/dashboard" : "/verify");
+      return;
     }
+
+    navigate("/app");
   };
 
   return (

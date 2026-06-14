@@ -7,12 +7,62 @@ interface LoginResult {
   shopId?: string;
 }
 
+interface RequestCodeResult {
+  error: string | null;
+  expiresAt?: string;
+  email?: string;
+}
+
 interface AuthState {
   currentUserId: string | null;
+  // Role of the signed-in user, captured at login/restore so route guards can
+  // gate the admin email-code step before the data store's users are loaded.
+  currentRole: string | null;
+  // True once an ADMIN has passed the email-code step this browser session.
+  // Always true for non-admins (the step doesn't apply to them).
+  adminVerified: boolean;
   isAuthLoading: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
   restoreSession: () => Promise<void>;
+  // Admin 2FA: email a fresh code, then verify the submitted code.
+  requestAdminCode: () => Promise<RequestCodeResult>;
+  verifyAdminCode: (code: string) => Promise<{ error: string | null }>;
+}
+
+// Per-browser-session "this admin already passed the code" marker. sessionStorage
+// survives a refresh but clears when the browser/tab closes — so a returning
+// session re-verifies, a refresh does not. Stores the auth user id it applies to.
+const VERIFIED_KEY = "shwe_admin_verified";
+const safeSession = (): Storage | null =>
+  typeof window !== "undefined" && window.sessionStorage ? window.sessionStorage : null;
+const isVerifiedThisSession = (authId: string | undefined): boolean =>
+  Boolean(authId) && safeSession()?.getItem(VERIFIED_KEY) === authId;
+const markVerified = (authId: string) => safeSession()?.setItem(VERIFIED_KEY, authId);
+const clearVerified = () => safeSession()?.removeItem(VERIFIED_KEY);
+
+// Invoke the admin-2fa edge function, surfacing the JSON error body that comes
+// back on a non-2xx response (otherwise supabase-js only gives a generic message).
+async function invokeAdmin2fa(
+  payload: { action: "request" | "verify"; code?: string },
+): Promise<{ error: string | null; data: Record<string, unknown> | null }> {
+  const { data, error } = await supabase.functions.invoke<Record<string, unknown>>("admin-2fa", {
+    body: payload,
+  });
+  if (error) {
+    let message = error.message;
+    const ctx = (error as { context?: unknown }).context;
+    if (ctx && typeof (ctx as Response).json === "function") {
+      try {
+        const parsed = await (ctx as Response).json();
+        if (parsed?.error) message = String(parsed.error);
+      } catch {
+        /* keep the generic message */
+      }
+    }
+    return { error: message, data: null };
+  }
+  return { error: null, data: data ?? null };
 }
 
 // App `users` row shape used during auth resolution.
@@ -91,20 +141,26 @@ async function resolveAppUser(authUser: { id: string; email?: string }): Promise
 
 export const useAuthStore = create<AuthState>()((set) => ({
   currentUserId: null,
+  currentRole: null,
+  adminVerified: false,
   isAuthLoading: true,
 
   restoreSession: async () => {
     const { data } = await supabase.auth.getSession();
     const authUser = data.session?.user;
     if (!authUser) {
-      set({ currentUserId: null, isAuthLoading: false });
+      set({ currentUserId: null, currentRole: null, adminVerified: false, isAuthLoading: false });
       return;
     }
     const result = await resolveAppUser({ id: authUser.id, email: authUser.email ?? undefined });
     if (result.error) console.error("[auth] restoreSession:", result.error);
     const user = result.user;
+    const active = Boolean(user && user.is_active);
     set({
-      currentUserId: user && user.is_active ? user.id : null,
+      currentUserId: active ? user!.id : null,
+      currentRole: active ? user!.role : null,
+      // Admins must have verified this session; everyone else is exempt.
+      adminVerified: active && user!.role === "ADMIN" ? isVerifiedThisSession(authUser.id) : true,
       isAuthLoading: false,
     });
   },
@@ -159,7 +215,8 @@ export const useAuthStore = create<AuthState>()((set) => ({
         await supabase.auth.signOut();
         return { error: insert.error.message };
       }
-      set({ currentUserId: adminId });
+      // First admin must still pass the email-code step.
+      set({ currentUserId: adminId, currentRole: "ADMIN", adminVerified: false });
       return { error: null, role: "ADMIN" };
     }
 
@@ -169,12 +226,38 @@ export const useAuthStore = create<AuthState>()((set) => ({
       return { error: "Account is inactive. Contact your administrator." };
     }
 
-    set({ currentUserId: user.id });
+    set({
+      currentUserId: user.id,
+      currentRole: user.role,
+      adminVerified: user.role === "ADMIN" ? isVerifiedThisSession(authUser.id) : true,
+    });
     return { error: null, role: user.role, shopId: user.shop_id ?? undefined };
   },
 
   logout: async () => {
     await supabase.auth.signOut();
-    set({ currentUserId: null });
+    clearVerified();
+    set({ currentUserId: null, currentRole: null, adminVerified: false });
+  },
+
+  requestAdminCode: async () => {
+    const { error, data } = await invokeAdmin2fa({ action: "request" });
+    if (error) return { error };
+    return {
+      error: null,
+      expiresAt: typeof data?.expiresAt === "string" ? data.expiresAt : undefined,
+      email: typeof data?.email === "string" ? data.email : undefined,
+    };
+  },
+
+  verifyAdminCode: async (code: string) => {
+    const { error, data } = await invokeAdmin2fa({ action: "verify", code });
+    if (error) return { error };
+    if (!data?.verified) return { error: "Verification failed. Try again." };
+    const { data: sessionData } = await supabase.auth.getSession();
+    const authId = sessionData.session?.user.id;
+    if (authId) markVerified(authId);
+    set({ adminVerified: true });
+    return { error: null };
   },
 }));

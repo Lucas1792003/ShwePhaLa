@@ -8,6 +8,8 @@ interface RequireAuthProps {
 
 export const RequireAuth = ({ children }: RequireAuthProps) => {
   const currentUserId = useAuthStore((state) => state.currentUserId);
+  const currentRole = useAuthStore((state) => state.currentRole);
+  const adminVerified = useAuthStore((state) => state.adminVerified);
   const isAuthLoading = useAuthStore((state) => state.isAuthLoading);
 
   if (isAuthLoading) {
@@ -19,5 +21,7 @@ export const RequireAuth = ({ children }: RequireAuthProps) => {
   }
 
   if (!currentUserId) return <Navigate to="/login" replace />;
+  // Admins must pass the emailed-code step before reaching the app.
+  if (currentRole === "ADMIN" && !adminVerified) return <Navigate to="/verify" replace />;
   return <>{children}</>;
 };
