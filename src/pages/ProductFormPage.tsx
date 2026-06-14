@@ -38,21 +38,25 @@ import {
   validateProductUnits,
 } from "../features/catalog/productUnits";
 import { getActivePriceLevels } from "../features/pricing/priceLevels";
+import { useTranslation } from "../hooks/useTranslation";
 
 const PRODUCTS_ROUTE = "/app/admin/products";
-
-const getPriceLevelFormLabel = (code: string, name: string): string => {
-  const normalized = code.toLowerCase();
-  if (normalized === "retail") return `${name} Price (Sale 1)`;
-  if (normalized === "wholesale") return `${name} Price (Sale 2)`;
-  if (normalized === "special") return `${name} Price (Sale 3)`;
-  return `${name} Price`;
-};
 
 export const ProductFormPage = () => {
   const navigate = useNavigate();
   const { productId: routeProductId } = useParams<{ productId?: string }>();
   const toast = useToast();
+  const { t } = useTranslation();
+
+  // Price-level field label: "<name> Price (Sale 1/2/3)" by well-known code,
+  // else a generic "<name> Price". Translated, name kept verbatim.
+  const getPriceLevelFormLabel = (code: string, name: string): string => {
+    const normalized = code.toLowerCase();
+    if (normalized === "retail") return t("productForm", "priceSale1", { name });
+    if (normalized === "wholesale") return t("productForm", "priceSale2", { name });
+    if (normalized === "special") return t("productForm", "priceSale3", { name });
+    return t("productForm", "priceGeneric", { name });
+  };
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentShopId = useAppStore((state) => state.currentShopId);
 
@@ -163,17 +167,17 @@ export const ProductFormPage = () => {
 
   const schema = useMemo(() => {
     return z.object({
-      sku: z.string().min(1, "SKU is required"),
+      sku: z.string().min(1, t("productForm", "skuRequired")),
       aliasCode: z.string().optional(),
-      name: z.string().min(2, "Name must be at least 2 characters"),
+      name: z.string().min(2, t("productForm", "nameMin")),
       shortName: z.string().optional(),
-      category: z.string().min(1, "Category is required"),
+      category: z.string().min(1, t("productForm", "categoryRequired")),
       brandId: z.string().optional(),
-      unitType: z.string().min(1, "Unit type is required"),
-      priceMmk: z.number().min(0, "Price must be 0 or greater"),
+      unitType: z.string().min(1, t("productForm", "unitTypeRequired")),
+      priceMmk: z.number().min(0, t("productForm", "priceMin")),
       costMmk: z.number().optional(),
-      lowStockThreshold: z.number().min(0, "Threshold must be 0 or greater"),
-      maxQty: z.number().min(0, "MaxQty must be 0 or greater").optional(),
+      lowStockThreshold: z.number().min(0, t("productForm", "thresholdMin")),
+      maxQty: z.number().min(0, t("productForm", "maxQtyMin")).optional(),
       isOpenPrice: z.boolean(),
       isNonStock: z.boolean(),
       // Empty string maps to "unspecified" — keeps the <select> controlled.
@@ -182,7 +186,7 @@ export const ProductFormPage = () => {
       imageUrl: z.string().optional(),
       isActive: z.boolean(),
     });
-  }, []);
+  }, [t]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -347,7 +351,7 @@ export const ProductFormPage = () => {
   // ============================================================
 
   const handleScannedBarcode = (value: string): string | null => {
-    if (!scanUnitId) return "Choose a sellable unit before scanning.";
+    if (!scanUnitId) return t("productForm", "chooseUnitBeforeScan");
     const normalized = normalizeBarcodeValue(value);
     const currentValues = Object.entries(unitBarcodes)
       .filter(([unitId]) => unitId !== scanUnitId)
@@ -356,7 +360,7 @@ export const ProductFormPage = () => {
     const error = checkBarcodeAddable(normalized, currentValues, barcodes, routeProductId ?? null);
     if (error) return error;
     setUnitBarcodes((list) => ({ ...list, [scanUnitId]: normalized }));
-    toast({ title: "Barcode added", description: normalized, variant: "success" });
+    toast({ title: t("productForm", "barcodeAdded"), description: normalized, variant: "success" });
     return null;
   };
 
@@ -545,7 +549,7 @@ export const ProductFormPage = () => {
     const editingId = routeProductId ?? null;
     const existingSku = products.find((p) => p.sku === values.sku && p.id !== editingId);
     if (existingSku) {
-      form.setError("sku", { message: "SKU already exists." });
+      form.setError("sku", { message: t("productForm", "skuExists") });
       return;
     }
 
@@ -559,7 +563,7 @@ export const ProductFormPage = () => {
           (p.aliasCode ?? "").trim().toLowerCase() === aliasTrimmed.toLowerCase(),
       );
       if (aliasClash) {
-        form.setError("aliasCode", { message: "Alias code is already used by another product." });
+        form.setError("aliasCode", { message: t("productForm", "aliasUsed") });
         return;
       }
     }
@@ -573,7 +577,7 @@ export const ProductFormPage = () => {
       values.maxQty < values.lowStockThreshold
     ) {
       form.setError("maxQty", {
-        message: `Max Qty must be ≥ Low Stock Threshold (${values.lowStockThreshold}).`,
+        message: t("productForm", "maxQtyGteThreshold", { threshold: values.lowStockThreshold }),
       });
       return;
     }
@@ -581,11 +585,11 @@ export const ProductFormPage = () => {
     const categoryRow = activeCategories.find((c) => c.name === values.category);
     const brandsForCategory = categoryRow ? brandsByCategory.get(categoryRow.id) ?? [] : [];
     if (!editingId && brandsForCategory.length > 0 && !values.brandId) {
-      form.setError("brandId", { message: "Brand is required for this category." });
+      form.setError("brandId", { message: t("productForm", "brandRequiredForCategory") });
       return;
     }
     if (values.brandId && !brandsForCategory.some((b) => b.id === values.brandId)) {
-      form.setError("brandId", { message: "Selected brand is not part of the chosen category." });
+      form.setError("brandId", { message: t("productForm", "brandNotInCategory") });
       return;
     }
 
@@ -606,7 +610,7 @@ export const ProductFormPage = () => {
       : rawUnits;
     const unitValidation = validateProductUnits(nextUnits);
     if (!unitValidation.valid) {
-      setProductSaveError(unitValidation.error ?? "Units & Prices are invalid.");
+      setProductSaveError(unitValidation.error ?? t("productForm", "unitsInvalid"));
       return;
     }
     const defaultUnit = nextUnits.find((unit) => unit.isActive && unit.isDefault) ?? nextUnits[0];
@@ -616,7 +620,10 @@ export const ProductFormPage = () => {
         const raw = formUnitLevelPrices[unit.id]?.[defaultPriceLevel.id];
         const retailPrice = raw === undefined || raw === "" ? unit.salePriceMmk : Number(raw);
         if (!Number.isFinite(retailPrice) || retailPrice <= 0) {
-          setProductSaveError(`${getPriceLevelFormLabel(defaultPriceLevel.code, defaultPriceLevel.name)} is required for ${unit.name || "each active unit"}.`);
+          setProductSaveError(t("productForm", "levelRequiredForUnit", {
+            label: getPriceLevelFormLabel(defaultPriceLevel.code, defaultPriceLevel.name),
+            unit: unit.name || t("productForm", "eachActiveUnit"),
+          }));
           return;
         }
       }
@@ -670,7 +677,7 @@ export const ProductFormPage = () => {
           }
           const n = Number(raw);
           if (!Number.isFinite(n) || n < 0) {
-            setProductSaveError(`Invalid ${level.name} price for ${unit.name}.`);
+            setProductSaveError(t("productForm", "invalidLevelPrice", { level: level.name, unit: unit.name }));
             throw new Error("invalid price-level input");
           }
           rows.push({ priceLevelId: level.id, priceMmk: Math.trunc(n) });
@@ -744,16 +751,16 @@ export const ProductFormPage = () => {
   return (
     <Card>
       <PageHeader
-        title={isEditing ? "Edit Product" : "Add New Product"}
+        title={isEditing ? t("productForm", "editTitle") : t("productForm", "addTitle")}
         subtitle={
           isEditing
-            ? "Update product identity, stock, units, and prices."
-            : "Fill in the details to create a new product."
+            ? t("productForm", "editSubtitle")
+            : t("productForm", "addSubtitle")
         }
         actions={
           <Button type="button" variant="secondary" onClick={handleCancel}>
             <span className="material-symbols-rounded mr-1 text-sm">arrow_back</span>
-            Back to Products
+            {t("productForm", "backToProducts")}
           </Button>
         }
       />
@@ -763,15 +770,15 @@ export const ProductFormPage = () => {
         <div className="space-y-5">
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Identity
+              {t("productForm", "identity")}
             </h3>
 
             <div className="mt-4 space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">SKU</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "sku")}</label>
                   <Input
-                    placeholder="Auto-generated from category"
+                    placeholder={t("productForm", "skuPlaceholder")}
                     {...form.register("sku")}
                     readOnly
                     className="bg-slate-50 text-slate-500 cursor-not-allowed"
@@ -784,9 +791,9 @@ export const ProductFormPage = () => {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Alias Code</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "aliasCode")}</label>
                   <Input
-                    placeholder="Optional alternate code"
+                    placeholder={t("productForm", "aliasPlaceholder")}
                     {...form.register("aliasCode")}
                   />
                 </div>
@@ -794,27 +801,27 @@ export const ProductFormPage = () => {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Product Name *</label>
-                  <Input placeholder="e.g. Myanmar Lager Can" {...form.register("name")} />
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "nameLabel")}</label>
+                  <Input placeholder={t("productForm", "namePlaceholder")} {...form.register("name")} />
                   {form.formState.errors.name && (
                     <p className="mt-1 text-xs text-red-500">{form.formState.errors.name.message}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Short Name</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "shortName")}</label>
                   <Input
-                    placeholder="Optional, e.g. Lager Can"
+                    placeholder={t("productForm", "shortNamePlaceholder")}
                     {...form.register("shortName")}
                   />
                   <p className="mt-1 text-xs text-slate-500">
-                    Used on POS tiles and receipts when full name is too long.
+                    {t("productForm", "shortNameHint")}
                   </p>
                 </div>
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Product Image</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "productImage")}</label>
                 <ProductImageInput
                   productId={formProductId}
                   shopId={currentShopId}
@@ -827,12 +834,12 @@ export const ProductFormPage = () => {
 
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Classification
+              {t("productForm", "classification")}
             </h3>
 
             <div className="mt-4 space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Category *</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "categoryLabel")}</label>
                 <Select {...form.register("category")}>
                   {activeCategories.map((cat) => (
                     <option key={cat.id} value={cat.name}>
@@ -845,7 +852,7 @@ export const ProductFormPage = () => {
               {brandsForFormCategory.length > 0 && (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Brand {isEditing ? "" : "*"}
+                    {t("productForm", "brand")} {isEditing ? "" : "*"}
                   </label>
                   <Select
                     value={form.watch("brandId") ?? ""}
@@ -857,7 +864,7 @@ export const ProductFormPage = () => {
                       )
                     }
                   >
-                    <option value="">Select a brand…</option>
+                    <option value="">{t("productForm", "selectBrand")}</option>
                     {brandsForFormCategory.map((brand) => (
                       <option key={brand.id} value={brand.id}>
                         {brand.name}
@@ -873,7 +880,7 @@ export const ProductFormPage = () => {
               )}
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Base Stock Unit *</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "baseStockUnit")}</label>
                 {(() => {
                   const currentValue = form.watch("unitType");
                   const resolved = resolveProductUnit(currentValue, unitTypes);
@@ -882,14 +889,14 @@ export const ProductFormPage = () => {
                     return (
                       <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                         {loadError ? (
-                          <>Unit types could not be loaded ({loadError}). Refresh and try again.</>
+                          <>{t("productForm", "unitTypesLoadError", { error: loadError })}</>
                         ) : (
                           <>
-                            No unit types found.{" "}
+                            {t("productForm", "noUnitTypesPrefix")}
                             <a className="font-medium underline" href="/app/admin/unit-types">
-                              Add unit types in Settings
-                            </a>{" "}
-                            first.
+                              {t("productForm", "addUnitTypesLink")}
+                            </a>
+                            {t("productForm", "noUnitTypesSuffix")}
                           </>
                         )}
                       </div>
@@ -901,12 +908,12 @@ export const ProductFormPage = () => {
                       <Select {...form.register("unitType")}>
                         {resolved.kind === "legacy" && resolved.value.length > 0 && (
                           <option value={resolved.value}>
-                            Current: {resolved.value} (legacy)
+                            {t("productForm", "currentLegacy", { value: resolved.value })}
                           </option>
                         )}
                         {resolved.kind === "inactive" && (
                           <option value={resolved.unitType.name}>
-                            Current: {resolved.unitType.name} (inactive)
+                            {t("productForm", "currentInactive", { value: resolved.unitType.name })}
                           </option>
                         )}
                         {activeUnitTypes.map((unit) => (
@@ -922,7 +929,7 @@ export const ProductFormPage = () => {
                         </p>
                       )}
                       <p className="mt-1 text-xs text-slate-500">
-                        Choose the smallest unit you count in inventory, such as Can, Bottle, or Sachet.
+                        {t("productForm", "baseUnitHint")}
                       </p>
                     </>
                   );
@@ -930,14 +937,14 @@ export const ProductFormPage = () => {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Default Purchase Terms</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "defaultPurchaseTerms")}</label>
                 <Select {...form.register("purchaseType")}>
-                  <option value="">Ask each time</option>
-                  <option value="COD">COD (Cash on Delivery)</option>
-                  <option value="CREDIT">Credit</option>
+                  <option value="">{t("productForm", "askEachTime")}</option>
+                  <option value="COD">{t("productForm", "cod")}</option>
+                  <option value="CREDIT">{t("productForm", "credit")}</option>
                 </Select>
                 <p className="mt-1 text-xs text-slate-500">
-                  Pre-selected when creating a new purchase order for this product.
+                  {t("productForm", "purchaseTermsHint")}
                 </p>
               </div>
             </div>
@@ -945,13 +952,13 @@ export const ProductFormPage = () => {
 
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Stock & status
+              {t("productForm", "stockStatus")}
             </h3>
 
             <div className="mt-4 space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Low Stock Threshold *</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "lowStockThreshold")}</label>
                   <Input
                     type="text"
                     inputMode="numeric"
@@ -961,11 +968,11 @@ export const ProductFormPage = () => {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Max Qty (Reorder ceiling)</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "maxQty")}</label>
                   <Input
                     type="text"
                     inputMode="numeric"
-                    placeholder="Optional"
+                    placeholder={t("productForm", "optional")}
                     {...form.register("maxQty", {
                       setValueAs: (v) => {
                         if (v === "" || v === null || v === undefined) return undefined;
@@ -983,7 +990,7 @@ export const ProductFormPage = () => {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Expiry Date (Optional)</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "expiryDate")}</label>
                 <Input type="date" {...form.register("expiryDate")} />
               </div>
 
@@ -994,7 +1001,7 @@ export const ProductFormPage = () => {
                   so a future re-introduction is a single checkbox add. */}
               <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
                 <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Behaviour flags
+                  {t("productForm", "behaviourFlags")}
                 </span>
                 <div className="mt-2 space-y-2">
                   <label className="flex items-start gap-3">
@@ -1004,9 +1011,9 @@ export const ProductFormPage = () => {
                       {...form.register("isNonStock")}
                     />
                     <span className="text-sm text-slate-700">
-                      <span className="font-medium">Non-Stock Item</span>
+                      <span className="font-medium">{t("productForm", "nonStockItem")}</span>
                       <span className="block text-xs text-slate-500">
-                        Skip inventory tracking — useful for services or pass-through items.
+                        {t("productForm", "nonStockDesc")}
                       </span>
                     </span>
                   </label>
@@ -1019,14 +1026,14 @@ export const ProductFormPage = () => {
                   <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-emerald-500 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:ring-2 peer-focus:ring-emerald-300"></div>
                 </label>
                 <span className="text-sm font-medium text-slate-700">
-                  {form.watch("isActive") ? "Active" : "Inactive"}
+                  {form.watch("isActive") ? t("common", "active") : t("common", "inactive")}
                 </span>
               </div>
 
               {isEditing && (
                 <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
                   <div className="font-semibold uppercase tracking-wide text-slate-500">
-                    Last supplier
+                    {t("productForm", "lastSupplier")}
                   </div>
                   {lastSupplierForProduct ? (
                     <>
@@ -1034,13 +1041,15 @@ export const ProductFormPage = () => {
                         {lastSupplierForProduct.supplier.name}
                       </div>
                       <div className="text-xs text-slate-500">
-                        PO {lastSupplierForProduct.orderNo} ·{" "}
-                        {new Date(lastSupplierForProduct.when).toLocaleDateString()}
+                        {t("productForm", "lastSupplierPo", {
+                          orderNo: lastSupplierForProduct.orderNo,
+                          date: new Date(lastSupplierForProduct.when).toLocaleDateString(),
+                        })}
                       </div>
                     </>
                   ) : (
                     <p className="mt-1 italic text-slate-400">
-                      No purchase order for this product yet.
+                      {t("productForm", "noPoYet")}
                     </p>
                   )}
                 </div>
@@ -1050,20 +1059,19 @@ export const ProductFormPage = () => {
 
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Suppliers
+              {t("productForm", "suppliers")}
             </h3>
             <p className="mt-2 text-xs text-slate-500">
-              Choose which suppliers this product can be bought from. Used on the
-              supplier's product list and to pre-filter new purchase orders.
+              {t("productForm", "suppliersHint")}
             </p>
 
             {selectableSuppliers.length === 0 ? (
               <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-3 py-3 text-xs text-slate-500">
-                No active suppliers yet.{" "}
+                {t("productForm", "noSuppliersPrefix")}
                 <a className="font-medium underline" href="/app/suppliers">
-                  Add a supplier
-                </a>{" "}
-                first.
+                  {t("productForm", "addSupplierLink")}
+                </a>
+                {t("productForm", "noSuppliersSuffix")}
               </div>
             ) : (
               <div className="mt-4 max-h-56 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
@@ -1082,7 +1090,7 @@ export const ProductFormPage = () => {
                       {supplier.name}
                       <span className="ml-1 font-mono text-xs text-slate-400">{supplier.code}</span>
                       {!supplier.isActive && (
-                        <span className="ml-1 text-xs text-slate-400">(inactive)</span>
+                        <span className="ml-1 text-xs text-slate-400">{t("productForm", "inactiveTag")}</span>
                       )}
                     </span>
                   </label>
@@ -1091,8 +1099,7 @@ export const ProductFormPage = () => {
             )}
             {selectedSupplierIds.length > 0 && (
               <p className="mt-2 text-xs text-slate-500">
-                {selectedSupplierIds.length} supplier
-                {selectedSupplierIds.length === 1 ? "" : "s"} selected.
+                {t("productForm", "suppliersSelected", { n: selectedSupplierIds.length })}
               </p>
             )}
           </div>
@@ -1104,25 +1111,28 @@ export const ProductFormPage = () => {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                  Units & Prices
+                  {t("productForm", "unitsPrices")}
                 </h3>
                 <p className="mt-2 text-xs text-slate-500">
-                  Set how this product is counted, bought, and sold. Stock is stored in base units.
+                  {t("productForm", "unitsHint")}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  Base unit: {form.watch("unitType") || "base unit"}. Larger units like Package or Case convert back to {form.watch("unitType") || "the base unit"}.
+                  {t("productForm", "baseUnitLine", {
+                    base: form.watch("unitType") || t("productForm", "baseUnitFallback"),
+                    base2: form.watch("unitType") || t("productForm", "baseUnitFallback"),
+                  })}
                 </p>
               </div>
               <Button type="button" variant="secondary" onClick={addSellableUnit} className="min-h-10">
                 <span className="material-symbols-rounded mr-1 text-sm">add</span>
-                Add Unit
+                {t("productForm", "addUnit")}
               </Button>
             </div>
 
             <div className="mt-4 space-y-3">
               {formUnits.map((unit, index) => {
-                const baseUnitName = form.watch("unitType") || "base unit";
-                const unitName = unit.name.trim() || "New unit";
+                const baseUnitName = form.watch("unitType") || t("productForm", "baseUnitFallback");
+                const unitName = unit.name.trim() || t("productForm", "newUnit");
                 const isBaseUnit = unit.isDefault;
                 const activeUnitCount = formUnits.filter((row) => row.isActive).length;
                 const canDeactivate = !unit.isDefault && (!unit.isActive || activeUnitCount > 1);
@@ -1142,12 +1152,12 @@ export const ProductFormPage = () => {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <h4 className="text-sm font-semibold text-slate-800">{unitName}</h4>
-                          {unit.isDefault && <Badge tone="green">Default POS unit</Badge>}
-                          {unit.isActive ? <Badge tone="blue">Active</Badge> : <Badge tone="slate">Inactive</Badge>}
-                          {isBaseUnit && <Badge tone="slate">Base unit</Badge>}
+                          {unit.isDefault && <Badge tone="green">{t("productForm", "defaultPosUnit")}</Badge>}
+                          {unit.isActive ? <Badge tone="blue">{t("common", "active")}</Badge> : <Badge tone="slate">{t("common", "inactive")}</Badge>}
+                          {isBaseUnit && <Badge tone="slate">{t("productForm", "baseUnitBadge")}</Badge>}
                         </div>
                         <p className="mt-1 text-xs text-slate-500">
-                          1 {unitName} equals {isBaseUnit ? 1 : unit.baseQuantity || 1} {baseUnitName}.
+                          {t("productForm", "unitEquals", { unit: unitName, n: isBaseUnit ? 1 : unit.baseQuantity || 1, base: baseUnitName })}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -1157,7 +1167,7 @@ export const ProductFormPage = () => {
                           disabled={!unit.isActive || unit.isDefault}
                           onClick={() => setDefaultSellableUnit(unit.id)}
                         >
-                          Set Default
+                          {t("productForm", "setDefault")}
                         </Button>
                         <Button
                           type="button"
@@ -1168,7 +1178,7 @@ export const ProductFormPage = () => {
                             else updateFormUnit(unit.id, { isActive: true });
                           }}
                         >
-                          {unit.isActive ? "Deactivate" : "Reactivate"}
+                          {unit.isActive ? t("productForm", "deactivate") : t("productForm", "reactivate")}
                         </Button>
                       </div>
                     </div>
@@ -1176,16 +1186,16 @@ export const ProductFormPage = () => {
                     <div className="mt-4 space-y-4">
                       <div className="grid gap-4 sm:grid-cols-2">
                         <label className="block">
-                          <span className="mb-1 block text-xs font-medium text-slate-500">Unit name</span>
+                          <span className="mb-1 block text-xs font-medium text-slate-500">{t("productForm", "unitName")}</span>
                           <Input
                             value={unit.name}
                             onChange={(event) => updateFormUnit(unit.id, { name: event.target.value })}
-                            placeholder={index === 0 ? baseUnitName : "Package, Case, 6 Pack"}
+                            placeholder={index === 0 ? baseUnitName : t("productForm", "unitNamePlaceholder")}
                           />
                         </label>
 
                         <label className="block">
-                          <span className="mb-1 block text-xs font-medium text-slate-500">Base quantity</span>
+                          <span className="mb-1 block text-xs font-medium text-slate-500">{t("productForm", "baseQuantity")}</span>
                           <Input
                             type="text"
                             inputMode="numeric"
@@ -1202,25 +1212,25 @@ export const ProductFormPage = () => {
                           />
                           <p className="mt-1 text-xs text-slate-500">
                             {isBaseUnit
-                              ? `Base unit always equals 1 ${baseUnitName}.`
-                              : `POS deducts ${unit.baseQuantity || 1} ${baseUnitName} per ${unitName}.`}
+                              ? t("productForm", "baseUnitEquals1", { base: baseUnitName })
+                              : t("productForm", "posDeducts", { n: unit.baseQuantity || 1, base: baseUnitName, unit: unitName })}
                           </p>
                         </label>
                       </div>
 
                       {duplicateBaseName && (
                         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                          This unit has the same name as the base unit but does not equal 1 {baseUnitName}. Rename it to avoid cashier confusion.
+                          {t("productForm", "duplicateBaseName", { base: baseUnitName })}
                         </p>
                       )}
 
                       <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                           <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Pricing
+                            {t("productForm", "pricing")}
                           </span>
                           <span className="text-xs text-slate-500">
-                            Blank Wholesale/Special uses {defaultPriceLevel?.name ?? "Retail"} price.
+                            {t("productForm", "blankUsesDefault", { name: defaultPriceLevel?.name ?? "Retail" })}
                           </span>
                         </div>
                         {/* `items-end` aligns inputs to the bottom of
@@ -1231,12 +1241,12 @@ export const ProductFormPage = () => {
                             doesn't grow taller than needed. */}
                         <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-4">
                           <label className="block">
-                            <span className="mb-1 block text-xs font-medium leading-tight text-slate-500">Purchase Cost</span>
+                            <span className="mb-1 block text-xs font-medium leading-tight text-slate-500">{t("productForm", "purchaseCost")}</span>
                             <MoneyInput
                               value={unit.purchasePriceMmk}
                               onChange={(next) => updateUnitPurchaseCost(unit.id, next ?? undefined)}
                               allowEmpty
-                              placeholder="Optional"
+                              placeholder={t("productForm", "optional")}
                             />
                           </label>
 
@@ -1252,7 +1262,7 @@ export const ProductFormPage = () => {
                                   <Input
                                     type="text"
                                     inputMode="numeric"
-                                    placeholder={isDefaultLevel ? "Required" : "Use Retail"}
+                                    placeholder={isDefaultLevel ? t("productForm", "required") : t("productForm", "useRetail")}
                                     value={raw}
                                     onChange={(event) => updateUnitLevelPrice(unit.id, level.id, event.target.value)}
                                   />
@@ -1261,7 +1271,7 @@ export const ProductFormPage = () => {
                             })
                           ) : (
                             <label className="block">
-                              <span className="mb-1 block text-xs font-medium leading-tight text-slate-500">Retail Price (Sale 1)</span>
+                              <span className="mb-1 block text-xs font-medium leading-tight text-slate-500">{t("productForm", "retailPriceSale1")}</span>
                               <MoneyInput
                                 value={unit.salePriceMmk}
                                 onChange={(next) => {
@@ -1269,7 +1279,7 @@ export const ProductFormPage = () => {
                                   updateFormUnit(unit.id, { salePriceMmk });
                                   if (unit.isDefault) form.setValue("priceMmk", salePriceMmk, { shouldValidate: true });
                                 }}
-                                placeholder="Required"
+                                placeholder={t("productForm", "required")}
                               />
                             </label>
                           )}
@@ -1277,7 +1287,7 @@ export const ProductFormPage = () => {
                       </div>
 
                       <label className="block">
-                        <span className="mb-1 block text-xs font-medium text-slate-500">Barcode for this unit</span>
+                        <span className="mb-1 block text-xs font-medium text-slate-500">{t("productForm", "barcodeForUnit")}</span>
                         <div className="flex flex-col gap-2 sm:flex-row">
                           <Input
                             className="min-w-0 flex-1"
@@ -1286,15 +1296,15 @@ export const ProductFormPage = () => {
                               ...rows,
                               [unit.id]: normalizeBarcodeValue(event.target.value),
                             }))}
-                            placeholder={unit.isDefault ? "Optional, SKU fallback" : "Optional unit barcode"}
+                            placeholder={unit.isDefault ? t("productForm", "barcodeDefaultPlaceholder") : t("productForm", "barcodeUnitPlaceholder")}
                           />
                           <Button type="button" variant="secondary" onClick={() => openUnitScanModal(unit.id)} className="min-h-10">
                             <span className="material-symbols-rounded mr-1 text-sm">qr_code_scanner</span>
-                            Scan
+                            {t("productForm", "scan")}
                           </Button>
                           {unitBarcodes[unit.id] && (
                             <Button type="button" variant="secondary" onClick={() => handleRemoveBarcode(unit.id)} className="min-h-10">
-                              Clear
+                              {t("productForm", "clear")}
                             </Button>
                           )}
                         </div>
@@ -1317,14 +1327,14 @@ export const ProductFormPage = () => {
 
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="secondary" onClick={handleCancel} disabled={isSaving}>
-              Cancel
+              {t("common", "cancel")}
             </Button>
             <Button type="submit" disabled={isSaving}>
               {isSaving
-                ? "Saving..."
+                ? t("productForm", "saving")
                 : isEditing
-                  ? "Update Product"
-                  : "Create Product"}
+                  ? t("productForm", "updateProduct")
+                  : t("productForm", "createProduct")}
             </Button>
           </div>
         </div>
