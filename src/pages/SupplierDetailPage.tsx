@@ -13,6 +13,7 @@ import { PurchaseOrderCreateModal } from "../components/purchases/PurchaseOrderC
 import { PurchaseOrderReceiveModal } from "../components/purchases/PurchaseOrderReceiveModal";
 import { SupplierFormModal } from "../components/suppliers/SupplierFormModal";
 import { SupplierPaymentModal } from "../components/suppliers/SupplierPaymentModal";
+import { LinkProductsModal } from "../components/suppliers/LinkProductsModal";
 import {
   buildSupplierFinancialSummary,
   getComputedPaymentStatus,
@@ -33,10 +34,11 @@ import { getErrorMessage } from "../lib/errors";
 import { hasAnyPermission, hasPermission, hasShopPermission } from "../lib/permissions";
 import type { PurchaseOrder } from "../types";
 
-type TabId = "overview" | "purchases" | "payments";
+type TabId = "overview" | "products" | "purchases" | "payments";
 
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: "overview", label: "Overview" },
+  { id: "products", label: "Products" },
   { id: "purchases", label: "Purchase Orders" },
   { id: "payments", label: "Payments" },
 ];
@@ -72,13 +74,17 @@ export const SupplierDetailPage = () => {
   const purchaseOrderItems = useDataStore((state) => state.purchaseOrderItems);
   const supplierPayments = useDataStore((state) => state.supplierPayments);
   const products = useDataStore((state) => state.products);
+  const supplierProducts = useDataStore((state) => state.supplierProducts);
   const users = useDataStore((state) => state.users);
   const approvePurchaseOrder = useDataStore((state) => state.approvePurchaseOrder);
   const cancelPurchaseOrder = useDataStore((state) => state.cancelPurchaseOrder);
+  const removeSupplierProduct = useDataStore((state) => state.removeSupplierProduct);
 
   const [tab, setTab] = useState<TabId>("overview");
   const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [linkProductsOpen, setLinkProductsOpen] = useState(false);
+  const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const [createPoOpen, setCreatePoOpen] = useState(false);
   const [receivePoId, setReceivePoId] = useState<string | null>(null);
   const [paymentPoId, setPaymentPoId] = useState<string | null>(null);
@@ -89,6 +95,9 @@ export const SupplierDetailPage = () => {
   const shopId = getEffectiveShopId(currentUser, currentShopId, shops);
   const canUpdateSupplier = hasPermission(currentUser, "supplier:update");
   const canViewDebt = hasAnyPermission(currentUser, ["supplier:debt_view", "purchase:view"]);
+  // Linking products writes supplier_products, which RLS gates on product
+  // create/update — so only show the controls to users who can actually save.
+  const canManageLinks = hasAnyPermission(currentUser, ["product:update", "product:create"]);
   const canRaisePoForShop = hasShopPermission(currentUser, "purchase:create", shopId);
 
   // Mirror the SuppliersPage scoping: ADMIN sees all, others only see records
@@ -117,6 +126,18 @@ export const SupplierDetailPage = () => {
     [supplier, visiblePurchaseOrders]
   );
 
+  // Products this supplier can supply (many-to-many link, managed from the
+  // product form). Sorted by name; inactive products shown with a badge.
+  const linkedProducts = useMemo(() => {
+    if (!supplier) return [];
+    const linkedIds = new Set(
+      supplierProducts.filter((link) => link.supplierId === supplier.id).map((link) => link.productId)
+    );
+    return products
+      .filter((product) => linkedIds.has(product.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [supplier, supplierProducts, products]);
+
   const lastPurchaseDate = useMemo(() => {
     if (!supplier) return null;
     // Use createdAt as a proxy for "last purchase date" — it's the only
@@ -131,6 +152,24 @@ export const SupplierDetailPage = () => {
   if (!supplier) return <SupplierNotFound />;
 
   const paymentPo = paymentPoId ? supplierOrders.find((po) => po.id === paymentPoId) ?? null : null;
+  const linkedProductIds = new Set(linkedProducts.map((product) => product.id));
+
+  const handleUnlinkProduct = async (productId: string) => {
+    if (unlinkingId) return;
+    setUnlinkingId(productId);
+    try {
+      await removeSupplierProduct(supplier.id, productId);
+      toast({ variant: "success", title: "Product unlinked" });
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not unlink product",
+        description: getErrorMessage(error, "Please try again."),
+      });
+    } finally {
+      setUnlinkingId(null);
+    }
+  };
 
   const handleApprovePo = async (po: PurchaseOrder) => {
     if (!currentUserId || busyPoId) return;
@@ -390,6 +429,81 @@ export const SupplierDetailPage = () => {
       </div>
     );
 
+  // ---- Products tab --------------------------------------------------------
+
+  const productsSection = (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">
+          {linkedProducts.length} product{linkedProducts.length === 1 ? "" : "s"} linked to this supplier.
+        </p>
+        {canManageLinks && (
+          <Button size="sm" onClick={() => setLinkProductsOpen(true)}>
+            <span className="material-symbols-rounded mr-1 text-sm">add</span>
+            Add products
+          </Button>
+        )}
+      </div>
+
+      {linkedProducts.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+          No products linked to this supplier yet.
+          {canManageLinks
+            ? " Use “Add products” above, or link from a product's edit page."
+            : " Link products from a product's edit page (Suppliers section)."}
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white shadow-sm">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr className="border-b text-left text-slate-500">
+                <th className="px-4 py-3 font-medium">Product</th>
+                <th className="px-4 py-3 font-medium">SKU</th>
+                <th className="px-4 py-3 font-medium">Category</th>
+                <th className="px-4 py-3 text-right font-medium">Cost</th>
+                <th className="px-4 py-3 text-right font-medium">Price</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+                {canManageLinks && <th className="px-4 py-3 text-right font-medium">Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {linkedProducts.map((product) => (
+                <tr key={product.id} className="border-b last:border-0">
+                  <td className="px-4 py-3 font-medium text-slate-900">{product.name}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{product.sku ?? "-"}</td>
+                  <td className="px-4 py-3 text-slate-600">{product.category}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                    {product.costMmk != null ? formatMmk(product.costMmk) : "-"}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                    {formatMmk(product.priceMmk)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge color={product.isActive ? "green" : "gray"}>
+                      {product.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                  </td>
+                  {canManageLinks && (
+                    <td className="px-4 py-3 text-right">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={unlinkingId === product.id}
+                        onClick={() => handleUnlinkProduct(product.id)}
+                      >
+                        {unlinkingId === product.id ? "Removing…" : "Remove"}
+                      </Button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+
   // ---- Payments tab --------------------------------------------------------
 
   const paymentsSection =
@@ -506,6 +620,7 @@ export const SupplierDetailPage = () => {
 
         <div className="mt-5">
           {tab === "overview" && overviewSection}
+          {tab === "products" && productsSection}
           {tab === "purchases" && purchasesSection}
           {tab === "payments" && paymentsSection}
         </div>
@@ -515,6 +630,7 @@ export const SupplierDetailPage = () => {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         editing={supplier}
+        suppliers={suppliers}
       />
 
       <PurchaseOrderCreateModal
@@ -525,6 +641,7 @@ export const SupplierDetailPage = () => {
         defaultSupplierId={supplier.id}
         suppliers={suppliers}
         products={products}
+        supplierProducts={supplierProducts}
         onCreated={() => setTab("purchases")}
       />
 
@@ -537,6 +654,15 @@ export const SupplierDetailPage = () => {
       <SupplierPaymentModal
         purchaseOrder={paymentPo}
         onClose={() => setPaymentPoId(null)}
+      />
+
+      <LinkProductsModal
+        open={linkProductsOpen}
+        onClose={() => setLinkProductsOpen(false)}
+        supplierId={supplier.id}
+        supplierName={supplier.name}
+        products={products}
+        linkedProductIds={linkedProductIds}
       />
     </div>
   );

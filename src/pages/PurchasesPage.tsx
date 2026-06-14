@@ -38,6 +38,7 @@ export const PurchasesPage = () => {
   const shops = useDataStore((state) => state.shops);
   const products = useDataStore((state) => state.products);
   const suppliers = useDataStore((state) => state.suppliers);
+  const supplierProducts = useDataStore((state) => state.supplierProducts);
   const purchaseOrders = useDataStore((state) => state.purchaseOrders);
   const purchaseOrderItems = useDataStore((state) => state.purchaseOrderItems);
   const users = useDataStore((state) => state.users);
@@ -225,6 +226,7 @@ export const PurchasesPage = () => {
         currentUserId={currentUserId}
         suppliers={suppliers}
         products={products}
+        supplierProducts={supplierProducts}
       />
 
       {/* PO Detail Modal */}

@@ -7,7 +7,7 @@ import type {
   AuditLog, Brand, Category, Inventory, InventoryMovement, PriceLevel, PriceTier,
   Product, ProductBarcode, ProductUnit, ProductUnitPrice, PurchaseOrder, PurchaseOrderItem,
   Refund, Sale, SaleItem, Shift, Shop, StockTransfer, StockTransferItem,
-  Supplier, SupplierPayment, UnitType, User,
+  Supplier, SupplierPayment, SupplierProduct, UnitType, User,
 } from "../../types";
 
 // Import all slices
@@ -209,10 +209,17 @@ const mapSupplierPayment = (r: any): SupplierPayment => ({
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapSupplierProduct = (r: any): SupplierProduct => ({
+  supplierId: r.supplier_id, productId: r.product_id,
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mapStockTransfer = (r: any): StockTransfer => ({
   id: r.id, transferNo: r.transfer_no, fromShopId: r.from_shop_id, toShopId: r.to_shop_id,
   status: r.status, notes: r.notes ?? undefined, createdBy: r.created_by, createdAt: r.created_at,
   approvedBy: r.approved_by ?? undefined, approvedAt: r.approved_at ?? undefined,
+  dispatchedBy: r.dispatched_by ?? undefined, dispatchedAt: r.dispatched_at ?? undefined,
+  receivedBy: r.received_by ?? undefined, receivedAt: r.received_at ?? undefined,
   completedAt: r.completed_at ?? undefined, canceledBy: r.canceled_by ?? undefined,
   canceledAt: r.canceled_at ?? undefined, cancelReason: r.cancel_reason ?? undefined,
 });
@@ -320,6 +327,7 @@ export const useDataStore = create<DataState>()((...args) => {
           shops, users, categories, brands, unitTypes, products, productUnits, barcodes, priceTiers,
           priceLevels, productUnitPrices,
           inventory, movements, suppliers, purchaseOrders, purchaseOrderItems, supplierPayments,
+          supplierProducts,
           stockTransfers, stockTransferItems, shifts, sales, saleItems,
           reprintLogs, refunds, auditLogs,
         ] = await Promise.all([
@@ -340,6 +348,7 @@ export const useDataStore = create<DataState>()((...args) => {
           supabase.from("purchase_orders").select("*"),
           supabase.from("purchase_order_items").select("*"),
           supabase.from("supplier_payments").select("*").order("paid_at", { ascending: false }),
+          supabase.from("supplier_products").select("*"),
           supabase.from("stock_transfers").select("*"),
           supabase.from("stock_transfer_items").select("*"),
           supabase.from("shifts").select("*"),
@@ -358,6 +367,7 @@ export const useDataStore = create<DataState>()((...args) => {
           priceLevels, productUnitPrices,
           inventory, movements,
           suppliers, purchaseOrders, purchaseOrderItems, supplierPayments,
+          supplierProducts,
           stockTransfers, stockTransferItems, shifts, sales, saleItems,
           reprintLogs, refunds, auditLogs,
         ].find((result) => result.error);
@@ -394,6 +404,7 @@ export const useDataStore = create<DataState>()((...args) => {
           purchaseOrders: (purchaseOrders.data ?? []).map(mapPurchaseOrder),
           purchaseOrderItems: (purchaseOrderItems.data ?? []).map(mapPurchaseOrderItem),
           supplierPayments: (supplierPayments.data ?? []).map(mapSupplierPayment),
+          supplierProducts: (supplierProducts.data ?? []).map(mapSupplierProduct),
           stockTransfers: (stockTransfers.data ?? []).map(mapStockTransfer),
           stockTransferItems: (stockTransferItems.data ?? []).map(mapStockTransferItem),
           shifts: (shifts.data ?? []).map(mapShift),

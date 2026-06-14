@@ -102,13 +102,38 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
     }));
   },
 
-  // Transfer completion: atomic RPC; moves stock + writes paired movements.
-  completeTransfer: async ({ transferId }) => {
-    const { data, error } = await supabase.rpc("complete_stock_transfer", {
+  // Dispatch: source releases the goods. Marks the transfer IN_TRANSIT with no
+  // inventory change ("hold at source" — stock only moves on receipt).
+  dispatchTransfer: async ({ transferId }) => {
+    const { data, error } = await supabase.rpc("dispatch_stock_transfer", {
       p_transfer_id: transferId,
     });
     if (error) throw new Error(error.message);
-    if (!data) throw new Error("Transfer completion returned no data.");
+    if (!data) throw new Error("Dispatch transfer returned no data.");
+    const result = data as ApproveTransferResult;
+
+    set((s) => ({
+      stockTransfers: s.stockTransfers.map((t) =>
+        t.id === result.stockTransfer.id ? result.stockTransfer : t
+      ),
+      stockTransferItems: s.stockTransferItems.map(
+        (i) => result.stockTransferItems.find((u) => u.id === i.id) ?? i
+      ),
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+  },
+
+  // Receive: destination confirms receipt; atomic RPC moves stock (source →
+  // dest) for the received quantities and writes paired movements.
+  receiveTransfer: async ({ transferId, receivedItems }) => {
+    const { data, error } = await supabase.rpc("receive_stock_transfer", {
+      p_transfer_id: transferId,
+      p_received_items: receivedItems
+        ? receivedItems.map((r) => ({ product_id: r.productId, received_qty: r.receivedQty }))
+        : null,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Receive transfer returned no data.");
     const result = data as CompleteTransferResult;
 
     set((s) => ({

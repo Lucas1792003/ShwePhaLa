@@ -41,6 +41,7 @@ import {
   groupSupplierDebtBySupplier,
   listActiveShiftRows,
   recentAuditLogs,
+  recentTransfers,
   resolveDashboardScope,
   scopeSales,
   type DashboardSelectedShopId,
@@ -55,6 +56,7 @@ import {
 } from "./DashboardCommon";
 import { rangeLabel, useDashboardCopy } from "./dashboardCopy";
 import { LowStockCard } from "./LowStockCard";
+import { TransfersStatusFeed } from "./TransfersStatusCard";
 import { useDashboardInsights } from "../../hooks/useDashboardInsights";
 import { InventoryIntelligence } from "../../components/dashboard/InventoryIntelligence";
 
@@ -229,6 +231,10 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
         .slice(0, 6),
     [rangedSales]
+  );
+  const recentTransferRows = useMemo(
+    () => recentTransfers(stockTransfers, metricShopId, 100),
+    [stockTransfers, metricShopId]
   );
   const auditRows = useMemo(
     () =>
@@ -715,6 +721,16 @@ export const AdminDashboard = ({ currentUser, shops }: AdminDashboardProps) => {
               <div className="text-xs text-slate-600">{copy("transfers")}</div>
             </div>
           </div>
+
+          {visibility.canViewTransfers && (
+            <div className="mt-4 border-t border-slate-100 pt-3">
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                <span className="material-symbols-rounded text-sm text-emerald-700">local_shipping</span>
+                {copy("transfersBetweenShops")}
+              </div>
+              <TransfersStatusFeed transfers={recentTransferRows} shops={shops} previewLimit={5} />
+            </div>
+          )}
         </SectionCard>
       </div>
 

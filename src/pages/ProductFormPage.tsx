@@ -65,6 +65,8 @@ export const ProductFormPage = () => {
   const purchaseOrders = useDataStore((state) => state.purchaseOrders);
   const purchaseOrderItems = useDataStore((state) => state.purchaseOrderItems);
   const suppliers = useDataStore((state) => state.suppliers);
+  const supplierProducts = useDataStore((state) => state.supplierProducts);
+  const replaceProductSuppliers = useDataStore((state) => state.replaceProductSuppliers);
   const loadError = useDataStore((state) => state.loadError);
   const addProduct = useDataStore((state) => state.addProduct);
   const updateProduct = useDataStore((state) => state.updateProduct);
@@ -150,6 +152,8 @@ export const ProductFormPage = () => {
   const [formUnitLevelPrices, setFormUnitLevelPrices] = useState<Record<string, Record<string, string>>>({});
   const [scanUnitId, setScanUnitId] = useState<string | null>(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
+  // Suppliers this product can be bought from (many-to-many). Seeded on hydrate.
+  const [selectedSupplierIds, setSelectedSupplierIds] = useState<string[]>([]);
   const [productSaveError, setProductSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   // Marker so the URL-driven `routeProductId → formProductId` hydration
@@ -282,6 +286,11 @@ export const ProductFormPage = () => {
         nextLevelPrices[unit.id] = perLevel;
       }
       setFormUnitLevelPrices(nextLevelPrices);
+      setSelectedSupplierIds(
+        supplierProducts
+          .filter((link) => link.productId === editingProduct.id)
+          .map((link) => link.supplierId),
+      );
     } else {
       hydratedRef.current = hydrationKey;
       const initialUnitType = activeUnitTypes[0]?.name ?? "Piece";
@@ -313,6 +322,7 @@ export const ProductFormPage = () => {
         [seedUnit.id]: Object.fromEntries(activePriceLevels.map((level) => [level.id, ""])),
       });
       setUnitBarcodes({});
+      setSelectedSupplierIds([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeProductId, editingProduct]);
@@ -491,6 +501,23 @@ export const ProductFormPage = () => {
     return brandsByCategory.get(cat.id) ?? [];
   }, [activeCategories, brandsByCategory, watchedCategory]);
 
+  // Active suppliers, plus any already-linked inactive ones (so an existing
+  // link stays visible/removable on edit). Sorted by name.
+  const selectableSuppliers = useMemo(() => {
+    const selected = new Set(selectedSupplierIds);
+    return suppliers
+      .filter((supplier) => supplier.isActive || selected.has(supplier.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [suppliers, selectedSupplierIds]);
+
+  const toggleSupplier = (supplierId: string) => {
+    setSelectedSupplierIds((prev) =>
+      prev.includes(supplierId)
+        ? prev.filter((id) => id !== supplierId)
+        : [...prev, supplierId],
+    );
+  };
+
   useEffect(() => {
     const nextUnitType = watchedUnitType || "";
     const previousUnitType = previousUnitTypeRef.current;
@@ -664,6 +691,8 @@ export const ProductFormPage = () => {
           }];
         });
       await replaceProductBarcodes(productId, nextRows);
+
+      await replaceProductSuppliers(productId, selectedSupplierIds);
 
       void addAuditLog({
         id: `audit-${Math.random().toString(36).slice(2, 9)}`,
@@ -1017,6 +1046,55 @@ export const ProductFormPage = () => {
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Suppliers
+            </h3>
+            <p className="mt-2 text-xs text-slate-500">
+              Choose which suppliers this product can be bought from. Used on the
+              supplier's product list and to pre-filter new purchase orders.
+            </p>
+
+            {selectableSuppliers.length === 0 ? (
+              <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-3 py-3 text-xs text-slate-500">
+                No active suppliers yet.{" "}
+                <a className="font-medium underline" href="/app/suppliers">
+                  Add a supplier
+                </a>{" "}
+                first.
+              </div>
+            ) : (
+              <div className="mt-4 max-h-56 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                {selectableSuppliers.map((supplier) => (
+                  <label
+                    key={supplier.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                      checked={selectedSupplierIds.includes(supplier.id)}
+                      onChange={() => toggleSupplier(supplier.id)}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm text-slate-700">
+                      {supplier.name}
+                      <span className="ml-1 font-mono text-xs text-slate-400">{supplier.code}</span>
+                      {!supplier.isActive && (
+                        <span className="ml-1 text-xs text-slate-400">(inactive)</span>
+                      )}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {selectedSupplierIds.length > 0 && (
+              <p className="mt-2 text-xs text-slate-500">
+                {selectedSupplierIds.length} supplier
+                {selectedSupplierIds.length === 1 ? "" : "s"} selected.
+              </p>
+            )}
           </div>
         </div>
 

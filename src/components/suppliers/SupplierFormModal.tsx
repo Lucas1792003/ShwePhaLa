@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toast";
-import { getErrorMessage } from "../../lib/errors";
 import { useDataStore } from "../../stores/dataStore";
+import { mapSupplierFormError, validateSupplierInput } from "../../lib/supplierValidation";
 import type { Supplier } from "../../types";
 
 interface SupplierFormModalProps {
@@ -12,6 +12,8 @@ interface SupplierFormModalProps {
   // When set, the modal edits this supplier; when null it creates a new one.
   // Switching between values resets the form fields on the next open.
   editing: Supplier | null;
+  // Existing suppliers — used to block duplicate codes before the round-trip.
+  suppliers: Supplier[];
   // Used to default the next sequential SUP-### code on create.
   suggestedNewCode?: string;
 }
@@ -40,6 +42,7 @@ export const SupplierFormModal = ({
   open,
   onClose,
   editing,
+  suppliers,
   suggestedNewCode,
 }: SupplierFormModalProps) => {
   const addSupplier = useDataStore((state) => state.addSupplier);
@@ -80,8 +83,13 @@ export const SupplierFormModal = ({
 
   const handleSave = async () => {
     setError(null);
-    if (!form.name.trim() || !form.code.trim()) {
-      setError("Code and name are required.");
+    const validationError = validateSupplierInput(
+      { code: form.code, name: form.name },
+      suppliers,
+      editing?.id ?? null
+    );
+    if (validationError) {
+      setError(validationError);
       return;
     }
     if (saving) return;
@@ -109,7 +117,7 @@ export const SupplierFormModal = ({
     } catch (err) {
       // Keep the modal open and preserve values so the user can adjust.
       // Friendly mapping handles RLS, duplicate code, network.
-      const message = getErrorMessage(err, "Failed to save supplier.");
+      const message = mapSupplierFormError(err);
       setError(message);
       toast({ variant: "error", title: "Save failed", description: message });
     } finally {

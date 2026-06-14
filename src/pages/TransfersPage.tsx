@@ -10,6 +10,7 @@ import { Badge } from "../components/ui/Badge";
 import { Modal } from "../components/ui/Modal";
 import { Select } from "../components/ui/Select";
 import { SearchInput } from "../components/forms/SearchInput";
+import { TransferReceiveModal } from "../components/transfers/TransferReceiveModal";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
 import { getActiveProductUnits, getDefaultProductUnit } from "../features/catalog/productUnits";
 import { convertToBaseQuantity, formatStockQuantity } from "../features/inventory/stockDisplay";
@@ -22,12 +23,22 @@ import {
 } from "../features/transfers/unitTransfer";
 import type { ProductUnit, StockTransferItem, TransferStatus } from "../types";
 
-const statusColors: Record<TransferStatus, "gray" | "yellow" | "green" | "red" | "blue"> = {
+const statusColors: Record<TransferStatus, "gray" | "yellow" | "green" | "red" | "blue" | "indigo"> = {
   PENDING: "yellow",
   APPROVED: "blue",
+  IN_TRANSIT: "indigo",
   COMPLETED: "green",
   CANCELED: "gray",
   REJECTED: "red",
+};
+
+const statusLabels: Record<TransferStatus, string> = {
+  PENDING: "Pending",
+  APPROVED: "Approved",
+  IN_TRANSIT: "In transit",
+  COMPLETED: "Completed",
+  CANCELED: "Canceled",
+  REJECTED: "Rejected",
 };
 
 interface TransferFormItem extends UnitTransferLine {
@@ -64,7 +75,7 @@ export const TransfersPage = () => {
   const createTransfer = useDataStore((state) => state.createTransfer);
   const approveTransfer = useDataStore((state) => state.approveTransfer);
   const rejectTransfer = useDataStore((state) => state.rejectTransfer);
-  const completeTransfer = useDataStore((state) => state.completeTransfer);
+  const dispatchTransfer = useDataStore((state) => state.dispatchTransfer);
   const cancelTransfer = useDataStore((state) => state.cancelTransfer);
 
   const [activeTab, setActiveTab] = useState("all");
@@ -72,6 +83,7 @@ export const TransfersPage = () => {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState<string | null>(null);
+  const [receiveTransferId, setReceiveTransferId] = useState<string | null>(null);
 
   // Create transfer form state
   const [newTransfer, setNewTransfer] = useState({
@@ -190,12 +202,12 @@ export const TransfersPage = () => {
     }
   };
 
-  const handleComplete = async (transferId: string) => {
+  const handleDispatch = async (transferId: string) => {
     if (!currentUserId) return;
     try {
-      await completeTransfer({ transferId, actorId: currentUserId });
+      await dispatchTransfer({ transferId, actorId: currentUserId });
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to complete transfer");
+      alert(error instanceof Error ? error.message : "Failed to dispatch transfer");
     }
   };
 
@@ -325,6 +337,7 @@ export const TransfersPage = () => {
           <option value="all">All Status</option>
           <option value="PENDING">Pending</option>
           <option value="APPROVED">Approved</option>
+          <option value="IN_TRANSIT">In transit</option>
           <option value="COMPLETED">Completed</option>
           <option value="CANCELED">Canceled</option>
           <option value="REJECTED">Rejected</option>
@@ -357,6 +370,7 @@ export const TransfersPage = () => {
                   const items = transferItems.filter((i) => i.transferId === transfer.id);
                   const createdByUser = users.find((u) => u.id === transfer.createdBy);
                   const isFromCurrentShop = transfer.fromShopId === shopId;
+                  const isToCurrentShop = transfer.toShopId === shopId;
 
                   return (
                     <tr key={transfer.id} className="border-b last:border-0">
@@ -365,7 +379,7 @@ export const TransfersPage = () => {
                       <td className="px-3 py-3">{toShop?.name ?? transfer.toShopId}</td>
                       <td className="px-3 py-3">{items.length} items</td>
                       <td className="px-3 py-3">
-                        <Badge color={statusColors[transfer.status]}>{transfer.status}</Badge>
+                        <Badge color={statusColors[transfer.status]}>{statusLabels[transfer.status]}</Badge>
                       </td>
                       <td className="px-3 py-3">
                         <div>{formatDateTime(transfer.createdAt)}</div>
@@ -387,8 +401,13 @@ export const TransfersPage = () => {
                             </>
                           )}
                           {isFromCurrentShop && transfer.status === "APPROVED" && isManager && (
-                            <Button size="sm" variant="primary" onClick={() => handleComplete(transfer.id)}>
-                              Complete
+                            <Button size="sm" variant="primary" onClick={() => handleDispatch(transfer.id)}>
+                              Dispatch
+                            </Button>
+                          )}
+                          {isToCurrentShop && transfer.status === "IN_TRANSIT" && isManager && (
+                            <Button size="sm" variant="primary" onClick={() => setReceiveTransferId(transfer.id)}>
+                              Receive
                             </Button>
                           )}
                           {transfer.status === "PENDING" && (
@@ -590,7 +609,7 @@ export const TransfersPage = () => {
               </div>
               <div>
                 <span className="text-slate-500">Status:</span>
-                <span className="ml-2"><Badge color={statusColors[selectedTransfer.status]}>{selectedTransfer.status}</Badge></span>
+                <span className="ml-2"><Badge color={statusColors[selectedTransfer.status]}>{statusLabels[selectedTransfer.status]}</Badge></span>
               </div>
               <div>
                 <span className="text-slate-500">Created:</span>
@@ -672,6 +691,12 @@ export const TransfersPage = () => {
           </div>
         )}
       </Modal>
+
+      <TransferReceiveModal
+        transferId={receiveTransferId}
+        onClose={() => setReceiveTransferId(null)}
+        currentUserId={currentUserId}
+      />
     </Card>
   );
 };

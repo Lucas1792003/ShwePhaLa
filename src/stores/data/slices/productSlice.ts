@@ -10,6 +10,7 @@ export const createProductSlice: StateCreator<DataState, [], [], ProductState> =
   products: [],
   productUnits: [],
   barcodes: [],
+  supplierProducts: [],
 
   addProduct: async (product: Product, barcodes: ProductBarcode[]) => {
     await dbExec(supabase.from("products").insert({
@@ -176,6 +177,82 @@ export const createProductSlice: StateCreator<DataState, [], [], ProductState> =
       productUnits: state.productUnits
         .filter((unit) => unit.productId !== productId)
         .concat(normalized, deactivated),
+    }));
+  },
+
+  // Reconcile the supplier links for a product. Delete-then-insert mirrors
+  // `replaceProductBarcodes`: the join table has no FKs pointing INTO it, so
+  // dropped rows are safe to recreate, and this always converges to the
+  // chosen set. Throws on DB failure so the product form can surface it.
+  replaceProductSuppliers: async (productId: string, supplierIds: string[]) => {
+    const uniqueIds = [...new Set(supplierIds.filter(Boolean))];
+
+    const { error: delError } = await supabase
+      .from("supplier_products")
+      .delete()
+      .eq("product_id", productId);
+    if (delError) {
+      console.error("[DB] replaceProductSuppliers delete failed:", delError);
+      throw new Error(delError.message);
+    }
+
+    if (uniqueIds.length > 0) {
+      const { error: insError } = await supabase.from("supplier_products").insert(
+        uniqueIds.map((supplierId) => ({ supplier_id: supplierId, product_id: productId }))
+      );
+      if (insError) {
+        console.error("[DB] replaceProductSuppliers insert failed:", insError);
+        throw new Error(insError.message);
+      }
+    }
+
+    set((state) => ({
+      supplierProducts: state.supplierProducts
+        .filter((link) => link.productId !== productId)
+        .concat(uniqueIds.map((supplierId) => ({ supplierId, productId }))),
+    }));
+  },
+
+  // Supplier-side link management (the product form uses replaceProductSuppliers
+  // instead). Both write the same supplier_products table under the same RLS.
+  addSupplierProducts: async (supplierId: string, productIds: string[]) => {
+    const existing = new Set(
+      get().supplierProducts.filter((l) => l.supplierId === supplierId).map((l) => l.productId)
+    );
+    const toAdd = [...new Set(productIds.filter(Boolean))].filter((id) => !existing.has(id));
+    if (toAdd.length === 0) return;
+
+    const { error } = await supabase.from("supplier_products").insert(
+      toAdd.map((productId) => ({ supplier_id: supplierId, product_id: productId }))
+    );
+    if (error) {
+      console.error("[DB] addSupplierProducts failed:", error);
+      throw new Error(error.message);
+    }
+
+    set((state) => ({
+      supplierProducts: [
+        ...state.supplierProducts,
+        ...toAdd.map((productId) => ({ supplierId, productId })),
+      ],
+    }));
+  },
+
+  removeSupplierProduct: async (supplierId: string, productId: string) => {
+    const { error } = await supabase
+      .from("supplier_products")
+      .delete()
+      .eq("supplier_id", supplierId)
+      .eq("product_id", productId);
+    if (error) {
+      console.error("[DB] removeSupplierProduct failed:", error);
+      throw new Error(error.message);
+    }
+
+    set((state) => ({
+      supplierProducts: state.supplierProducts.filter(
+        (l) => !(l.supplierId === supplierId && l.productId === productId)
+      ),
     }));
   },
 

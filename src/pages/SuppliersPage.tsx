@@ -12,6 +12,7 @@ import { SearchInput } from "../components/forms/SearchInput";
 import { SupplierFormModal } from "../components/suppliers/SupplierFormModal";
 import { buildSupplierFinancialSummary } from "../features/suppliers/debt";
 import { getDebtStatus } from "../features/suppliers/uiConstants";
+import { nextSupplierCode } from "../lib/supplierValidation";
 import { formatMmk, getEffectiveShopId } from "../lib/utils";
 import { getErrorMessage } from "../lib/errors";
 import { hasAnyPermission, hasPermission } from "../lib/permissions";
@@ -79,9 +80,10 @@ export const SuppliersPage = () => {
 
   const goToDetail = (supplier: Supplier) => navigate(`/app/suppliers/${supplier.id}`);
 
-  // Suggested next sequential code when adding a supplier. The detail page
-  // uses the same modal but only for edit, so this only matters here.
-  const suggestedNewCode = `SUP-${String(suppliers.length + 1).padStart(3, "0")}`;
+  // Suggested next sequential code when adding a supplier. Derived from the
+  // highest existing SUP-### so it never collides after a deactivation. The
+  // detail page uses the same modal but only for edit, so this only matters here.
+  const suggestedNewCode = nextSupplierCode(suppliers);
 
   return (
     <Card>
@@ -196,6 +198,7 @@ export const SuppliersPage = () => {
         open={formModalOpen}
         onClose={() => setFormModalOpen(false)}
         editing={editingSupplier}
+        suppliers={suppliers}
         suggestedNewCode={suggestedNewCode}
       />
     </Card>

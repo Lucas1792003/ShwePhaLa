@@ -855,6 +855,21 @@ export const filterPendingTransfers = (
       (shopId === null || t.fromShopId === shopId || t.toShopId === shopId)
   );
 
+/**
+ * Most-recent transfers in scope (newest first), for the "Transfers Between
+ * Shops" dashboard card. `null` shopId = all shops (admin); otherwise transfers
+ * where the shop is the source OR destination.
+ */
+export const recentTransfers = (
+  stockTransfers: StockTransfer[],
+  shopId: string | null,
+  limit = 6
+): StockTransfer[] =>
+  [...stockTransfers]
+    .filter((t) => shopId === null || t.fromShopId === shopId || t.toShopId === shopId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit);
+
 // ============================================================
 // Recent audit (Admin dashboard, requires audit:view_global RLS-side)
 // ============================================================

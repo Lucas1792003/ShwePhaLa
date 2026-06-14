@@ -24,6 +24,7 @@ import type {
   Supplier,
   SupplierPayment,
   SupplierPaymentMethod,
+  SupplierProduct,
   UnitType,
   User,
 } from "../../types";
@@ -147,6 +148,8 @@ export interface ProductState {
   products: Product[];
   productUnits: ProductUnit[];
   barcodes: ProductBarcode[];
+  /** Many-to-many supplier⇄product links (which products each supplier sells). */
+  supplierProducts: SupplierProduct[];
   addProduct: (product: Product, barcodes: ProductBarcode[]) => Promise<void>;
   updateProduct: (product: Product, barcodes: ProductBarcode[]) => Promise<void>;
   /**
@@ -164,6 +167,16 @@ export interface ProductState {
    */
   replaceProductBarcodes: (productId: string, barcodes: ProductBarcode[]) => Promise<void>;
   replaceProductUnits: (productId: string, units: ProductUnit[]) => Promise<void>;
+  /**
+   * Reconcile the supplier links for a product (delete-then-insert). Throws on
+   * DB failure so the product form can surface it. Managed from the product
+   * form; gated server-side on product:create/product:update.
+   */
+  replaceProductSuppliers: (productId: string, supplierIds: string[]) => Promise<void>;
+  /** Link one or more products to a supplier (supplier-side, skips existing). */
+  addSupplierProducts: (supplierId: string, productIds: string[]) => Promise<void>;
+  /** Unlink a single product from a supplier. */
+  removeSupplierProduct: (supplierId: string, productId: string) => Promise<void>;
   getProductByBarcode: (value: string) => { product: Product; unit: ProductUnit } | undefined;
 }
 
@@ -200,7 +213,19 @@ export interface TransferState {
   createTransfer: (input: CreateTransferInput) => Promise<string>;
   approveTransfer: (input: { transferId: string; approverId: string; approvedItems?: { productId: string; approvedQty: number }[] }) => Promise<void>;
   rejectTransfer: (input: { transferId: string; actorId: string; reason: string }) => Promise<void>;
-  completeTransfer: (input: { transferId: string; actorId: string }) => Promise<void>;
+  /** Source marks an APPROVED transfer IN_TRANSIT (no inventory change yet). */
+  dispatchTransfer: (input: { transferId: string; actorId: string }) => Promise<void>;
+  /**
+   * Destination confirms receipt of an IN_TRANSIT transfer, moving stock
+   * (source → dest) for the received quantities. `receivedItems` lets the
+   * destination record a short receipt (per-line base qty ≤ approved); when
+   * omitted, the full approved quantity is received.
+   */
+  receiveTransfer: (input: {
+    transferId: string;
+    actorId: string;
+    receivedItems?: { productId: string; receivedQty: number }[];
+  }) => Promise<void>;
   cancelTransfer: (input: { transferId: string; actorId: string; reason: string }) => Promise<void>;
   getTransfersByShop: (shopId: string) => StockTransfer[];
   getPendingTransfersForApproval: (shopId: string) => StockTransfer[];

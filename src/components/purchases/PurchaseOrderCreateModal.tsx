@@ -6,7 +6,7 @@ import { Badge } from "../ui/Badge";
 import { useToast } from "../ui/Toast";
 import { getErrorMessage } from "../../lib/errors";
 import { useDataStore } from "../../stores/dataStore";
-import type { Product, Supplier } from "../../types";
+import type { Product, Supplier, SupplierProduct } from "../../types";
 
 interface PurchaseOrderCreateModalProps {
   open: boolean;
@@ -24,6 +24,9 @@ interface PurchaseOrderCreateModalProps {
   suppliers: Supplier[];
   // Active products to add as PO lines.
   products: Product[];
+  // Supplier⇄product links. When the selected supplier has any, the product
+  // picker defaults to that supplier's products (with a "show all" override).
+  supplierProducts: SupplierProduct[];
   // Called after the RPC resolves successfully. Useful for the supplier
   // workspace to re-focus the newly-created PO.
   onCreated?: (purchaseOrderId: string) => void;
@@ -43,6 +46,7 @@ export const PurchaseOrderCreateModal = ({
   defaultSupplierId,
   suppliers,
   products,
+  supplierProducts,
   onCreated,
 }: PurchaseOrderCreateModalProps) => {
   const createPurchaseOrder = useDataStore((state) => state.createPurchaseOrder);
@@ -52,6 +56,9 @@ export const PurchaseOrderCreateModal = ({
   const [items, setItems] = useState<DraftItem[]>([]);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // When the supplier has linked products, the picker shows only those by
+  // default; this toggle lets the user fall back to the full catalog.
+  const [showAllProducts, setShowAllProducts] = useState(false);
 
   // Reset form whenever the modal is (re-)opened or the pre-selected supplier
   // changes; keeps state clean across reopens without leaking previous draft.
@@ -61,6 +68,7 @@ export const PurchaseOrderCreateModal = ({
     setItems([]);
     setNotes("");
     setSubmitting(false);
+    setShowAllProducts(false);
   }, [open, defaultSupplierId]);
 
   const addItem = (productId: string) => {
@@ -115,8 +123,23 @@ export const PurchaseOrderCreateModal = ({
     }
   };
 
+  // Products linked to the chosen supplier (if any). Used to soft-filter the
+  // picker so the common case (ordering a product the supplier sells) is quick.
+  const linkedProductIds = supplierId
+    ? new Set(
+        supplierProducts.filter((link) => link.supplierId === supplierId).map((link) => link.productId)
+      )
+    : new Set<string>();
+  const hasLinkedProducts = linkedProductIds.size > 0;
+  // Filter to the supplier's products only when it has some and the user hasn't
+  // asked to see all. A supplier with no links never blocks ordering.
+  const restrictToSupplier = hasLinkedProducts && !showAllProducts;
+
   const eligibleProducts = products.filter(
-    (p) => p.isActive && !items.some((item) => item.productId === p.id)
+    (p) =>
+      p.isActive &&
+      !items.some((item) => item.productId === p.id) &&
+      (!restrictToSupplier || linkedProductIds.has(p.id))
   );
 
   return (
@@ -144,7 +167,20 @@ export const PurchaseOrderCreateModal = ({
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Add products</label>
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <label className="block text-sm font-medium text-slate-700">Add products</label>
+            {hasLinkedProducts && (
+              <label className="flex items-center gap-1.5 text-xs text-slate-500">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  checked={showAllProducts}
+                  onChange={(event) => setShowAllProducts(event.target.checked)}
+                />
+                Show all products
+              </label>
+            )}
+          </div>
           <Select
             value=""
             onChange={(event) => {
@@ -152,7 +188,9 @@ export const PurchaseOrderCreateModal = ({
               event.target.value = "";
             }}
           >
-            <option value="">Select product to add…</option>
+            <option value="">
+              {restrictToSupplier ? "Select a product this supplier sells…" : "Select product to add…"}
+            </option>
             {eligibleProducts.map((product) => (
               <option key={product.id} value={product.id}>
                 {product.name}

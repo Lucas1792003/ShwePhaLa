@@ -43,6 +43,7 @@ import {
   groupSupplierDebtBySupplier,
   listActiveShiftRows,
   recentAuditLogs,
+  recentTransfers,
   resolveDashboardScope,
   scopeSales,
 } from "./dashboardMetrics";
@@ -1084,6 +1085,32 @@ describe("pending list filters", () => {
 // ============================================================
 // recentAuditLogs
 // ============================================================
+describe("recentTransfers", () => {
+  const tr = (overrides: Partial<StockTransfer>): StockTransfer => ({
+    id: "t", transferNo: "TRF-1", fromShopId: "shop-a", toShopId: "shop-b",
+    status: "PENDING", createdBy: "u", createdAt: "2026-05-10T00:00:00.000Z", ...overrides,
+  });
+
+  const transfers: StockTransfer[] = [
+    tr({ id: "old", createdAt: "2026-05-01T00:00:00.000Z" }),
+    tr({ id: "new", createdAt: "2026-05-20T00:00:00.000Z" }),
+    tr({ id: "other", fromShopId: "shop-c", toShopId: "shop-d", createdAt: "2026-05-15T00:00:00.000Z" }),
+  ];
+
+  it("returns newest-first across all shops in admin mode", () => {
+    expect(recentTransfers(transfers, null).map((t) => t.id)).toEqual(["new", "other", "old"]);
+  });
+
+  it("scopes to transfers where the shop is source or destination", () => {
+    expect(recentTransfers(transfers, "shop-a").map((t) => t.id)).toEqual(["new", "old"]);
+    expect(recentTransfers(transfers, "shop-d").map((t) => t.id)).toEqual(["other"]);
+  });
+
+  it("honours the limit", () => {
+    expect(recentTransfers(transfers, null, 1).map((t) => t.id)).toEqual(["new"]);
+  });
+});
+
 describe("recentAuditLogs", () => {
   it("returns the N most recent by createdAt descending", () => {
     const logs = [

@@ -48,7 +48,7 @@ export type StockMovementType =
   | "RETURN_OUT";    // Return to supplier
 
 // Stock Transfer Status
-export type TransferStatus = "PENDING" | "APPROVED" | "COMPLETED" | "CANCELED" | "REJECTED";
+export type TransferStatus = "PENDING" | "APPROVED" | "IN_TRANSIT" | "COMPLETED" | "CANCELED" | "REJECTED";
 
 // Purchase Order Status
 export type PurchaseOrderStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "RECEIVED" | "CANCELED";
@@ -310,6 +310,12 @@ export interface Supplier {
   createdAt: string;
 }
 
+// Many-to-many link between a supplier and the products it can supply.
+export interface SupplierProduct {
+  supplierId: string;
+  productId: string;
+}
+
 // Purchase Order
 export interface PurchaseOrder {
   id: string;
@@ -382,6 +388,10 @@ export interface StockTransfer {
   createdAt: string;
   approvedBy?: string;
   approvedAt?: string;
+  dispatchedBy?: string;
+  dispatchedAt?: string;
+  receivedBy?: string;
+  receivedAt?: string;
   completedAt?: string;
   canceledBy?: string;
   canceledAt?: string;

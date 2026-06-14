@@ -26,7 +26,7 @@ import {
   filterActiveShifts,
   filterPendingApprovals,
   filterPendingReceipts,
-  filterPendingTransfers,
+  recentTransfers,
   filterSalesByRange,
   getDashboardVisibility,
   scopeSales,
@@ -41,6 +41,7 @@ import {
 } from "./DashboardCommon";
 import { rangeLabel, useDashboardCopy } from "./dashboardCopy";
 import { LowStockCard } from "./LowStockCard";
+import { TransfersStatusCard } from "./TransfersStatusCard";
 
 const COLORS = ["#047857", "#2563eb", "#d97706", "#dc2626", "#7c3aed", "#0891b2"];
 
@@ -128,8 +129,8 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
     () => filterPendingReceipts(purchaseOrders, shopId).slice(0, 4),
     [purchaseOrders, shopId]
   );
-  const pendingTransfers = useMemo(
-    () => filterPendingTransfers(stockTransfers, shopId).slice(0, 4),
+  const recentTransferRows = useMemo(
+    () => recentTransfers(stockTransfers, shopId, 100),
     [stockTransfers, shopId]
   );
   const supplierDebt = useMemo(
@@ -330,27 +331,7 @@ export const ManagerDashboard = ({ currentUser, shopId, shops }: ManagerDashboar
         )}
 
         {visibility.canViewTransfers && (
-          <SectionCard title={copy("pendingTransfers")} icon="sync_alt">
-            {pendingTransfers.length > 0 ? (
-              <div className="space-y-2">
-                {pendingTransfers.map((transfer) => (
-                  <div key={transfer.id} className="rounded-lg border border-slate-200 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="truncate text-sm font-semibold text-slate-800">
-                        {transfer.transferNo}
-                      </span>
-                      <Badge tone="blue">{copy("pending")}</Badge>
-                    </div>
-                    <p className="mt-1 truncate text-xs text-slate-500">
-                      {findShopName(shops, transfer.fromShopId, copy("unknownShop"))} {copy("to")} {findShopName(shops, transfer.toShopId, copy("unknownShop"))}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState message={copy("noPendingTransfersForShop")} icon="task_alt" />
-            )}
-          </SectionCard>
+          <TransfersStatusCard transfers={recentTransferRows} shops={shops} />
         )}
       </div>
 
