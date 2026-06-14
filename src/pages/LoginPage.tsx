@@ -5,9 +5,11 @@ import { useAppStore } from "../stores/appStore";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
+import { useTranslation } from "../hooks/useTranslation";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -22,7 +24,7 @@ export const LoginPage = () => {
     setError("");
 
     if (!email.trim() || !password.trim()) {
-      setError("Email and password are required.");
+      setError(t("auth", "emailPasswordRequired"));
       return;
     }
 
@@ -50,24 +52,24 @@ export const LoginPage = () => {
         <div className="grid gap-0 md:grid-cols-[1.1fr_1fr]">
           <div className="flex flex-col justify-between bg-emerald-900 p-8 text-white">
             <div>
-              <div className="text-xs uppercase tracking-[0.3em] text-emerald-200">Retail POS</div>
+              <div className="text-xs uppercase tracking-[0.3em] text-emerald-200">{t("auth", "retailPos")}</div>
               <h1 className="mt-3 text-3xl font-semibold">Shwe PhaLar</h1>
               <p className="mt-3 text-sm text-emerald-100">
-                Multi-shop POS + inventory suite with role-based access and real-time shift control.
+                {t("auth", "brandTagline")}
               </p>
             </div>
             <div className="mt-10 text-xs text-emerald-100/70">
-              Contact your administrator if you need access.
+              {t("auth", "contactAdmin")}
             </div>
           </div>
           <div className="p-8">
-            <div className="text-sm text-slate-500">Sign in to your account</div>
+            <div className="text-sm text-slate-500">{t("auth", "signInToAccount")}</div>
             {/* autoComplete off everywhere: this is a shared till, so the
                 browser must not cache or auto-fill the previous user's
                 credentials. */}
             <form className="mt-6 space-y-4" onSubmit={handleLogin} autoComplete="off">
               <div>
-                <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Email</div>
+                <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">{t("auth", "email")}</div>
                 <Input
                   type="email"
                   value={email}
@@ -84,7 +86,7 @@ export const LoginPage = () => {
                 />
               </div>
               <div>
-                <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Password</div>
+                <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">{t("auth", "password")}</div>
                 <div className="relative">
                   <Input
                     type={showPassword ? "text" : "password"}
@@ -93,7 +95,7 @@ export const LoginPage = () => {
                       setPassword(e.target.value);
                       if (error) setError("");
                     }}
-                    placeholder="Password"
+                    placeholder={t("auth", "password")}
                     autoComplete="new-password"
                     error={!!error}
                     className="pr-11"
@@ -101,7 +103,7 @@ export const LoginPage = () => {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={showPassword ? t("auth", "hidePassword") : t("auth", "showPassword")}
                     aria-pressed={showPassword}
                     className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 transition-colors hover:text-slate-600"
                   >
@@ -121,11 +123,11 @@ export const LoginPage = () => {
                 </div>
               )}
               <Button className="w-full" type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Signing in…" : "Sign in"}
+                {isSubmitting ? t("auth", "signingIn") : t("auth", "signIn")}
               </Button>
             </form>
             <div className="mt-6 rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/70 p-4 text-xs text-emerald-700">
-              First time? Sign in with any email to create the admin account. Staff accounts are created by the admin.
+              {t("auth", "firstTimeHint")}
             </div>
           </div>
         </div>
