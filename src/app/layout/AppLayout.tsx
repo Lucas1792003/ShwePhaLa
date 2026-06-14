@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { SmallScreenGuard } from "./SmallScreenGuard";
@@ -21,6 +21,38 @@ export const AppLayout = () => {
       void loadData();
     }
   }, [isLoaded, isLoading, loadError, loadData]);
+
+  // Keep the cached data fresh: re-sync when the tab regains focus/visibility
+  // and on a slow interval while open. The client store is loaded once, so
+  // without this a returning user would see stale stock/debt/transfers that
+  // another device changed. Throttled so rapid focus changes don't hammer the
+  // backend; loadData({force}) refreshes in place without a loading flash.
+  const lastRefreshRef = useRef(0);
+  useEffect(() => {
+    const THROTTLE_MS = 30_000;
+    const INTERVAL_MS = 120_000;
+    // Seed on mount so a focus right after the initial load doesn't double-fetch.
+    lastRefreshRef.current = Date.now();
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!useDataStore.getState().isLoaded) return;
+      const now = Date.now();
+      if (now - lastRefreshRef.current < THROTTLE_MS) return;
+      lastRefreshRef.current = now;
+      void loadData({ force: true });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibility);
+    const interval = window.setInterval(refresh, INTERVAL_MS);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearInterval(interval);
+    };
+  }, [loadData]);
 
   if (viewportWidth < MIN_SUPPORTED_WIDTH) {
     return <SmallScreenGuard />;
