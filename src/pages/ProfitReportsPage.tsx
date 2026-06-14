@@ -10,6 +10,16 @@ import { DateRangePicker } from "../components/forms/DateRangePicker";
 import { Button } from "../components/ui/Button";
 import { downloadCsv } from "../lib/csv";
 import { getEffectiveShopId } from "../lib/utils";
+import { useRangedSales } from "../features/reports/useRangedSales";
+
+// Default report window: start of the current month → today (YYYY-MM-DD).
+const currentMonthRange = () => {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const start = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`;
+  const end = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return { start, end };
+};
 
 export const ProfitReportsPage = () => {
   const currentUserId = useAuthStore((state) => state.currentUserId);
@@ -17,8 +27,6 @@ export const ProfitReportsPage = () => {
   const { currentShopId } = useAppStore();
   const shops = useDataStore((state) => state.shops);
   const products = useDataStore((state) => state.products);
-  const sales = useDataStore((state) => state.sales);
-  const saleItems = useDataStore((state) => state.saleItems);
   const inventory = useDataStore((state) => state.inventory);
   const transfers = useDataStore((state) => state.stockTransfers);
   const transferItems = useDataStore((state) => state.stockTransferItems);
@@ -26,13 +34,18 @@ export const ProfitReportsPage = () => {
   const purchaseOrderItems = useDataStore((state) => state.purchaseOrderItems);
 
   const [activeTab, setActiveTab] = useState("profit");
-  const [range, setRange] = useState({ start: "", end: "" });
+  const [range, setRange] = useState(currentMonthRange);
   const [shopFilter, setShopFilter] = useState("all");
 
   const _shopId = getEffectiveShopId(currentUser, currentShopId, shops);
   void _shopId; // Used for context, but effectiveShopId is user-controllable
   const isAdmin = currentUser?.role === "ADMIN";
   const effectiveShopId = shopFilter === "all" ? null : shopFilter;
+
+  // Profit aggregates over the FULL range from the server (not the 1000-row
+  // store cache), so long ranges aren't under-counted.
+  const { sales, saleItems, loading: salesLoading, error: salesError } =
+    useRangedSales(range.start, range.end, effectiveShopId);
 
   // Calculate profit by shop
   const profitByShop = useMemo(() => {
@@ -238,6 +251,11 @@ export const ProfitReportsPage = () => {
       {/* Profit by Shop */}
       {activeTab === "profit" && (
         <div className="mt-5 space-y-4">
+          {salesError ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{salesError}</div>
+          ) : salesLoading ? (
+            <div className="rounded-2xl border border-dashed border-slate-300/70 bg-slate-50/60 px-3 py-2 text-sm text-slate-500">Loading…</div>
+          ) : null}
           {/* Summary Cards */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="bg-slate-50 rounded-lg p-4">
