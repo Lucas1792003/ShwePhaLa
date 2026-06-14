@@ -188,6 +188,31 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
     }));
   },
 
+  paySupplierLumpSum: async ({ supplierId, shopId, amountMmk, paymentMethod, referenceNo, notes }) => {
+    const { data, error } = await supabase.rpc("pay_supplier_lump_sum", {
+      p_supplier_id: supplierId,
+      p_shop_id: shopId,
+      p_amount_mmk: amountMmk,
+      p_payment_method: paymentMethod,
+      p_reference_no: referenceNo ?? null,
+      p_notes: notes ?? null,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Lump-sum supplier payment returned no data.");
+    const result = data as {
+      supplierPayments: SupplierPayment[];
+      purchaseOrders: PurchaseOrder[];
+      auditLogs: AuditLog[];
+    };
+    const updatedPoById = new Map(result.purchaseOrders.map((p) => [p.id, p]));
+
+    set((s) => ({
+      purchaseOrders: s.purchaseOrders.map((p) => updatedPoById.get(p.id) ?? p),
+      supplierPayments: [...result.supplierPayments, ...s.supplierPayments],
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+  },
+
   voidSupplierPayment: async ({ paymentId, reason }) => {
     const { data, error } = await supabase.rpc("void_supplier_payment", {
       p_payment_id: paymentId,

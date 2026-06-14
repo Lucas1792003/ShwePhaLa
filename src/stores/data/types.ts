@@ -267,6 +267,16 @@ export interface PurchaseState {
   /** Void a recorded supplier payment: reverses the PO balance + stamps the
    *  payment voided. Throws on failure so the caller can surface it. */
   voidSupplierPayment: (input: { paymentId: string; reason: string }) => Promise<void>;
+  /** Pay a supplier a single amount, auto-allocated across its outstanding POs
+   *  (oldest-first) for the given shop. Throws on failure. */
+  paySupplierLumpSum: (input: {
+    supplierId: string;
+    shopId: string;
+    amountMmk: number;
+    paymentMethod: SupplierPaymentMethod;
+    referenceNo?: string;
+    notes?: string;
+  }) => Promise<void>;
 }
 
 export interface PricingState {

@@ -14,6 +14,7 @@ import { PurchaseOrderReceiveModal } from "../components/purchases/PurchaseOrder
 import { SupplierFormModal } from "../components/suppliers/SupplierFormModal";
 import { SupplierPaymentModal } from "../components/suppliers/SupplierPaymentModal";
 import { LinkProductsModal } from "../components/suppliers/LinkProductsModal";
+import { SupplierLumpSumPaymentModal } from "../components/suppliers/SupplierLumpSumPaymentModal";
 import {
   buildSupplierFinancialSummary,
   getComputedPaymentStatus,
@@ -85,6 +86,7 @@ export const SupplierDetailPage = () => {
   const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [linkProductsOpen, setLinkProductsOpen] = useState(false);
+  const [lumpSumOpen, setLumpSumOpen] = useState(false);
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const [voidingPaymentId, setVoidingPaymentId] = useState<string | null>(null);
   const [createPoOpen, setCreatePoOpen] = useState(false);
@@ -130,6 +132,26 @@ export const SupplierDetailPage = () => {
     () => (supplier ? buildSupplierFinancialSummary(supplier.id, visiblePurchaseOrders) : null),
     [supplier, visiblePurchaseOrders]
   );
+
+  // Outstanding POs for the lump-sum "Pay supplier" flow — scoped to the
+  // effective shop (payments are per shop), RECEIVED with a balance, oldest first.
+  const lumpSumPos = useMemo(
+    () =>
+      supplier && shopId
+        ? purchaseOrders.filter(
+            (po) =>
+              po.supplierId === supplier.id &&
+              po.shopId === shopId &&
+              po.status === "RECEIVED" &&
+              getPurchaseOrderBalanceMmk(po) > 0
+          )
+        : [],
+    [supplier, shopId, purchaseOrders]
+  );
+  const canPayLumpSum =
+    Boolean(shopId) &&
+    (isAdmin || hasShopPermission(currentUser, "supplier:payment_create", shopId)) &&
+    lumpSumPos.length > 0;
 
   // Products this supplier can supply (many-to-many link, managed from the
   // product form). Sorted by name; inactive products shown with a badge.
@@ -238,6 +260,9 @@ export const SupplierDetailPage = () => {
         <Button variant="secondary" onClick={() => setEditOpen(true)}>
           Edit supplier
         </Button>
+      )}
+      {canPayLumpSum && (
+        <Button variant="secondary" onClick={() => setLumpSumOpen(true)}>Pay supplier</Button>
       )}
       {canRaisePoForShop && supplier.isActive && (
         <Button onClick={() => setCreatePoOpen(true)}>Create purchase order</Button>
@@ -711,6 +736,14 @@ export const SupplierDetailPage = () => {
         supplierName={supplier.name}
         products={products}
         linkedProductIds={linkedProductIds}
+      />
+
+      <SupplierLumpSumPaymentModal
+        open={lumpSumOpen}
+        onClose={() => setLumpSumOpen(false)}
+        supplier={supplier}
+        shopId={shopId}
+        outstandingPos={lumpSumPos}
       />
     </div>
   );
