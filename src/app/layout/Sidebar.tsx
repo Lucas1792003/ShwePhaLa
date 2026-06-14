@@ -61,6 +61,7 @@ const navSections: NavSection[] = [
       // Unit Types + Pricing removed from sidebar — both surfaces are
       // now edited inline from the Product form (Units & Prices section).
       // The routes themselves still exist for direct linking / deep-links.
+      { to: "/app/security", labelKey: "security", permission: ROUTE_PERMISSIONS.adminSecurity, icon: "shield_lock", allowedRoles: ["ADMIN"] },
       { to: "/app/admin/audit", labelKey: "auditLog", permission: ROUTE_PERMISSIONS.adminAudit, icon: "policy" },
     ],
   },

@@ -21,6 +21,15 @@ interface EnrollTotpResult {
   uri?: string;
 }
 
+export interface TotpFactor {
+  id: string;
+  friendlyName?: string;
+  status: "verified" | "unverified";
+  createdAt: string;
+  updatedAt: string;
+  lastChallengedAt?: string;
+}
+
 interface AuthState {
   currentUserId: string | null;
   // Role of the signed-in user, captured at login/restore so route guards can
@@ -40,7 +49,8 @@ interface AuthState {
   requestAdminCode: () => Promise<RequestCodeResult>;
   verifyAdminCode: (code: string) => Promise<{ error: string | null }>;
   // Admin 2FA — authenticator-app (TOTP) path via Supabase built-in MFA.
-  enrollTotp: () => Promise<EnrollTotpResult>;
+  listTotpFactors: () => Promise<{ error: string | null; factors: TotpFactor[] }>;
+  enrollTotp: (friendlyName?: string) => Promise<EnrollTotpResult>;
   verifyTotpEnrollment: (factorId: string, code: string) => Promise<{ error: string | null }>;
   verifyTotpLogin: (code: string) => Promise<{ error: string | null }>;
   unenrollTotp: (factorId: string) => Promise<{ error: string | null }>;
@@ -60,6 +70,23 @@ async function readMfaState(): Promise<{ hasTotp: boolean; isAal2: boolean }> {
   } catch {
     return { hasTotp: false, isAal2: false };
   }
+}
+
+async function listTotpFactorRows(): Promise<{ error: string | null; factors: TotpFactor[] }> {
+  const { data, error } = await supabase.auth.mfa.listFactors();
+  if (error) return { error: error.message, factors: [] };
+  const factors = (data?.all ?? [])
+    .filter((factor) => factor.factor_type === "totp")
+    .map((factor) => ({
+      id: factor.id,
+      friendlyName: factor.friendly_name,
+      status: factor.status,
+      createdAt: factor.created_at,
+      updatedAt: factor.updated_at,
+      lastChallengedAt: factor.last_challenged_at,
+    }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return { error: null, factors };
 }
 
 // Per-browser-session "this admin already passed the code" marker. sessionStorage
@@ -300,9 +327,15 @@ export const useAuthStore = create<AuthState>()((set) => ({
     return { error: null };
   },
 
+  listTotpFactors: listTotpFactorRows,
+
   // Start TOTP enrollment: returns the QR + secret to show the admin.
-  enrollTotp: async () => {
-    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+  enrollTotp: async (friendlyName?: string) => {
+    const name = friendlyName?.trim();
+    const { data, error } = await supabase.auth.mfa.enroll({
+      factorType: "totp",
+      ...(name ? { friendlyName: name } : {}),
+    });
     if (error) return { error: error.message };
     return {
       error: null,
@@ -332,24 +365,35 @@ export const useAuthStore = create<AuthState>()((set) => ({
   verifyTotpLogin: async (code: string) => {
     const { data: factors, error: listError } = await supabase.auth.mfa.listFactors();
     if (listError) return { error: listError.message };
-    const factor = (factors?.totp ?? []).find((f) => f.status === "verified");
-    if (!factor) return { error: "No authenticator app is set up." };
-    const challenge = await supabase.auth.mfa.challenge({ factorId: factor.id });
-    if (challenge.error) return { error: challenge.error.message };
-    const verify = await supabase.auth.mfa.verify({
-      factorId: factor.id,
-      challengeId: challenge.data.id,
-      code,
-    });
-    if (verify.error) return { error: verify.error.message };
-    set({ adminVerified: true });
-    return { error: null };
+    const verifiedFactors = (factors?.totp ?? []).filter((f) => f.status === "verified");
+    if (verifiedFactors.length === 0) return { error: "No authenticator app is set up." };
+
+    let lastError = "Incorrect code. Check your authenticator app and try again.";
+    for (const factor of verifiedFactors) {
+      const challenge = await supabase.auth.mfa.challenge({ factorId: factor.id });
+      if (challenge.error) {
+        lastError = challenge.error.message;
+        continue;
+      }
+      const verify = await supabase.auth.mfa.verify({
+        factorId: factor.id,
+        challengeId: challenge.data.id,
+        code,
+      });
+      if (!verify.error) {
+        set({ adminVerified: true });
+        return { error: null };
+      }
+      lastError = verify.error.message || lastError;
+    }
+    return { error: lastError };
   },
 
   unenrollTotp: async (factorId: string) => {
     const { error } = await supabase.auth.mfa.unenroll({ factorId });
     if (error) return { error: error.message };
-    set({ hasTotp: false });
+    const { factors } = await listTotpFactorRows();
+    set({ hasTotp: factors.some((factor) => factor.status === "verified") });
     return { error: null };
   },
 }));

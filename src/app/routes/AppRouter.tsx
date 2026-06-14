@@ -4,6 +4,7 @@ import { RequireAuth } from "./guards/RequireAuth";
 import { RequireRole } from "./guards/RequireRole";
 import { LoginPage } from "../../features/auth/pages/LoginPage";
 import { AdminVerifyPage } from "../../features/auth/pages/AdminVerifyPage";
+import { SecurityPage } from "../../features/auth/pages/SecurityPage";
 import { PosPage } from "../../features/pos/pages/PosPage";
 import { SalesListPage } from "../../features/sales/pages/SalesListPage";
 import { SaleDetailPage } from "../../features/sales/pages/SaleDetailPage";
@@ -270,6 +271,14 @@ export const AppRouter = () => (
         element={
           <RequireRole permission={ROUTE_PERMISSIONS.adminAudit}>
             <AuditLogPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path="security"
+        element={
+          <RequireRole allowed={["ADMIN"]} permission={ROUTE_PERMISSIONS.adminSecurity}>
+            <SecurityPage />
           </RequireRole>
         }
       />
