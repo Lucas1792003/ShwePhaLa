@@ -33,38 +33,41 @@ import {
 import { formatDateTime, formatMmk, getEffectiveShopId } from "../lib/utils";
 import { getErrorMessage } from "../lib/errors";
 import { hasAnyPermission, hasPermission, hasShopPermission } from "../lib/permissions";
+import { useTranslation } from "../hooks/useTranslation";
 import type { PurchaseOrder } from "../types";
 
 type TabId = "overview" | "products" | "purchases" | "payments";
 
-const tabs: Array<{ id: TabId; label: string }> = [
-  { id: "overview", label: "Overview" },
-  { id: "products", label: "Products" },
-  { id: "purchases", label: "Purchase Orders" },
-  { id: "payments", label: "Payments" },
-];
-
 // Friendly "supplier missing / no access" page. Used both when the id does
 // not match any row AND when RLS hides the row from the current user — we
 // can't tell the two apart from the client, so the copy covers both cases.
-const SupplierNotFound = () => (
-  <Card className="text-center">
-    <h1 className="text-xl font-semibold text-slate-900">Supplier not found</h1>
-    <p className="mt-2 text-sm text-slate-500">
-      This supplier does not exist or you do not have access to it.
-    </p>
-    <div className="mt-5">
-      <Link to="/app/suppliers">
-        <Button>Back to Suppliers</Button>
-      </Link>
-    </div>
-  </Card>
-);
+const SupplierNotFound = () => {
+  const { t } = useTranslation();
+  return (
+    <Card className="text-center">
+      <h1 className="text-xl font-semibold text-slate-900">{t("suppliers", "notFoundTitle")}</h1>
+      <p className="mt-2 text-sm text-slate-500">{t("suppliers", "notFoundBody")}</p>
+      <div className="mt-5">
+        <Link to="/app/suppliers">
+          <Button>{t("suppliers", "backToSuppliers")}</Button>
+        </Link>
+      </div>
+    </Card>
+  );
+};
 
 export const SupplierDetailPage = () => {
   const { supplierId } = useParams<{ supplierId: string }>();
   const navigate = useNavigate();
   const toast = useToast();
+  const { t } = useTranslation();
+
+  const tabs: Array<{ id: TabId; label: string }> = [
+    { id: "overview", label: t("suppliers", "detailTabOverview") },
+    { id: "products", label: t("suppliers", "detailTabProducts") },
+    { id: "purchases", label: t("suppliers", "detailTabPurchases") },
+    { id: "payments", label: t("suppliers", "detailTabPayments") },
+  ];
 
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) => state.users.find((u) => u.id === currentUserId));
@@ -183,17 +186,17 @@ export const SupplierDetailPage = () => {
 
   const handleVoidPayment = async (paymentId: string) => {
     if (voidingPaymentId) return;
-    const reason = prompt("Reason for voiding this payment?");
+    const reason = prompt(t("suppliers", "voidReasonPrompt"));
     if (!reason || !reason.trim()) return;
     setVoidingPaymentId(paymentId);
     try {
       await voidSupplierPayment({ paymentId, reason: reason.trim() });
-      toast({ variant: "success", title: "Payment voided" });
+      toast({ variant: "success", title: t("suppliers", "paymentVoided") });
     } catch (error) {
       toast({
         variant: "error",
-        title: "Could not void payment",
-        description: getErrorMessage(error, "Please try again."),
+        title: t("suppliers", "couldNotVoid"),
+        description: getErrorMessage(error, t("suppliers", "tryAgain")),
       });
     } finally {
       setVoidingPaymentId(null);
@@ -205,12 +208,12 @@ export const SupplierDetailPage = () => {
     setUnlinkingId(productId);
     try {
       await removeSupplierProduct(supplier.id, productId);
-      toast({ variant: "success", title: "Product unlinked" });
+      toast({ variant: "success", title: t("suppliers", "productUnlinked") });
     } catch (error) {
       toast({
         variant: "error",
-        title: "Could not unlink product",
-        description: getErrorMessage(error, "Please try again."),
+        title: t("suppliers", "couldNotUnlink"),
+        description: getErrorMessage(error, t("suppliers", "tryAgain")),
       });
     } finally {
       setUnlinkingId(null);
@@ -222,12 +225,12 @@ export const SupplierDetailPage = () => {
     setBusyPoId(po.id);
     try {
       await approvePurchaseOrder({ purchaseOrderId: po.id, approverId: currentUserId });
-      toast({ variant: "success", title: `Approved ${po.orderNo}` });
+      toast({ variant: "success", title: t("suppliers", "approvedPo", { orderNo: po.orderNo }) });
     } catch (error) {
       toast({
         variant: "error",
-        title: "Approval failed",
-        description: getErrorMessage(error, "Could not approve this purchase order."),
+        title: t("purchases", "approvalFailed"),
+        description: getErrorMessage(error, t("purchases", "approvalFailedDesc")),
       });
     } finally {
       setBusyPoId(null);
@@ -236,16 +239,16 @@ export const SupplierDetailPage = () => {
 
   const handleCancelPo = async (po: PurchaseOrder) => {
     if (!currentUserId || busyPoId) return;
-    if (!confirm(`Cancel ${po.orderNo}? This cannot be undone.`)) return;
+    if (!confirm(t("suppliers", "confirmCancelPo", { orderNo: po.orderNo }))) return;
     setBusyPoId(po.id);
     try {
       await cancelPurchaseOrder({ purchaseOrderId: po.id, actorId: currentUserId });
-      toast({ variant: "success", title: `Canceled ${po.orderNo}` });
+      toast({ variant: "success", title: t("suppliers", "canceledPo", { orderNo: po.orderNo }) });
     } catch (error) {
       toast({
         variant: "error",
-        title: "Cancel failed",
-        description: getErrorMessage(error, "Could not cancel this purchase order."),
+        title: t("purchases", "cancelFailed"),
+        description: getErrorMessage(error, t("purchases", "cancelFailedDesc")),
       });
     } finally {
       setBusyPoId(null);
@@ -258,14 +261,14 @@ export const SupplierDetailPage = () => {
     <div className="flex flex-wrap items-center gap-2">
       {canUpdateSupplier && (
         <Button variant="secondary" onClick={() => setEditOpen(true)}>
-          Edit supplier
+          {t("suppliers", "editSupplier")}
         </Button>
       )}
       {canPayLumpSum && (
-        <Button variant="secondary" onClick={() => setLumpSumOpen(true)}>Pay supplier</Button>
+        <Button variant="secondary" onClick={() => setLumpSumOpen(true)}>{t("suppliers", "paySupplierTitle")}</Button>
       )}
       {canRaisePoForShop && supplier.isActive && (
-        <Button onClick={() => setCreatePoOpen(true)}>Create purchase order</Button>
+        <Button onClick={() => setCreatePoOpen(true)}>{t("suppliers", "createPo")}</Button>
       )}
     </div>
   );
@@ -277,20 +280,20 @@ export const SupplierDetailPage = () => {
       <section className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Supplier profile</h2>
-            <p className="mt-0.5 text-xs text-slate-500">Contact and account details</p>
+            <h2 className="text-base font-bold text-slate-900">{t("suppliers", "profileTitle")}</h2>
+            <p className="mt-0.5 text-xs text-slate-500">{t("suppliers", "profileSubtitle")}</p>
           </div>
           <Badge color={supplier.isActive ? "green" : "gray"}>
-            {supplier.isActive ? "Active" : "Inactive"}
+            {supplier.isActive ? t("common", "active") : t("common", "inactive")}
           </Badge>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <DetailMeta label="Contact" value={supplier.contactPerson ?? "-"} />
-          <DetailMeta label="Phone" value={supplier.phone ?? "-"} />
-          <DetailMeta label="Email" value={supplier.email ?? "-"} />
-          <DetailMeta label="Address" value={supplier.address ?? "-"} />
-          <DetailMeta label="Code" value={<span className="font-mono">{supplier.code}</span>} />
-          <DetailMeta label="Added" value={formatDateTime(supplier.createdAt)} />
+          <DetailMeta label={t("suppliers", "contact")} value={supplier.contactPerson ?? "-"} />
+          <DetailMeta label={t("suppliers", "phone")} value={supplier.phone ?? "-"} />
+          <DetailMeta label={t("suppliers", "email")} value={supplier.email ?? "-"} />
+          <DetailMeta label={t("suppliers", "address")} value={supplier.address ?? "-"} />
+          <DetailMeta label={t("suppliers", "code")} value={<span className="font-mono">{supplier.code}</span>} />
+          <DetailMeta label={t("suppliers", "addedLabel")} value={formatDateTime(supplier.createdAt)} />
         </div>
         {supplier.notes && (
           <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -306,10 +309,10 @@ export const SupplierDetailPage = () => {
   const purchasesSection =
     supplierOrders.length === 0 ? (
       <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-        No purchase records for this supplier yet.
+        {t("suppliers", "noPurchaseRecords")}
         {canRaisePoForShop && supplier.isActive && (
           <div className="mt-4">
-            <Button onClick={() => setCreatePoOpen(true)}>Create purchase order</Button>
+            <Button onClick={() => setCreatePoOpen(true)}>{t("suppliers", "createPo")}</Button>
           </div>
         )}
       </div>
@@ -325,10 +328,12 @@ export const SupplierDetailPage = () => {
           const receivedStatus =
             po.status === "RECEIVED"
               ? {
-                  label: hasPartialReceiving ? "Partially received" : "Received",
+                  label: hasPartialReceiving
+                    ? t("suppliers", "partiallyReceived")
+                    : t("purchases", "received"),
                   color: hasPartialReceiving ? "yellow" : "green",
                 }
-              : { label: "Not received", color: "gray" };
+              : { label: t("suppliers", "notReceived"), color: "gray" };
           const actionState = getPurchaseOrderActionState(po, currentUser);
           const isExpanded = expandedPoId === po.id;
           const isBusy = busyPoId === po.id;
@@ -343,7 +348,7 @@ export const SupplierDetailPage = () => {
                   <div className="text-base font-semibold text-slate-900">{po.orderNo}</div>
                   <div className="mt-1 text-xs text-slate-500">
                     {shops.find((shop) => shop.id === po.shopId)?.name ?? po.shopId} ·{" "}
-                    Created {formatDateTime(po.createdAt)}
+                    {t("purchases", "created")} {formatDateTime(po.createdAt)}
                   </div>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
@@ -355,18 +360,18 @@ export const SupplierDetailPage = () => {
               </div>
 
               <div className="mt-4 grid gap-3 rounded-2xl bg-slate-50/80 p-3 sm:grid-cols-3">
-                <MoneyLine label="Total" value={po.totalMmk} />
-                <MoneyLine label="Paid" value={getPurchaseOrderPaidMmk(po)} tone="green" />
-                <MoneyLine label="Balance" value={balance} tone={balance > 0 ? "red" : "slate"} />
+                <MoneyLine label={t("purchases", "total")} value={po.totalMmk} />
+                <MoneyLine label={t("suppliers", "paid")} value={getPurchaseOrderPaidMmk(po)} tone="green" />
+                <MoneyLine label={t("suppliers", "balance")} value={balance} tone={balance > 0 ? "red" : "slate"} />
               </div>
 
               <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
                 <div>
-                  <span className="font-medium text-slate-500">Received date: </span>
-                  {po.receivedAt ? formatDateTime(po.receivedAt) : "Not received"}
+                  <span className="font-medium text-slate-500">{t("suppliers", "receivedDate")}: </span>
+                  {po.receivedAt ? formatDateTime(po.receivedAt) : t("suppliers", "notReceived")}
                 </div>
                 <div>
-                  <span className="font-medium text-slate-500">Received by: </span>
+                  <span className="font-medium text-slate-500">{t("suppliers", "receivedByLabel")}: </span>
                   {receivedByUser?.name ?? "-"}
                 </div>
               </div>
@@ -377,27 +382,27 @@ export const SupplierDetailPage = () => {
                   variant="ghost"
                   onClick={() => setExpandedPoId(isExpanded ? null : po.id)}
                 >
-                  {isExpanded ? "Hide details" : "View details"}
+                  {isExpanded ? t("suppliers", "hideDetails") : t("suppliers", "viewDetails")}
                 </Button>
                 <div className="flex flex-wrap items-center gap-2">
                   {actionState.nextAction === "approve" && actionState.canActor && (
                     <Button size="sm" disabled={isBusy} onClick={() => handleApprovePo(po)}>
-                      {isBusy ? "Approving…" : "Approve"}
+                      {isBusy ? t("suppliers", "approving") : t("purchases", "approve")}
                     </Button>
                   )}
                   {actionState.nextAction === "receive" && actionState.canActor && (
                     <Button size="sm" onClick={() => setReceivePoId(po.id)}>
-                      Receive
+                      {t("purchases", "receive")}
                     </Button>
                   )}
                   {actionState.nextAction === "pay" && actionState.canActor && (
                     <Button size="sm" onClick={() => setPaymentPoId(po.id)}>
-                      Record payment
+                      {t("suppliers", "recordPayment")}
                     </Button>
                   )}
                   {actionState.canCancel && (
                     <Button size="sm" variant="ghost" disabled={isBusy} onClick={() => handleCancelPo(po)}>
-                      Cancel PO
+                      {t("suppliers", "cancelPo")}
                     </Button>
                   )}
                 </div>
@@ -406,14 +411,14 @@ export const SupplierDetailPage = () => {
               {isExpanded && (
                 <div className="mt-5 space-y-4 border-t border-slate-200/70 pt-4">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <DetailMeta label="Supplier invoice" value={po.supplierInvoiceNo ?? "-"} />
-                    <DetailMeta label="Delivery note" value={po.deliveryNoteNo ?? "-"} />
+                    <DetailMeta label={t("suppliers", "supplierInvoice")} value={po.supplierInvoiceNo ?? "-"} />
+                    <DetailMeta label={t("suppliers", "deliveryNote")} value={po.deliveryNoteNo ?? "-"} />
                     <DetailMeta
-                      label="Approved at"
+                      label={t("suppliers", "approvedAtLabel")}
                       value={po.approvedAt ? formatDateTime(po.approvedAt) : "-"}
                     />
                     <DetailMeta
-                      label="Approved by"
+                      label={t("suppliers", "approvedByLabel")}
                       value={
                         po.approvedBy
                           ? users.find((u) => u.id === po.approvedBy)?.name ?? po.approvedBy
@@ -424,26 +429,27 @@ export const SupplierDetailPage = () => {
 
                   {po.status === "RECEIVED" && (
                     <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
-                      Received by{" "}
-                      {receivedByUser?.name ?? po.receivedBy ?? "unknown user"}{" "}
-                      {po.receivedAt ? `on ${formatDateTime(po.receivedAt)}` : ""}
+                      {t("suppliers", "receivedByLine", {
+                        name: receivedByUser?.name ?? po.receivedBy ?? t("suppliers", "unknownUser"),
+                        when: po.receivedAt ? t("suppliers", "onDate", { date: formatDateTime(po.receivedAt) }) : "",
+                      })}
                     </div>
                   )}
 
                   {poItems.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-500">
-                      No line items found for this purchase order.
+                      {t("suppliers", "noLineItems")}
                     </div>
                   ) : (
                     <div className="overflow-x-auto rounded-xl border border-slate-200/70">
                       <table className="w-full min-w-[640px] text-sm">
                         <thead>
                           <tr className="border-b text-left text-slate-500">
-                            <th className="pb-2 font-medium">Product</th>
-                            <th className="pb-2 text-right font-medium">Ordered</th>
-                            <th className="pb-2 text-right font-medium">Received</th>
-                            <th className="pb-2 text-right font-medium">Unit cost</th>
-                            <th className="pb-2 text-right font-medium">Line total</th>
+                            <th className="pb-2 font-medium">{t("purchases", "product")}</th>
+                            <th className="pb-2 text-right font-medium">{t("purchases", "ordered")}</th>
+                            <th className="pb-2 text-right font-medium">{t("purchases", "receivedCol")}</th>
+                            <th className="pb-2 text-right font-medium">{t("purchases", "unitCost")}</th>
+                            <th className="pb-2 text-right font-medium">{t("suppliers", "lineTotal")}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -484,35 +490,35 @@ export const SupplierDetailPage = () => {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-500">
-          {linkedProducts.length} product{linkedProducts.length === 1 ? "" : "s"} linked to this supplier.
+          {t("suppliers", "productsLinkedCount", { n: linkedProducts.length })}
         </p>
         {canManageLinks && (
           <Button size="sm" onClick={() => setLinkProductsOpen(true)}>
             <span className="material-symbols-rounded mr-1 text-sm">add</span>
-            Add products
+            {t("suppliers", "addProductsTitle")}
           </Button>
         )}
       </div>
 
       {linkedProducts.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-          No products linked to this supplier yet.
+          {t("suppliers", "noProductsLinked")}
           {canManageLinks
-            ? " Use “Add products” above, or link from a product's edit page."
-            : " Link products from a product's edit page (Suppliers section)."}
+            ? t("suppliers", "noProductsLinkedManage")
+            : t("suppliers", "noProductsLinkedReadonly")}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white shadow-sm">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b text-left text-slate-500">
-                <th className="px-4 py-3 font-medium">Product</th>
-                <th className="px-4 py-3 font-medium">SKU</th>
-                <th className="px-4 py-3 font-medium">Category</th>
-                <th className="px-4 py-3 text-right font-medium">Cost</th>
-                <th className="px-4 py-3 text-right font-medium">Price</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                {canManageLinks && <th className="px-4 py-3 text-right font-medium">Actions</th>}
+                <th className="px-4 py-3 font-medium">{t("purchases", "product")}</th>
+                <th className="px-4 py-3 font-medium">{t("suppliers", "sku")}</th>
+                <th className="px-4 py-3 font-medium">{t("common", "category")}</th>
+                <th className="px-4 py-3 text-right font-medium">{t("suppliers", "cost")}</th>
+                <th className="px-4 py-3 text-right font-medium">{t("common", "price")}</th>
+                <th className="px-4 py-3 font-medium">{t("common", "status")}</th>
+                {canManageLinks && <th className="px-4 py-3 text-right font-medium">{t("common", "actions")}</th>}
               </tr>
             </thead>
             <tbody>
@@ -529,7 +535,7 @@ export const SupplierDetailPage = () => {
                   </td>
                   <td className="px-4 py-3">
                     <Badge color={product.isActive ? "green" : "gray"}>
-                      {product.isActive ? "Active" : "Inactive"}
+                      {product.isActive ? t("common", "active") : t("common", "inactive")}
                     </Badge>
                   </td>
                   {canManageLinks && (
@@ -540,7 +546,7 @@ export const SupplierDetailPage = () => {
                         disabled={unlinkingId === product.id}
                         onClick={() => handleUnlinkProduct(product.id)}
                       >
-                        {unlinkingId === product.id ? "Removing…" : "Remove"}
+                        {unlinkingId === product.id ? t("suppliers", "removing") : t("suppliers", "remove")}
                       </Button>
                     </td>
                   )}
@@ -558,21 +564,21 @@ export const SupplierDetailPage = () => {
   const paymentsSection =
     supplierPaymentsList.length === 0 ? (
       <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-        No supplier payments recorded yet.
+        {t("suppliers", "noPayments")}
       </div>
     ) : (
       <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white shadow-sm">
         <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr className="border-b text-left text-slate-500">
-              <th className="px-4 py-3 font-medium">Date</th>
-              <th className="px-4 py-3 font-medium">PO #</th>
-              <th className="px-4 py-3 text-right font-medium">Amount</th>
-              <th className="px-4 py-3 font-medium">Method</th>
-              <th className="px-4 py-3 font-medium">Reference</th>
-              <th className="px-4 py-3 font-medium">Notes</th>
-              <th className="px-4 py-3 font-medium">Recorded by</th>
-              <th className="px-4 py-3 text-right font-medium">Status</th>
+              <th className="px-4 py-3 font-medium">{t("common", "date")}</th>
+              <th className="px-4 py-3 font-medium">{t("purchases", "poNo")}</th>
+              <th className="px-4 py-3 text-right font-medium">{t("common", "amount")}</th>
+              <th className="px-4 py-3 font-medium">{t("suppliers", "method")}</th>
+              <th className="px-4 py-3 font-medium">{t("suppliers", "reference")}</th>
+              <th className="px-4 py-3 font-medium">{t("suppliers", "notes")}</th>
+              <th className="px-4 py-3 font-medium">{t("suppliers", "recordedBy")}</th>
+              <th className="px-4 py-3 text-right font-medium">{t("common", "status")}</th>
             </tr>
           </thead>
           <tbody>
@@ -596,12 +602,12 @@ export const SupplierDetailPage = () => {
                   <td className="px-4 py-3">{getSupplierPaymentMethodLabel(payment.paymentMethod)}</td>
                   <td className="px-4 py-3">{payment.referenceNo ?? "-"}</td>
                   <td className="px-4 py-3 text-slate-600">
-                    {isVoided ? payment.voidReason ?? "Voided" : payment.notes ?? "-"}
+                    {isVoided ? payment.voidReason ?? t("suppliers", "voided") : payment.notes ?? "-"}
                   </td>
                   <td className="px-4 py-3">{createdByUser?.name ?? payment.createdBy}</td>
                   <td className="px-4 py-3 text-right">
                     {isVoided ? (
-                      <Badge color="gray">Voided</Badge>
+                      <Badge color="gray">{t("suppliers", "voided")}</Badge>
                     ) : canVoidPayment(payment.shopId) ? (
                       <Button
                         size="sm"
@@ -609,7 +615,7 @@ export const SupplierDetailPage = () => {
                         disabled={voidingPaymentId === payment.id}
                         onClick={() => handleVoidPayment(payment.id)}
                       >
-                        {voidingPaymentId === payment.id ? "Voiding…" : "Void"}
+                        {voidingPaymentId === payment.id ? t("suppliers", "voiding") : t("suppliers", "voidAction")}
                       </Button>
                     ) : (
                       <span className="text-slate-300">-</span>
@@ -628,11 +634,11 @@ export const SupplierDetailPage = () => {
       <Card>
         <PageHeader
           title={supplier.name}
-          crumbs={[{ label: "Suppliers", href: "/app/suppliers" }, { label: supplier.name }]}
+          crumbs={[{ label: t("suppliers", "title"), href: "/app/suppliers" }, { label: supplier.name }]}
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="ghost" onClick={() => navigate("/app/suppliers")}>
-                ← Back
+                ← {t("common", "back")}
               </Button>
               {headerActions}
             </div>
@@ -641,7 +647,7 @@ export const SupplierDetailPage = () => {
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
           <Badge color={supplier.isActive ? "green" : "gray"}>
-            {supplier.isActive ? "Active" : "Inactive"}
+            {supplier.isActive ? t("common", "active") : t("common", "inactive")}
           </Badge>
           <span className="rounded-full bg-slate-100 px-2.5 py-1 font-mono font-semibold text-slate-700">
             {supplier.code}
@@ -653,31 +659,31 @@ export const SupplierDetailPage = () => {
         {summary && (
           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
             <SummaryCard
-              label="Outstanding debt"
+              label={t("suppliers", "outstandingDebt")}
               value={canViewDebt ? formatMmk(summary.outstandingDebtMmk) : "—"}
               tone={summary.outstandingDebtMmk > 0 ? "red" : "green"}
             />
             <SummaryCard
-              label="Received purchases"
+              label={t("suppliers", "receivedPurchases")}
               value={canViewDebt ? formatMmk(summary.totalReceivedPurchasesMmk) : "—"}
             />
             <SummaryCard
-              label="Paid"
+              label={t("suppliers", "paid")}
               value={canViewDebt ? formatMmk(summary.totalPaidMmk) : "—"}
               tone="green"
             />
             <SummaryCard
-              label="Unpaid / partial POs"
+              label={t("suppliers", "unpaidPartialPos")}
               value={summary.unpaidPoCount + summary.partialPoCount}
               tone={summary.unpaidPoCount + summary.partialPoCount > 0 ? "amber" : "slate"}
               badge={
                 <Badge color={summary.partialPoCount > 0 ? "yellow" : "gray"}>
-                  {summary.partialPoCount} partial
+                  {t("suppliers", "partialCount", { n: summary.partialPoCount })}
                 </Badge>
               }
             />
             <SummaryCard
-              label="Last purchase"
+              label={t("suppliers", "lastPurchase")}
               value={lastPurchaseDate ? formatDateTime(lastPurchaseDate) : "—"}
             />
           </div>
