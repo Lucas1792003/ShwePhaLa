@@ -111,11 +111,13 @@ Deno.serve(async (request) => {
   }
 
   if (!profile || profile.role !== "ADMIN" || !profile.is_active) {
+    console.error("[admin-2fa] rejected non-admin", { role: profile?.role, active: profile?.is_active });
     return jsonResponse({ error: "Only an active admin can use login verification." }, 403);
   }
 
   const recipient = profile.email ?? authUser.email;
   if (!recipient) {
+    console.error("[admin-2fa] admin email missing");
     return jsonResponse({ error: "Admin email is missing." }, 400);
   }
 
@@ -125,6 +127,7 @@ Deno.serve(async (request) => {
   } catch {
     return jsonResponse({ error: "Invalid request body." }, 400);
   }
+  console.log("[admin-2fa] action", body.action, "for", recipient);
 
   // ---- request: generate, store hash, email the code ----
   if (body.action === "request") {
@@ -150,6 +153,7 @@ Deno.serve(async (request) => {
       expires_at: expiresAt,
     });
     if (insert.error) {
+      console.error("[admin-2fa] insert failed", insert.error.message);
       return jsonResponse({ error: insert.error.message }, 500);
     }
 
@@ -180,9 +184,12 @@ Deno.serve(async (request) => {
     });
     if (!resendResponse.ok) {
       const errorText = await resendResponse.text();
+      console.error("[admin-2fa] Resend rejected", resendResponse.status, errorText);
       return jsonResponse({ error: `Could not send the code: ${errorText}` }, 502);
     }
 
+    const sendResult = await resendResponse.json().catch(() => ({}));
+    console.log("[admin-2fa] code emailed to", recipient, "resendId", sendResult?.id ?? null);
     return jsonResponse({ sent: true, expiresAt, email: maskEmail(recipient) });
   }
 
