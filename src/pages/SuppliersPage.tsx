@@ -16,10 +16,12 @@ import { nextSupplierCode } from "../lib/supplierValidation";
 import { formatMmk, getEffectiveShopId } from "../lib/utils";
 import { getErrorMessage } from "../lib/errors";
 import { hasAnyPermission, hasPermission } from "../lib/permissions";
+import { useTranslation } from "../hooks/useTranslation";
 import type { Supplier } from "../types";
 
 export const SuppliersPage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) => state.users.find((u) => u.id === currentUserId));
   const { currentShopId } = useAppStore();
@@ -83,13 +85,13 @@ export const SuppliersPage = () => {
       await updateSupplier({ ...supplier, isActive: !supplier.isActive });
       addToast({
         variant: "success",
-        title: supplier.isActive ? "Supplier deactivated" : "Supplier activated",
+        title: supplier.isActive ? t("suppliers", "deactivated") : t("suppliers", "activated"),
       });
     } catch (error) {
       addToast({
         variant: "error",
-        title: "Update failed",
-        description: getErrorMessage(error, "Failed to update supplier."),
+        title: t("suppliers", "updateFailed"),
+        description: getErrorMessage(error, t("suppliers", "updateFailedDesc")),
       });
     }
   };
@@ -104,36 +106,36 @@ export const SuppliersPage = () => {
   return (
     <Card>
       <PageHeader
-        title="Suppliers"
-        subtitle="Click a supplier to open its full account workspace."
-        actions={canCreateSupplier && <Button onClick={openCreateModal}>Add Supplier</Button>}
+        title={t("suppliers", "title")}
+        subtitle={t("suppliers", "subtitle")}
+        actions={canCreateSupplier && <Button onClick={openCreateModal}>{t("suppliers", "addSupplier")}</Button>}
       />
 
       <div className="mt-5">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search suppliers..." className="md:max-w-md" />
+        <SearchInput value={search} onChange={setSearch} placeholder={t("suppliers", "searchPlaceholder")} className="md:max-w-md" />
       </div>
 
       <div className="mt-5">
         {filteredSuppliers.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300/70 bg-slate-50/60 p-6 text-center text-sm text-slate-500">
-            No suppliers found.
+            {t("suppliers", "none")}
           </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
             <table className="min-w-[1180px] w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-slate-500">
-                  <th className="pb-3 font-medium">Code</th>
-                  <th className="pb-3 font-medium">Name</th>
-                  <th className="pb-3 font-medium">Contact</th>
-                  <th className="pb-3 font-medium">Phone</th>
-                  <th className="pb-3 text-right font-medium">Orders</th>
-                  <th className="pb-3 text-right font-medium">Total Received Purchases</th>
-                  <th className="pb-3 text-right font-medium">Paid</th>
-                  <th className="pb-3 text-right font-medium">Outstanding Debt</th>
-                  <th className="pb-3 font-medium">Debt Status</th>
-                  <th className="pb-3 font-medium">Status</th>
-                  <th className="pb-3 font-medium">Actions</th>
+                  <th className="pb-3 font-medium">{t("suppliers", "code")}</th>
+                  <th className="pb-3 font-medium">{t("common", "name")}</th>
+                  <th className="pb-3 font-medium">{t("suppliers", "contact")}</th>
+                  <th className="pb-3 font-medium">{t("suppliers", "phone")}</th>
+                  <th className="pb-3 text-right font-medium">{t("suppliers", "orders")}</th>
+                  <th className="pb-3 text-right font-medium">{t("suppliers", "totalReceived")}</th>
+                  <th className="pb-3 text-right font-medium">{t("suppliers", "paid")}</th>
+                  <th className="pb-3 text-right font-medium">{t("suppliers", "outstandingDebt")}</th>
+                  <th className="pb-3 font-medium">{t("suppliers", "debtStatus")}</th>
+                  <th className="pb-3 font-medium">{t("common", "status")}</th>
+                  <th className="pb-3 font-medium">{t("common", "actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -171,24 +173,26 @@ export const SuppliersPage = () => {
                       </td>
                       <td className="py-3">
                         {canViewDebt ? (
-                          <Badge color={debtStatus.color}>{debtStatus.label}</Badge>
+                          <Badge color={debtStatus.color}>
+                            {summary.outstandingDebtMmk > 0 ? t("suppliers", "unpaid") : t("suppliers", "noDebt")}
+                          </Badge>
                         ) : (
                           <span className="text-slate-400">-</span>
                         )}
                       </td>
                       <td className="py-3">
                         <Badge color={supplier.isActive ? "green" : "gray"}>
-                          {supplier.isActive ? "Active" : "Inactive"}
+                          {supplier.isActive ? t("common", "active") : t("common", "inactive")}
                         </Badge>
                       </td>
                       <td className="py-3" onClick={(event) => event.stopPropagation()}>
                         <div className="flex flex-wrap gap-2">
                           <Button size="sm" variant="ghost" onClick={() => goToDetail(supplier)}>
-                            View details
+                            {t("suppliers", "viewDetails")}
                           </Button>
                           {canUpdateSupplier && (
                             <Button size="sm" variant="ghost" onClick={() => openEditModal(supplier)}>
-                              Edit
+                              {t("common", "edit")}
                             </Button>
                           )}
                           {isAdmin && (
@@ -197,7 +201,7 @@ export const SuppliersPage = () => {
                               variant={supplier.isActive ? "danger" : "primary"}
                               onClick={() => toggleActive(supplier)}
                             >
-                              {supplier.isActive ? "Deactivate" : "Activate"}
+                              {supplier.isActive ? t("suppliers", "deactivate") : t("suppliers", "activate")}
                             </Button>
                           )}
                         </div>

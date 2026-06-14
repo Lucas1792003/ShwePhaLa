@@ -4,6 +4,7 @@ import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toast";
 import { useDataStore } from "../../stores/dataStore";
 import { mapSupplierFormError, validateSupplierInput } from "../../lib/supplierValidation";
+import { useTranslation } from "../../hooks/useTranslation";
 import type { Supplier } from "../../types";
 
 interface SupplierFormModalProps {
@@ -48,6 +49,7 @@ export const SupplierFormModal = ({
   const addSupplier = useDataStore((state) => state.addSupplier);
   const updateSupplier = useDataStore((state) => state.updateSupplier);
   const toast = useToast();
+  const { t } = useTranslation();
 
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +99,7 @@ export const SupplierFormModal = ({
     try {
       if (editing) {
         await updateSupplier({ ...editing, ...form });
-        toast({ variant: "success", title: "Supplier updated" });
+        toast({ variant: "success", title: t("suppliers", "updated") });
       } else {
         await addSupplier({
           id: `supplier-${Date.now()}`,
@@ -111,7 +113,7 @@ export const SupplierFormModal = ({
           isActive: true,
           createdAt: new Date().toISOString(),
         });
-        toast({ variant: "success", title: "Supplier added" });
+        toast({ variant: "success", title: t("suppliers", "added") });
       }
       onClose();
     } catch (err) {
@@ -119,19 +121,19 @@ export const SupplierFormModal = ({
       // Friendly mapping handles RLS, duplicate code, network.
       const message = mapSupplierFormError(err);
       setError(message);
-      toast({ variant: "error", title: "Save failed", description: message });
+      toast({ variant: "error", title: t("suppliers", "saveFailed"), description: message });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal open={open} onClose={requestClose} title={editing ? "Edit Supplier" : "Add Supplier"}>
+    <Modal open={open} onClose={requestClose} title={editing ? t("suppliers", "editTitle") : t("suppliers", "addTitle")}>
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Code <span className="text-red-500">*</span>
+              {t("suppliers", "code")} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -143,7 +145,7 @@ export const SupplierFormModal = ({
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Name <span className="text-red-500">*</span>
+              {t("common", "name")} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -157,7 +159,7 @@ export const SupplierFormModal = ({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Contact Person</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">{t("suppliers", "contactPerson")}</label>
             <input
               type="text"
               value={form.contactPerson}
@@ -167,7 +169,7 @@ export const SupplierFormModal = ({
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">{t("suppliers", "phone")}</label>
             <input
               type="text"
               value={form.phone}
@@ -179,7 +181,7 @@ export const SupplierFormModal = ({
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">{t("suppliers", "email")}</label>
           <input
             type="email"
             value={form.email}
@@ -190,7 +192,7 @@ export const SupplierFormModal = ({
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Address</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">{t("suppliers", "address")}</label>
           <input
             type="text"
             value={form.address}
@@ -201,7 +203,7 @@ export const SupplierFormModal = ({
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Notes</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">{t("suppliers", "notes")}</label>
           <textarea
             value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
@@ -219,10 +221,12 @@ export const SupplierFormModal = ({
 
         <div className="flex flex-wrap justify-end gap-2 pt-4">
           <Button variant="secondary" disabled={saving} onClick={requestClose}>
-            Cancel
+            {t("common", "cancel")}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? (editing ? "Updating…" : "Creating…") : editing ? "Update" : "Create"}
+            {saving
+              ? editing ? t("suppliers", "updating") : t("suppliers", "creating")
+              : editing ? t("suppliers", "update") : t("suppliers", "create")}
           </Button>
         </div>
       </div>
