@@ -21,6 +21,7 @@ import {
   hasPermission,
   hasShopPermission,
 } from "../lib/permissions";
+import { useTranslation } from "../hooks/useTranslation";
 import type { PurchaseOrderStatus } from "../types";
 
 const statusColors: Record<PurchaseOrderStatus, "gray" | "yellow" | "green" | "blue" | "red"> = {
@@ -46,6 +47,14 @@ export const PurchasesPage = () => {
   const approvePurchaseOrder = useDataStore((state) => state.approvePurchaseOrder);
   const cancelPurchaseOrder = useDataStore((state) => state.cancelPurchaseOrder);
   const toast = useToast();
+  const { t } = useTranslation();
+  const statusLabels: Record<PurchaseOrderStatus, string> = {
+    DRAFT: t("purchases", "draft"),
+    SUBMITTED: t("purchases", "submitted"),
+    APPROVED: t("purchases", "approved"),
+    RECEIVED: t("purchases", "received"),
+    CANCELED: t("purchases", "canceled"),
+  };
 
   const [activeTab, setActiveTab] = useState("all");
   const [search, setSearch] = useState("");
@@ -77,11 +86,11 @@ export const PurchasesPage = () => {
     if (!currentUserId) return;
     try {
       await approvePurchaseOrder({ purchaseOrderId: poId, approverId: currentUserId });
-      toast({ title: "Purchase order approved", variant: "success" });
+      toast({ title: t("purchases", "approvedToast"), variant: "success" });
     } catch (error) {
       toast({
-        title: "Approval failed",
-        description: getErrorMessage(error, "Could not approve this purchase order."),
+        title: t("purchases", "approvalFailed"),
+        description: getErrorMessage(error, t("purchases", "approvalFailedDesc")),
         variant: "error",
       });
     }
@@ -89,14 +98,14 @@ export const PurchasesPage = () => {
 
   const handleCancelPO = async (poId: string) => {
     if (!currentUserId) return;
-    if (!confirm("Are you sure you want to cancel this purchase order?")) return;
+    if (!confirm(t("purchases", "confirmCancel"))) return;
     try {
       await cancelPurchaseOrder({ purchaseOrderId: poId, actorId: currentUserId });
-      toast({ title: "Purchase order canceled", variant: "success" });
+      toast({ title: t("purchases", "canceledToast"), variant: "success" });
     } catch (error) {
       toast({
-        title: "Cancel failed",
-        description: getErrorMessage(error, "Could not cancel this purchase order."),
+        title: t("purchases", "cancelFailed"),
+        description: getErrorMessage(error, t("purchases", "cancelFailedDesc")),
         variant: "error",
       });
     }
@@ -110,11 +119,11 @@ export const PurchasesPage = () => {
   return (
     <Card>
       <PageHeader
-        title="Purchase Orders"
-        subtitle="Manage supplier purchases and stock-in"
+        title={t("purchases", "title")}
+        subtitle={t("purchases", "subtitle")}
         actions={
           canCreatePO && (
-            <Button onClick={() => setShowCreateModal(true)}>New Purchase Order</Button>
+            <Button onClick={() => setShowCreateModal(true)}>{t("purchases", "newPo")}</Button>
           )
         }
       />
@@ -122,10 +131,10 @@ export const PurchasesPage = () => {
       <div className="mt-6">
         <Tabs
           tabs={[
-            { id: "all", label: "All Orders" },
-            { id: "pending", label: "Pending" },
-            { id: "approved", label: "Ready to Receive" },
-            { id: "received", label: "Received" },
+            { id: "all", label: t("purchases", "tabAll") },
+            { id: "pending", label: t("purchases", "tabPending") },
+            { id: "approved", label: t("purchases", "tabReady") },
+            { id: "received", label: t("purchases", "tabReceived") },
           ]}
           active={activeTab}
           onChange={setActiveTab}
@@ -133,35 +142,35 @@ export const PurchasesPage = () => {
       </div>
 
       <div className="mt-5 flex flex-wrap gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search by PO #" className="min-w-64 flex-1 md:w-72 md:flex-none" />
+        <SearchInput value={search} onChange={setSearch} placeholder={t("purchases", "searchPo")} className="min-w-64 flex-1 md:w-72 md:flex-none" />
         <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="min-w-44 flex-1 md:w-auto md:flex-none">
-          <option value="all">All Status</option>
-          <option value="DRAFT">Draft</option>
-          <option value="SUBMITTED">Submitted</option>
-          <option value="APPROVED">Approved</option>
-          <option value="RECEIVED">Received</option>
-          <option value="CANCELED">Canceled</option>
+          <option value="all">{t("purchases", "allStatus")}</option>
+          <option value="DRAFT">{t("purchases", "draft")}</option>
+          <option value="SUBMITTED">{t("purchases", "submitted")}</option>
+          <option value="APPROVED">{t("purchases", "approved")}</option>
+          <option value="RECEIVED">{t("purchases", "received")}</option>
+          <option value="CANCELED">{t("purchases", "canceled")}</option>
         </Select>
       </div>
 
       <div className="mt-5">
         {filteredOrders.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300/70 bg-slate-50/60 p-6 text-center text-sm text-slate-500">
-            No purchase orders found.
+            {t("purchases", "none")}
           </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white">
             <table className="w-full min-w-[920px] text-sm">
               <thead>
                 <tr className="border-b text-left text-slate-500">
-                  <th className="px-3 py-3 font-medium">PO #</th>
-                  <th className="px-3 py-3 font-medium">Supplier</th>
-                  <th className="px-3 py-3 font-medium">Shop</th>
-                  <th className="px-3 py-3 font-medium">Items</th>
-                  <th className="px-3 py-3 font-medium">Total</th>
-                  <th className="px-3 py-3 font-medium">Status</th>
-                  <th className="px-3 py-3 font-medium">Created</th>
-                  <th className="px-3 py-3 font-medium">Actions</th>
+                  <th className="px-3 py-3 font-medium">{t("purchases", "poNo")}</th>
+                  <th className="px-3 py-3 font-medium">{t("purchases", "supplier")}</th>
+                  <th className="px-3 py-3 font-medium">{t("purchases", "shop")}</th>
+                  <th className="px-3 py-3 font-medium">{t("purchases", "items")}</th>
+                  <th className="px-3 py-3 font-medium">{t("purchases", "total")}</th>
+                  <th className="px-3 py-3 font-medium">{t("common", "status")}</th>
+                  <th className="px-3 py-3 font-medium">{t("purchases", "created")}</th>
+                  <th className="px-3 py-3 font-medium">{t("common", "actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -176,36 +185,36 @@ export const PurchasesPage = () => {
                       <td className="px-3 py-3 font-medium">{po.orderNo}</td>
                       <td className="px-3 py-3">{supplier?.name ?? po.supplierId}</td>
                       <td className="px-3 py-3">{shop?.name ?? po.shopId}</td>
-                      <td className="px-3 py-3">{items.length} items</td>
+                      <td className="px-3 py-3">{items.length} {t("purchases", "itemsSuffix")}</td>
                       <td className="px-3 py-3 font-medium">MMK {po.totalMmk.toLocaleString()}</td>
                       <td className="px-3 py-3">
-                        <Badge color={statusColors[po.status]}>{po.status}</Badge>
+                        <Badge color={statusColors[po.status]}>{statusLabels[po.status]}</Badge>
                       </td>
                       <td className="px-3 py-3">
                         <div>{formatDateTime(po.createdAt)}</div>
-                        <div className="text-xs text-slate-500">by {createdByUser?.name ?? "Unknown"}</div>
+                        <div className="text-xs text-slate-500">{t("purchases", "by")} {createdByUser?.name ?? t("purchases", "unknown")}</div>
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex flex-wrap gap-2">
                           <Button size="sm" variant="ghost" onClick={() => setShowDetailModal(po.id)}>
-                            View
+                            {t("purchases", "view")}
                           </Button>
                           {(po.status === "DRAFT" || po.status === "SUBMITTED") &&
                             canApprovePurchaseOrder(currentUser, po) && (
                               <Button size="sm" variant="primary" onClick={() => handleApprovePO(po.id)}>
-                                Approve
+                                {t("purchases", "approve")}
                               </Button>
                             )}
                           {po.status === "APPROVED" && canReceivePurchaseOrder(currentUser, po) && (
                             <Button size="sm" variant="primary" onClick={() => setShowReceiveModal(po.id)}>
-                              Receive
+                              {t("purchases", "receive")}
                             </Button>
                           )}
                           {po.status !== "RECEIVED" &&
                             po.status !== "CANCELED" &&
                             hasShopPermission(currentUser, "purchase:create", po.shopId) && (
                               <Button size="sm" variant="ghost" onClick={() => handleCancelPO(po.id)}>
-                                Cancel
+                                {t("purchases", "cancel")}
                               </Button>
                             )}
                         </div>
@@ -233,41 +242,41 @@ export const PurchasesPage = () => {
       <Modal
         open={!!showDetailModal}
         onClose={() => setShowDetailModal(null)}
-        title={`Purchase Order - ${selectedPO?.orderNo}`}
+        title={`${t("purchases", "detailTitle")} - ${selectedPO?.orderNo}`}
         size="lg"
       >
         {selectedPO && (
           <div className="space-y-4">
             <div className="grid gap-4 text-sm sm:grid-cols-2">
               <div>
-                <span className="text-slate-500">Supplier:</span>
+                <span className="text-slate-500">{t("purchases", "supplier")}:</span>
                 <span className="ml-2 font-medium">{suppliers.find((s) => s.id === selectedPO.supplierId)?.name}</span>
               </div>
               <div>
-                <span className="text-slate-500">Shop:</span>
+                <span className="text-slate-500">{t("purchases", "shop")}:</span>
                 <span className="ml-2 font-medium">{shops.find((s) => s.id === selectedPO.shopId)?.name}</span>
               </div>
               <div>
-                <span className="text-slate-500">Status:</span>
-                <span className="ml-2"><Badge color={statusColors[selectedPO.status]}>{selectedPO.status}</Badge></span>
+                <span className="text-slate-500">{t("common", "status")}:</span>
+                <span className="ml-2"><Badge color={statusColors[selectedPO.status]}>{statusLabels[selectedPO.status]}</Badge></span>
               </div>
               <div>
-                <span className="text-slate-500">Total:</span>
+                <span className="text-slate-500">{t("purchases", "total")}:</span>
                 <span className="ml-2 font-bold">MMK {selectedPO.totalMmk.toLocaleString()}</span>
               </div>
             </div>
 
             <div>
-              <h4 className="font-medium mb-2">Items</h4>
+              <h4 className="font-medium mb-2">{t("purchases", "items")}</h4>
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full min-w-[640px] text-sm">
                   <thead className="bg-slate-50">
                     <tr>
-                      <th className="px-3 py-2 text-left">Product</th>
-                      <th className="px-3 py-2 text-right">Ordered</th>
-                      <th className="px-3 py-2 text-right">Received</th>
-                      <th className="px-3 py-2 text-right">Unit Cost</th>
-                      <th className="px-3 py-2 text-right">Total</th>
+                      <th className="px-3 py-2 text-left">{t("purchases", "product")}</th>
+                      <th className="px-3 py-2 text-right">{t("purchases", "ordered")}</th>
+                      <th className="px-3 py-2 text-right">{t("purchases", "receivedCol")}</th>
+                      <th className="px-3 py-2 text-right">{t("purchases", "unitCost")}</th>
+                      <th className="px-3 py-2 text-right">{t("purchases", "total")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -289,7 +298,7 @@ export const PurchasesPage = () => {
             </div>
 
             <div className="flex flex-wrap justify-end gap-2 pt-4">
-              <Button variant="secondary" onClick={() => setShowDetailModal(null)}>Close</Button>
+              <Button variant="secondary" onClick={() => setShowDetailModal(null)}>{t("common", "close")}</Button>
             </div>
           </div>
         )}
