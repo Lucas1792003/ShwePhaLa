@@ -4,6 +4,7 @@ import { Select } from "../ui/Select";
 import { Input } from "../ui/Input";
 import { Button } from "../ui/Button";
 import { formatMmk, normalizeAmountInput, toNumber } from "../../lib/utils";
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface PaymentModalProps {
   open: boolean;
@@ -22,6 +23,7 @@ export const PaymentModal = ({
   onClose,
   onConfirm,
 }: PaymentModalProps) => {
+  const { t } = useTranslation();
   const [method, setMethod] = useState<"CASH" | "OTHER">("CASH");
   // String-backed input so we can keep the field empty while editing and
   // never sit on a padded "02900". toNumber("") -> 0 for calculations.
@@ -43,15 +45,15 @@ export const PaymentModal = ({
     <Modal
       open={open}
       onClose={handleClose}
-      title="Payment"
-      description="Confirm payment details before completing the sale."
+      title={t("pos", "paymentTitle")}
+      description={t("pos", "paymentDesc")}
       footer={
         <>
           <Button variant="secondary" onClick={handleClose} disabled={loading}>
-            Cancel
+            {t("common", "cancel")}
           </Button>
           <Button onClick={() => onConfirm(method, paid)} disabled={!canConfirm}>
-            {loading ? "Processing..." : "Confirm payment"}
+            {loading ? t("pos", "processing") : t("pos", "confirmPayment")}
           </Button>
         </>
       }
@@ -61,26 +63,26 @@ export const PaymentModal = ({
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                Total due
+                {t("pos", "totalDue")}
               </div>
               <div className="mt-1 text-2xl font-bold text-slate-950">
                 {formatMmk(totalMmk)}
               </div>
             </div>
             <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm">
-              {method === "CASH" ? "Cash payment" : "Other payment"}
+              {method === "CASH" ? t("pos", "cashPayment") : t("pos", "otherPayment")}
             </div>
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl bg-white p-3 shadow-sm">
-              <div className="text-xs text-slate-500">Amount received</div>
+              <div className="text-xs text-slate-500">{t("pos", "amountReceived")}</div>
               <div className="mt-1 text-base font-semibold text-slate-900">
                 {formatMmk(paid)}
               </div>
             </div>
             <div className="rounded-xl bg-white p-3 shadow-sm">
-              <div className="text-xs text-slate-500">Change</div>
+              <div className="text-xs text-slate-500">{t("pos", "change")}</div>
               <div className="mt-1 text-base font-semibold text-emerald-700">
                 {formatMmk(change)}
               </div>
@@ -90,15 +92,15 @@ export const PaymentModal = ({
 
         <div className="grid gap-4">
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">Payment method</span>
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">{t("pos", "paymentMethod")}</span>
             <Select value={method} onChange={(event) => setMethod(event.target.value as "CASH" | "OTHER")}>
-              <option value="CASH">Cash</option>
-              <option value="OTHER">Other</option>
+              <option value="CASH">{t("pos", "cash")}</option>
+              <option value="OTHER">{t("pos", "other")}</option>
             </Select>
           </label>
 
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">Amount received</span>
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">{t("pos", "amountReceived")}</span>
             <Input
               type="text"
               inputMode="numeric"
@@ -130,12 +132,12 @@ export const PaymentModal = ({
           </div>
         ) : isUnderpaid ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-            Amount received is less than total.
+            {t("pos", "underpaid")}
           </div>
         ) : (
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
             <div className="flex items-center justify-between gap-4">
-              <span className="text-sm font-medium text-slate-600">Change to return</span>
+              <span className="text-sm font-medium text-slate-600">{t("pos", "changeToReturn")}</span>
               <span className="text-lg font-bold text-emerald-700">{formatMmk(change)}</span>
             </div>
           </div>

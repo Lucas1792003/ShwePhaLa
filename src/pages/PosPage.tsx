@@ -31,9 +31,11 @@ import {
 } from "../features/pos/cartStock";
 import { hasShopPermission } from "../lib/permissions";
 import { getEffectiveShopId } from "../lib/utils";
+import { useTranslation } from "../hooks/useTranslation";
 
 export const PosPage = () => {
   const toast = useToast();
+  const { t } = useTranslation();
   const [barcodeInput, setBarcodeInput] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
@@ -154,25 +156,59 @@ export const PosPage = () => {
   );
 
   const { subtotal, itemDiscount, cartDiscount, total } = calculateCartTotals(cartItems, cartDiscountPct);
-  const firstCartError = cartValidation.errors[0];
-  const checkoutHelper = !openShift ? "Open a shift before checkout." : firstCartError;
   const stockOverrideUnavailableMessage = `${STOCK_OVERRIDE_REQUIRED_MESSAGE} ${STOCK_OVERRIDE_UI_REQUIRED_MESSAGE}`;
+  const translateCartMessage = useCallback(
+    (message?: string) => {
+      if (!message) return undefined;
+
+      const stockMatch = message.match(/^Only (\d+) in stock for this shop\.$/);
+      if (stockMatch) {
+        return t("pos", "onlyInStockShop", { n: stockMatch[1] });
+      }
+
+      if (message === "Cart is empty.") return t("pos", "cartEmpty");
+      if (message === "Open a shift before checkout.") return t("pos", "openShiftFirst");
+      if (message === "Each cart item needs a valid quantity.") return t("pos", "eachCartItemValidQty");
+      if (message === STOCK_OVERRIDE_REQUIRED_MESSAGE) return t("pos", "stockOverrideRequired");
+      if (message === stockOverrideUnavailableMessage) {
+        return `${t("pos", "stockOverrideRequired")} ${t("pos", "stockOverrideUiRequired")}`;
+      }
+
+      return message;
+    },
+    [stockOverrideUnavailableMessage, t]
+  );
+  const firstCartError = translateCartMessage(cartValidation.errors[0]);
+  const checkoutHelper = !openShift ? t("pos", "openShiftFirst") : firstCartError;
   const paymentValidationError = paymentOpen && !cartValidation.canCheckout ? firstCartError : undefined;
+  const localizedCartItemStatuses = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(cartValidation.itemStatuses).map(([id, status]) => [
+          id,
+          { ...status, message: translateCartMessage(status.message) },
+        ])
+      ),
+    [cartValidation.itemStatuses, translateCartMessage]
+  );
 
   const getStockBlockDescription = useCallback(
-    (stockQty: number) => (canOverrideStock ? stockOverrideUnavailableMessage : getOnlyInStockMessage(stockQty)),
-    [canOverrideStock, stockOverrideUnavailableMessage]
+    (stockQty: number) =>
+      canOverrideStock
+        ? translateCartMessage(stockOverrideUnavailableMessage)
+        : translateCartMessage(getOnlyInStockMessage(stockQty)),
+    [canOverrideStock, stockOverrideUnavailableMessage, translateCartMessage]
   );
 
   const showCartValidationToast = useCallback(
-    (title = "Checkout blocked") => {
+    (title?: string) => {
       toast({
-        title,
-        description: firstCartError ?? "Review the cart before checkout.",
+        title: title ?? t("pos", "checkoutBlocked"),
+        description: firstCartError ?? t("pos", "reviewCart"),
         variant: "error",
       });
     },
-    [firstCartError, toast]
+    [firstCartError, toast, t]
   );
 
   // Inner helper: actually push the row into the cart. Split out so the
@@ -250,7 +286,7 @@ export const PosPage = () => {
     const unitsPerItem = addStatus.unitsPerItem;
     if (!addStatus.canAdd) {
       toast({
-        title: addStatus.stockQty <= 0 ? "Out of stock" : "Stock limit reached",
+        title: addStatus.stockQty <= 0 ? t("pos", "outOfStock") : t("pos", "stockLimitReached"),
         description: getStockBlockDescription(addStatus.stockQty),
         variant: "error",
       });
@@ -292,8 +328,8 @@ export const PosPage = () => {
     const value = Number(openPriceInput.replace(/[^\d]/g, ""));
     if (!Number.isFinite(value) || value <= 0) {
       toast({
-        title: "Invalid price",
-        description: "Enter a price greater than 0.",
+        title: t("pos", "invalidPrice"),
+        description: t("pos", "enterPriceGt0"),
         variant: "error",
       });
       return;
@@ -327,13 +363,13 @@ export const PosPage = () => {
     if (!value) return;
     const match = getProductByBarcode(value);
     if (!match) {
-      toast({ title: "Barcode not found", description: value, variant: "error" });
+      toast({ title: t("pos", "barcodeNotFound"), description: value, variant: "error" });
       resetBarcodeInputForNextScan();
       return;
     }
     const added = handleAddToCart(match.product, match.unit);
     if (added) {
-      toast({ title: `Added ${match.product.name} - ${match.unit.name}`, variant: "success" });
+      toast({ title: t("pos", "addedToCart", { name: match.product.name, unit: match.unit.name }), variant: "success" });
     }
     resetBarcodeInputForNextScan();
   };
@@ -344,7 +380,7 @@ export const PosPage = () => {
     const result = clampCartItemQuantity(currentItem, cartItems, inventoryById, requestedQty);
     if (result.blockedByStock && requestedQty > result.qty) {
       toast({
-        title: "Stock limit reached",
+        title: t("pos", "stockLimitReached"),
         description: getStockBlockDescription(inventoryById[currentItem.productId] ?? 0),
         variant: "error",
       });
@@ -377,7 +413,7 @@ export const PosPage = () => {
   const handleCheckout = useCallback((printOnSuccess: boolean) => {
     if (submitting) return;
     if (!currentUser) {
-      toast({ title: "Checkout blocked", description: "Sign in before checkout.", variant: "error" });
+      toast({ title: t("pos", "checkoutBlocked"), description: t("pos", "signInFirst"), variant: "error" });
       return;
     }
     if (!cartValidation.canCheckout) {
@@ -386,7 +422,7 @@ export const PosPage = () => {
     }
     setPrintAfterSave(printOnSuccess);
     setPaymentOpen(true);
-  }, [cartValidation.canCheckout, currentUser, showCartValidationToast, submitting, toast]);
+  }, [cartValidation.canCheckout, currentUser, showCartValidationToast, submitting, toast, t]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -417,7 +453,7 @@ export const PosPage = () => {
   const handlePaymentConfirm = async (paymentMethod: "CASH" | "OTHER", paidMmk: number) => {
     if (!currentUser || submitting) return;
     if (!cartValidation.canCheckout || !openShift) {
-      showCartValidationToast("Payment blocked");
+      showCartValidationToast(t("pos", "paymentBlocked"));
       return;
     }
     setSubmitting(true);
@@ -443,8 +479,8 @@ export const PosPage = () => {
       // human-friendly receipt number instead of the internal id.
       const savedSale = useDataStore.getState().sales.find((s) => s.id === saleId);
       toast({
-        title: printAfterSave ? "Sale recorded — printing…" : "Sale recorded",
-        description: savedSale ? `Receipt ${savedSale.receiptNo}` : undefined,
+        title: printAfterSave ? t("pos", "saleRecordedPrinting") : t("pos", "saleRecorded"),
+        description: savedSale ? t("pos", "receiptLine", { no: savedSale.receiptNo }) : undefined,
         variant: "success",
       });
       if (printAfterSave) {
@@ -452,8 +488,8 @@ export const PosPage = () => {
       }
     } catch (error) {
       toast({
-        title: "Checkout failed",
-        description: error instanceof Error ? error.message : "Could not complete the sale.",
+        title: t("pos", "checkoutFailed"),
+        description: error instanceof Error ? error.message : t("pos", "couldNotComplete"),
         variant: "error",
       });
     } finally {
@@ -553,8 +589,8 @@ export const PosPage = () => {
     if (!overrideItem) return;
     if (!overrideResolved) {
       toast({
-        title: "Price level unavailable",
-        description: "Could not find this product unit. Remove and add the item again.",
+        title: t("pos", "priceLevelUnavailable"),
+        description: t("pos", "unitGone"),
         variant: "error",
       });
       return;
@@ -624,12 +660,12 @@ export const PosPage = () => {
       <Card className="mt-6">
         <div className="flex flex-col items-center gap-3 py-12 text-center">
           <span className="material-symbols-rounded text-4xl text-slate-400">store</span>
-          <h2 className="text-lg font-semibold text-slate-700">No shop selected</h2>
+          <h2 className="text-lg font-semibold text-slate-700">{t("pos", "noShopSelected")}</h2>
           <p className="text-sm text-slate-500 max-w-md">
-            Select a shop to use POS. Sales and inventory are shop-specific.
+            {t("pos", "noShopBody")}
             {currentUser?.role === "ADMIN"
-              ? " Pick a shop from the switcher at the top of the page."
-              : " Contact your administrator if you have not been assigned to a shop."}
+              ? t("pos", "noShopAdmin")
+              : t("pos", "noShopUser")}
           </p>
         </div>
       </Card>
@@ -641,9 +677,9 @@ export const PosPage = () => {
       {/* Top Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm lg:px-5">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <h1 className="text-xl font-bold text-slate-800">Point of Sale</h1>
+          <h1 className="text-xl font-bold text-slate-800">{t("pos", "title")}</h1>
           <Badge tone={openShift ? "green" : "amber"}>
-            {openShift ? "Shift Open" : "No Shift"}
+            {openShift ? t("pos", "shiftOpen") : t("pos", "noShift")}
           </Badge>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:gap-4">
@@ -658,12 +694,12 @@ export const PosPage = () => {
             }`}
           >
             <span className="material-symbols-rounded text-lg">qr_code_scanner</span>
-            Barcode (F4)
+            {t("pos", "barcodeToggle")}
           </button>
           {/* Shop Info */}
           <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg bg-slate-100 px-3 py-2">
             <span className="material-symbols-rounded text-lg text-slate-500">store</span>
-            <span className="truncate text-sm font-medium text-slate-700">{currentShop?.name || "No Shop"}</span>
+            <span className="truncate text-sm font-medium text-slate-700">{currentShop?.name || t("pos", "noShop")}</span>
           </div>
         </div>
       </div>
@@ -682,11 +718,11 @@ export const PosPage = () => {
                 handleBarcodeSubmit();
               }
             }}
-            placeholder="Scan or enter barcode..."
+            placeholder={t("pos", "scanPlaceholder")}
             className="min-w-64 flex-1"
             autoFocus
           />
-          <Button onClick={handleBarcodeSubmit}>Add</Button>
+          <Button onClick={handleBarcodeSubmit}>{t("common", "add")}</Button>
         </div>
       )}
 
@@ -738,7 +774,7 @@ export const PosPage = () => {
                   }
                 : undefined
             }
-            stockStatuses={cartValidation.itemStatuses}
+            stockStatuses={localizedCartItemStatuses}
             checkoutDisabled={!cartValidation.canCheckout || submitting}
             checkoutHelper={checkoutHelper}
           />
@@ -757,22 +793,22 @@ export const PosPage = () => {
       <Modal
         open={!!overrideItem}
         onClose={closeOverrideModal}
-        title="Adjust price"
-        description="Pick a price level, then optionally type a custom price for this line."
+        title={t("pos", "adjustPrice")}
+        description={t("pos", "adjustPriceDesc")}
         footer={
           <>
             <Button variant="secondary" onClick={closeOverrideModal}>
-              Cancel
+              {t("common", "cancel")}
             </Button>
             <Button onClick={handleOverrideSave} disabled={activePriceLevels.length === 0}>
-              Apply
+              {t("pos", "apply")}
             </Button>
           </>
         }
       >
         <div className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Price level</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">{t("pos", "priceLevel")}</label>
             {/* Tabs replace the Select per UX request. flex-1 on each
                 button keeps the row evenly distributed regardless of how
                 many levels admins have configured. */}
@@ -793,7 +829,7 @@ export const PosPage = () => {
                     {level.name}
                     {level.isDefault && (
                       <span className="ml-1 text-[10px] font-normal text-slate-400">
-                        default
+                        {t("pos", "defaultLabel")}
                       </span>
                     )}
                   </button>
@@ -804,7 +840,7 @@ export const PosPage = () => {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Unit price
+              {t("pos", "unitPrice")}
             </label>
             <Input
               inputMode="numeric"
@@ -818,12 +854,12 @@ export const PosPage = () => {
                   handleOverrideSave();
                 }
               }}
-              placeholder="Enter price (MMK)"
+              placeholder={t("pos", "enterPriceMmk")}
             />
             <p className="mt-1 text-xs text-slate-500">
               {overrideResolved
-                ? `Level price: ${overrideResolved.priceMmk.toLocaleString("en-US")} MMK. Editing flags this line as a price override.`
-                : "Pick a price level to see its resolved price."}
+                ? t("pos", "levelPriceHint", { price: overrideResolved.priceMmk.toLocaleString("en-US") })
+                : t("pos", "pickLevelHint")}
             </p>
           </div>
         </div>
@@ -835,10 +871,13 @@ export const PosPage = () => {
           setOpenPricePrompt(null);
           setOpenPriceInput("");
         }}
-        title="Enter price"
+        title={t("pos", "enterPriceTitle")}
         description={
           openPricePrompt
-            ? `${openPricePrompt.product.name} (${openPricePrompt.unit.name}) is an Open Price item. Enter the price the customer is paying for this unit.`
+            ? t("pos", "openPriceDesc", {
+                name: openPricePrompt.product.name,
+                unit: openPricePrompt.unit.name,
+              })
             : ""
         }
         footer={
@@ -850,9 +889,9 @@ export const PosPage = () => {
                 setOpenPriceInput("");
               }}
             >
-              Cancel
+              {t("common", "cancel")}
             </Button>
-            <Button onClick={handleOpenPriceConfirm}>Add to cart</Button>
+            <Button onClick={handleOpenPriceConfirm}>{t("pos", "addToCart")}</Button>
           </>
         }
       >
@@ -869,7 +908,7 @@ export const PosPage = () => {
               handleOpenPriceConfirm();
             }
           }}
-          placeholder="Unit price (MMK)"
+          placeholder={t("pos", "unitPriceMmkPlaceholder")}
         />
       </Modal>
 

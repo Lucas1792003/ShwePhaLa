@@ -1,5 +1,6 @@
 import type { Sale, Shop, User } from "../../types";
 import { formatDateTime, formatMmk } from "../../lib/utils";
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface ReceiptLine {
   /** Product name only — unit, price level, etc. live in their own columns. */
@@ -31,6 +32,7 @@ const formatCashierName = (name: string | undefined): string => {
 };
 
 export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: ReceiptPreviewProps) => {
+  const { t } = useTranslation();
   const itemCount = lines.reduce((sum, line) => sum + line.qty, 0);
 
   // Collect the distinct price-level names used on this receipt. The
@@ -66,10 +68,10 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
         {(shop.address || shop.phone) && (
           <div className="receipt-shop-contact">
             {shop.address && <div>{shop.address}</div>}
-            {shop.phone && <div>Tel: {shop.phone}</div>}
+            {shop.phone && <div>{t("pos", "receiptTel")}: {shop.phone}</div>}
           </div>
         )}
-        <div className="receipt-number">Receipt {sale.receiptNo}</div>
+        <div className="receipt-number">{t("pos", "receiptLine", { no: sale.receiptNo })}</div>
       </div>
 
       {/* Meta — stacked rows with a fixed-width label column so the
@@ -78,32 +80,34 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
           forced the long datetime and cashier strings to wrap awkwardly. */}
       <div className="receipt-meta mt-4 text-xs">
         <div className="receipt-meta-row">
-          <span className="receipt-meta-label">Branch</span>
+          <span className="receipt-meta-label">{t("pos", "receiptBranch")}</span>
           <span className="receipt-meta-sep">:</span>
           <span className="receipt-meta-value">{shop.name}</span>
         </div>
         <div className="receipt-meta-row">
-          <span className="receipt-meta-label">Date</span>
+          <span className="receipt-meta-label">{t("pos", "receiptDate")}</span>
           <span className="receipt-meta-sep">:</span>
           <span className="receipt-meta-value">{formatDateTime(sale.createdAt)}</span>
         </div>
         <div className="receipt-meta-row">
-          <span className="receipt-meta-label">Cashier</span>
+          <span className="receipt-meta-label">{t("pos", "receiptCashier")}</span>
           <span className="receipt-meta-sep">:</span>
           <span className="receipt-meta-value">{formatCashierName(cashier?.name)}</span>
         </div>
         <div className="receipt-meta-row">
-          <span className="receipt-meta-label">Price</span>
+          <span className="receipt-meta-label">{t("pos", "receiptPrice")}</span>
           <span className="receipt-meta-sep">:</span>
           <span className="receipt-meta-value">{singlePriceLevel ?? "-"}</span>
         </div>
         <div className="receipt-meta-row">
-          <span className="receipt-meta-label">Payment</span>
+          <span className="receipt-meta-label">{t("pos", "receiptPayment")}</span>
           <span className="receipt-meta-sep">:</span>
-          <span className="receipt-meta-value">{sale.paymentMethod}</span>
+          <span className="receipt-meta-value">
+            {sale.paymentMethod === "CASH" ? t("pos", "cash") : t("pos", "other")}
+          </span>
         </div>
         <div className="receipt-meta-row">
-          <span className="receipt-meta-label">Items</span>
+          <span className="receipt-meta-label">{t("pos", "receiptItems")}</span>
           <span className="receipt-meta-sep">:</span>
           <span className="receipt-meta-value">{itemCount}</span>
         </div>
@@ -121,10 +125,10 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
         </colgroup>
         <thead>
           <tr>
-            <th className="text-left">Description</th>
-            <th className="text-left">Qty</th>
-            <th className="text-right">Price</th>
-            <th className="text-right">Amount</th>
+            <th className="text-left">{t("pos", "receiptDescription")}</th>
+            <th className="text-left">{t("pos", "receiptQty")}</th>
+            <th className="text-right">{t("pos", "receiptPrice")}</th>
+            <th className="text-right">{t("pos", "receiptAmount")}</th>
           </tr>
         </thead>
         <tbody>
@@ -154,25 +158,25 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
           customer's eye stops on the amount due. */}
       <div className="receipt-totals mt-4 space-y-1 text-xs">
         <div className="flex justify-between">
-          <span>Subtotal</span>
+          <span>{t("pos", "receiptSubtotal")}</span>
           <span>{formatMmk(sale.subtotalMmk)}</span>
         </div>
         <div className="flex justify-between">
-          <span>Discount</span>
+          <span>{t("pos", "receiptDiscount")}</span>
           <span>- {formatMmk(sale.discountMmk)}</span>
         </div>
         <div className="my-1 border-t border-dashed border-slate-300" />
         <div className="flex justify-between text-sm font-semibold">
-          <span>Total</span>
+          <span>{t("pos", "total")}</span>
           <span>{formatMmk(sale.totalMmk)}</span>
         </div>
         <div className="my-1 border-t border-dashed border-slate-300" />
         <div className="flex justify-between">
-          <span>Paid</span>
+          <span>{t("pos", "receiptPaid")}</span>
           <span>{formatMmk(sale.paidMmk)}</span>
         </div>
         <div className="flex justify-between">
-          <span>Change</span>
+          <span>{t("pos", "change")}</span>
           <span>{formatMmk(sale.changeMmk)}</span>
         </div>
       </div>
@@ -182,8 +186,8 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
           then this. Centered + slightly larger leading for legibility
           on thermal paper. */}
       <div className="receipt-footer mt-4 border-t border-dashed border-slate-300 pt-3 text-center text-xs leading-relaxed">
-        <div>ဝယ်ပြီးပစ္စည်းပြန်မလဲပါ။</div>
-        <div>ဝယ်ယူအားပေးမှုကိုအထူးကျေးဇူးတင်ပါသည်။</div>
+        <div>{t("pos", "receiptFooterNoReturn")}</div>
+        <div>{t("pos", "receiptFooterThanks")}</div>
       </div>
 
       {statusNote && (

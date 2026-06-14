@@ -5,6 +5,7 @@ import { Input } from "../ui/Input";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 import { formatMmk, toNumber } from "../../lib/utils";
+import { useTranslation } from "../../hooks/useTranslation";
 import type { CartItemStockStatus } from "../../features/pos/cartStock";
 
 interface CartPanelProps {
@@ -48,25 +49,26 @@ export const CartPanel = ({
   checkoutHelper,
 }: CartPanelProps) => {
   const [showAllOpen, setShowAllOpen] = useState(false);
+  const { t } = useTranslation();
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-bold text-slate-800">Bills</h2>
+        <h2 className="text-xl font-bold text-slate-800">{t("pos", "bills")}</h2>
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">
-            {items.length} items
+            {t("pos", "itemsCount", { n: items.length })}
           </span>
           <button
             type="button"
             onClick={() => setShowAllOpen(true)}
             disabled={items.length === 0}
             className="inline-flex min-h-9 items-center gap-1 rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300 disabled:hover:bg-white"
-            title="Show all bill items"
+            title={t("pos", "showAllTitle")}
           >
             <span className="material-symbols-rounded text-sm">list_alt</span>
-            All
+            {t("common", "all")}
           </button>
         </div>
       </div>
@@ -76,8 +78,8 @@ export const CartPanel = ({
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 py-12 text-center">
             <span className="material-symbols-rounded mb-2 text-4xl text-slate-300">shopping_cart</span>
-            <p className="text-sm text-slate-500">Cart is empty</p>
-            <p className="text-xs text-slate-400">Add items to get started</p>
+            <p className="text-sm text-slate-500">{t("pos", "cartEmpty")}</p>
+            <p className="text-xs text-slate-400">{t("pos", "cartEmptyHint")}</p>
           </div>
         ) : (
           items.map((item) => (
@@ -98,7 +100,7 @@ export const CartPanel = ({
       {/* Summary */}
       <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-500">Sub Total</span>
+          <span className="text-slate-500">{t("pos", "subTotal")}</span>
           <span className="font-semibold text-slate-700">{formatMmk(subtotal)}</span>
         </div>
 
@@ -106,13 +108,13 @@ export const CartPanel = ({
           <>
             {itemDiscount > 0 && (
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Item Discounts</span>
+                <span className="text-slate-500">{t("pos", "itemDiscounts")}</span>
                 <span className="font-semibold text-rose-500">- {formatMmk(itemDiscount)}</span>
               </div>
             )}
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2 text-slate-500">
-                Discount %
+                {t("pos", "discountPct")}
                 <Input
                   type="number"
                   min={0}
@@ -131,7 +133,7 @@ export const CartPanel = ({
         {cartDiscountPct === 0 && itemDiscount === 0 && (
           <div className="flex items-center justify-between text-sm">
             <span className="flex items-center gap-2 text-slate-500">
-              Discount %
+              {t("pos", "discountPct")}
               <Input
                 type="number"
                 min={0}
@@ -149,7 +151,7 @@ export const CartPanel = ({
         <div className="h-px bg-slate-200" />
 
         <div className="flex items-center justify-between gap-3">
-          <span className="text-lg font-bold text-slate-800">Total</span>
+          <span className="text-lg font-bold text-slate-800">{t("pos", "total")}</span>
           <span className="text-right text-xl font-bold text-emerald-600">{formatMmk(total)}</span>
         </div>
       </div>
@@ -164,7 +166,7 @@ export const CartPanel = ({
           disabled={checkoutDisabled}
         >
           <span className="material-symbols-rounded mr-1 text-base">point_of_sale</span>
-          Place Order (F2)
+          {t("pos", "placeOrder")}
         </Button>
         <Button
           className="whitespace-nowrap bg-emerald-600 py-3 text-sm font-semibold hover:bg-emerald-700"
@@ -172,7 +174,7 @@ export const CartPanel = ({
           disabled={checkoutDisabled}
         >
           <span className="material-symbols-rounded mr-1 text-base">print</span>
-          Print (F3)
+          {t("pos", "printOrder")}
         </Button>
       </div>
       {checkoutHelper && (
@@ -184,12 +186,12 @@ export const CartPanel = ({
       <Modal
         open={showAllOpen}
         onClose={() => setShowAllOpen(false)}
-        title="All Bill Items"
-        description={`${items.length} item${items.length === 1 ? "" : "s"} in cart`}
+        title={t("pos", "allBillItems")}
+        description={t("pos", "itemsInCart", { n: items.length })}
         size="lg"
         footer={
           <Button variant="secondary" onClick={() => setShowAllOpen(false)}>
-            Close
+            {t("common", "close")}
           </Button>
         }
       >

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CartItem } from "../../types";
 import { cn, formatMmk } from "../../lib/utils";
+import { useTranslation } from "../../hooks/useTranslation";
 import { resolveCategoryIconSymbol } from "../../features/categories/categoryIcons";
 import {
   normalizeCartQuantityInput,
@@ -25,6 +26,7 @@ export const CartItemRow = ({
   onOverridePrice,
   stockStatus,
 }: CartItemRowProps) => {
+  const { t } = useTranslation();
   const [qtyInput, setQtyInput] = useState(String(item.qty));
   const isInvalid = Boolean(stockStatus?.exceedsStock) || item.qty < 1;
   const canIncrease = stockStatus ? stockStatus.canIncrease : true;
@@ -90,7 +92,7 @@ export const CartItemRow = ({
               type="button"
               onClick={() => onOverridePrice(item)}
             className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700"
-              title="Change price level"
+              title={t("pos", "changePriceLevel")}
             >
               <span className="material-symbols-rounded text-base">edit</span>
             </button>
@@ -102,7 +104,7 @@ export const CartItemRow = ({
               error variant so an over-quantity still surfaces inline. */}
           {stockStatus && isInvalid && (
             <span className="font-medium text-rose-600">
-              {stockStatus.message ?? "Enter a quantity of at least 1."}
+              {stockStatus.message ?? t("pos", "enterQtyMin1")}
             </span>
           )}
         </div>
@@ -130,7 +132,7 @@ export const CartItemRow = ({
             value={qtyInput}
             onChange={(event) => handleQtyInputChange(event.target.value)}
             onBlur={handleQtyInputBlur}
-            aria-label={`Quantity for ${item.name}`}
+            aria-label={t("pos", "qtyFor", { name: item.name })}
             aria-invalid={isInvalid}
             className={cn(
               "h-10 w-12 rounded-lg border bg-white px-1 text-center text-sm font-bold outline-none focus:ring-2",
@@ -154,8 +156,8 @@ export const CartItemRow = ({
             type="button"
             onClick={() => onRemove(item.id)}
             className="flex h-9 w-9 items-center justify-center rounded-full text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-700"
-            aria-label={`Remove ${item.name}`}
-            title="Remove"
+            aria-label={t("pos", "removeAria", { name: item.name })}
+            title={t("pos", "removeTitle")}
           >
             <span className="material-symbols-rounded text-base">delete</span>
           </button>

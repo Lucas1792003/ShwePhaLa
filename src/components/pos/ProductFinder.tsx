@@ -3,6 +3,7 @@ import type { Brand, Product, Category, ProductUnit } from "../../types";
 import { Badge } from "../ui/Badge";
 import { SearchInput } from "../forms/SearchInput";
 import { formatMmk } from "../../lib/utils";
+import { useTranslation } from "../../hooks/useTranslation";
 import { resolveCategoryIcon } from "../../features/categories/categoryIcons";
 import { CATEGORY_ACCENT, CATEGORY_SOLID, type CategoryColor } from "../../features/categories/categoryColors";
 import { getActiveProductUnits, getDefaultProductUnit } from "../../features/catalog/productUnits";
@@ -41,10 +42,11 @@ export const ProductFinder = ({
   productUnits = [],
   onAdd,
 }: ProductFinderProps) => {
+  const { t } = useTranslation();
   // "All" keeps its own grid icon; every category resolves its icon through
   // the shared central registry (iconKey, else category name, else default).
   const categoryButtons: { key: string; label: string; symbol: string; color?: CategoryColor }[] = [
-    { key: "all", label: "All", symbol: "apps" },
+    { key: "all", label: t("common", "all"), symbol: "apps" },
     ...categories.map((cat) => ({
       key: cat.name,
       label: cat.name,
@@ -131,7 +133,7 @@ export const ProductFinder = ({
       {/* Fixed Header - Search & Categories */}
       <div className="sticky top-0 z-10 space-y-3 bg-white pb-3 lg:space-y-4 lg:pb-4">
         {/* Search Bar */}
-        <SearchInput value={search} onChange={onSearch} placeholder="Search items here..." />
+        <SearchInput value={search} onChange={onSearch} placeholder={t("pos", "searchItems")} />
 
         {/* Category Tabs — horizontal scroll instead of wrap. Supports:
             * Mouse wheel → translates vertical scroll to horizontal
@@ -189,7 +191,7 @@ export const ProductFinder = ({
         {showBrandBar && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Brand
+              {t("pos", "brand")}
             </span>
             <button
               type="button"
@@ -200,14 +202,14 @@ export const ProductFinder = ({
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
-              All
+              {t("common", "all")}
             </button>
             <select
               value={brandId}
               onChange={(event) => onBrand?.(event.target.value)}
               className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             >
-              <option value="">Select a brand…</option>
+              <option value="">{t("pos", "selectBrand")}</option>
               {brandsForCategory.map((brand) => (
                 <option key={brand.id} value={brand.id}>
                   {brand.name}
@@ -216,7 +218,7 @@ export const ProductFinder = ({
             </select>
             {brandId && (
               <Badge tone="green">
-                {brandsForCategory.find((b) => b.id === brandId)?.name ?? "Brand"}
+                {brandsForCategory.find((b) => b.id === brandId)?.name ?? t("pos", "brandFallback")}
               </Badge>
             )}
           </div>
@@ -247,7 +249,7 @@ export const ProductFinder = ({
                 key={product.id}
                 role="button"
                 tabIndex={defaultAddDisabled ? -1 : 0}
-                aria-label={`Add ${product.name}`}
+                aria-label={t("pos", "addProduct", { name: product.name })}
                 aria-disabled={allUnitsDisabled}
                 onClick={() => {
                   if (!defaultAddDisabled) onAdd(product, defaultUnit);
@@ -287,17 +289,17 @@ export const ProductFinder = ({
                   {/* Stock Badge */}
                   {outOfStock && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                      <Badge tone="red">Out of stock</Badge>
+                      <Badge tone="red">{t("pos", "outOfStock")}</Badge>
                     </div>
                   )}
                   {fullyReserved && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                      <Badge tone="amber">All in cart</Badge>
+                      <Badge tone="amber">{t("pos", "allInCart")}</Badge>
                     </div>
                   )}
                   {lowStock && !outOfStock && (
                     <div className="absolute right-2 top-2">
-                      <Badge tone="amber">Low</Badge>
+                      <Badge tone="amber">{t("pos", "low")}</Badge>
                     </div>
                   )}
 
@@ -305,10 +307,10 @@ export const ProductFinder = ({
                   <div className="absolute bottom-2 left-2">
                     <span className="rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white">
                       {isNonStock
-                        ? "Non stock"
+                        ? t("pos", "nonStock")
                         : requestedUnits > 0
-                          ? `${remainingUnits} of ${qty} left`
-                          : `${qty} in stock`}
+                          ? t("pos", "ofLeft", { remaining: remainingUnits, qty })
+                          : t("pos", "inStock", { qty })}
                     </span>
                   </div>
                 </div>
@@ -327,10 +329,10 @@ export const ProductFinder = ({
                       disabled={defaultAddDisabled}
                       title={
                         defaultAddDisabled && !allUnitsDisabled
-                          ? `Only ${remainingUnits} ${product.unitType} left. Choose a smaller unit.`
+                          ? t("pos", "onlyLeftSmaller", { n: remainingUnits, unit: product.unitType })
                           : defaultAddDisabled
-                            ? `Only ${qty} in stock for this shop.`
-                            : `Add ${product.name}`
+                            ? t("pos", "onlyInStockShop", { n: qty })
+                            : t("pos", "addProduct", { name: product.name })
                       }
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
                     >
@@ -351,7 +353,11 @@ export const ProductFinder = ({
                             }}
                             disabled={disabled}
                             className="min-h-8 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-rose-300 disabled:bg-white disabled:text-rose-600 disabled:hover:border-rose-300 disabled:hover:bg-white"
-                            title={`${unit.name} deducts ${unit.baseQuantity} ${product.unitType}`}
+                            title={t("pos", "unitDeducts", {
+                              unit: unit.name,
+                              n: unit.baseQuantity,
+                              type: product.unitType,
+                            })}
                           >
                             {unit.name}
                           </button>
@@ -367,7 +373,7 @@ export const ProductFinder = ({
 
         {products.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
-            No products found.
+            {t("pos", "noProducts")}
           </div>
         )}
       </div>

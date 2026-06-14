@@ -217,6 +217,8 @@ function unicodeToZawgyiStr(input: string): string {
 }
 
 function isFontAvailable(fontName: string): boolean {
+  if (typeof document === "undefined") return false;
+
   try {
     if (document.fonts.check(`16px "${fontName}"`)) return true;
   } catch {}
