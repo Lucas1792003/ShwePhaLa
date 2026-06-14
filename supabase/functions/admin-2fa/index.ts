@@ -55,6 +55,7 @@ Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  console.log("[admin-2fa] hit", request.method);
   if (request.method !== "POST") {
     return jsonResponse({ error: "Method not allowed." }, 405);
   }
@@ -65,9 +66,14 @@ Deno.serve(async (request) => {
   const fromEmail = Deno.env.get("REPORT_EMAIL_FROM");
 
   if (!supabaseUrl || !serviceRoleKey) {
+    console.error("[admin-2fa] missing supabase service config");
     return jsonResponse({ error: "Supabase service configuration is missing." }, 500);
   }
   if (!resendApiKey || !fromEmail) {
+    console.error("[admin-2fa] missing email provider config", {
+      hasResendKey: Boolean(resendApiKey),
+      hasFromEmail: Boolean(fromEmail),
+    });
     return jsonResponse({ error: "Email provider is not configured. Set RESEND_API_KEY and REPORT_EMAIL_FROM." }, 500);
   }
 
@@ -75,12 +81,14 @@ Deno.serve(async (request) => {
   const authorization = request.headers.get("Authorization");
   const token = authorization?.replace(/^Bearer\s+/i, "");
   if (!token) {
+    console.error("[admin-2fa] missing Authorization header");
     return jsonResponse({ error: "Sign in before verifying." }, 401);
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
   const { data: authData, error: authError } = await supabase.auth.getUser(token);
   if (authError || !authData.user) {
+    console.error("[admin-2fa] getUser failed", authError?.message);
     return jsonResponse({ error: "Invalid session." }, 401);
   }
   const authUser = authData.user;
@@ -92,6 +100,7 @@ Deno.serve(async (request) => {
     .eq("auth_id", authUser.id)
     .maybeSingle();
   if (linkedProfileError) {
+    console.error("[admin-2fa] profile lookup failed", linkedProfileError.message);
     return jsonResponse({ error: linkedProfileError.message }, 500);
   }
 
