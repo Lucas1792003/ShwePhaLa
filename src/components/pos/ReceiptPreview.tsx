@@ -1,6 +1,7 @@
 import type { Sale, Shop, User } from "../../types";
 import { formatDateTime, formatMmk } from "../../lib/utils";
 import { useTranslation } from "../../hooks/useTranslation";
+import { useDataStore } from "../../stores/dataStore";
 
 interface ReceiptLine {
   /** Product name only — unit, price level, etc. live in their own columns. */
@@ -33,6 +34,9 @@ const formatCashierName = (name: string | undefined): string => {
 
 export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: ReceiptPreviewProps) => {
   const { t } = useTranslation();
+  const businessProfile = useDataStore((state) => state.businessProfile);
+  const brandName = businessProfile?.businessName?.trim() || "Shwe PhaLar";
+  const brandLogo = businessProfile?.logoUrl?.trim() || "/logo_real.png";
   const itemCount = lines.reduce((sum, line) => sum + line.qty, 0);
 
   // Collect the distinct price-level names used on this receipt. The
@@ -50,8 +54,8 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
       {/* Brand header */}
       <div className="receipt-header text-center">
         <img
-          src="/logo_real.png"
-          alt="Shwe PhaLar"
+          src={brandLogo}
+          alt={brandName}
           // `mix-blend-multiply` is a safety net for white-background
           // PNGs: it blends white pixels into the white card / thermal
           // paper. If the PNG is already transparent it's a no-op.
@@ -64,7 +68,7 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
         {/* Company brand sits above the per-shop name so customers see
             both the umbrella brand and the specific store they bought
             from on the same receipt. */}
-        <div className="receipt-brand">Shwe PhaLar</div>
+        <div className="receipt-brand">{brandName}</div>
         {(shop.address || shop.phone) && (
           <div className="receipt-shop-contact">
             {shop.address && <div>{shop.address}</div>}

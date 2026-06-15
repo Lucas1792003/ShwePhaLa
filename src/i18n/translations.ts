@@ -16,6 +16,7 @@ export const translations: Record<Language, Record<string, Record<string, string
       shops: "Shops",
       users: "Users",
       security: "Security",
+      profile: "Profile",
       products: "Products",
       unitTypes: "Unit Types",
       suppliers: "Suppliers",
@@ -28,7 +29,8 @@ export const translations: Record<Language, Record<string, Record<string, string
       barcodes: "Barcodes",
       // Section titles
       salesOperations: "Sales & Operations",
-      inventorySection: "Inventory",
+      inventorySection: "Inventory & Catalog",
+      administration: "Administration",
       settings: "Settings",
     },
 
@@ -807,6 +809,26 @@ export const translations: Record<Language, Record<string, Record<string, string
       totalSales: "Total Sales",
     },
 
+    // Profile (business brand)
+    profile: {
+      title: "Business Profile",
+      subtitle: "Your shop name, logo and contact details — shown across the app and on receipts.",
+      logo: "Logo",
+      logoHint: "Shown in the sidebar and on printed receipts.",
+      businessName: "Business name",
+      businessNamePlaceholder: "e.g. Shwe PhaLar",
+      tagline: "Tagline",
+      taglinePlaceholder: "e.g. Multi-shop console",
+      address: "Address",
+      addressPlaceholder: "Shop address",
+      phone: "Phone",
+      email: "Email",
+      save: "Save",
+      saving: "Saving…",
+      saved: "Profile saved",
+      saveFailed: "Could not save profile",
+    },
+
     // Auth
     auth: {
       loginTitle: "Login to your account",
@@ -856,6 +878,7 @@ export const translations: Record<Language, Record<string, Record<string, string
       // Security / authenticator management
       securityTitle: "Security",
       securitySubtitle: "Manage authenticator apps for admin sign-in.",
+      securityEmailPrompt: "Enter the 6-digit code sent to your email.",
       securityDevices: "Authenticator devices",
       securityVerifiedCount: "{n} verified",
       securityNoDevices: "No authenticator devices yet",
@@ -896,6 +919,7 @@ export const translations: Record<Language, Record<string, Record<string, string
       shops: "ဆိုင်များ",
       users: "အသုံးပြုသူများ",
       security: "လုံခြုံရေး",
+      profile: "ပရိုဖိုင်",
       products: "ကုန်ပစ္စည်းများ",
       unitTypes: "ယူနစ်အမျိုးအစားများ",
       suppliers: "ပေးသွင်းသူများ",
@@ -908,7 +932,8 @@ export const translations: Record<Language, Record<string, Record<string, string
       barcodes: "ဘားကုဒ်များ",
       // Section titles
       salesOperations: "ရောင်းဝယ်ရေးလုပ်ငန်းများ",
-      inventorySection: "ကုန်ပစ္စည်းစာရင်း",
+      inventorySection: "ကုန်ပစ္စည်းနှင့် စာရင်း",
+      administration: "စီမံခန့်ခွဲမှု",
       settings: "ဆက်တင်များ",
     },
 
@@ -1677,6 +1702,26 @@ export const translations: Record<Language, Record<string, Record<string, string
       totalSales: "စုစုပေါင်းရောင်းအား",
     },
 
+    // Profile (business brand)
+    profile: {
+      title: "လုပ်ငန်း ပရိုဖိုင်",
+      subtitle: "သင့်ဆိုင်အမည်၊ လိုဂိုနှင့် ဆက်သွယ်ရန် အချက်အလက် — အက်ပ်တစ်ခွင်နှင့် ပြေစာများတွင် ပြသသည်။",
+      logo: "လိုဂို",
+      logoHint: "ဘေးဘားနှင့် ပုံနှိပ်ပြေစာများတွင် ပြသသည်။",
+      businessName: "လုပ်ငန်း အမည်",
+      businessNamePlaceholder: "ဥပမာ - Shwe PhaLar",
+      tagline: "ဆောင်ပုဒ်",
+      taglinePlaceholder: "ဥပမာ - Multi-shop console",
+      address: "လိပ်စာ",
+      addressPlaceholder: "ဆိုင် လိပ်စာ",
+      phone: "ဖုန်း",
+      email: "အီးမေးလ်",
+      save: "သိမ်းရန်",
+      saving: "သိမ်းနေသည်…",
+      saved: "ပရိုဖိုင် သိမ်းပြီး",
+      saveFailed: "ပရိုဖိုင် သိမ်း၍ မရပါ",
+    },
+
     // Auth
     auth: {
       loginTitle: "အကောင့်ဝင်ပါ",
@@ -1726,6 +1771,7 @@ export const translations: Record<Language, Record<string, Record<string, string
       // Security / authenticator management
       securityTitle: "လုံခြုံရေး",
       securitySubtitle: "အက်ဒမင် ဝင်ရောက်ရန် authenticator app များကို စီမံပါ။",
+      securityEmailPrompt: "သင့်အီးမေးလ်သို့ ပို့ထားသော ၆ လုံး ကုဒ်ကို ထည့်ပါ။",
       securityDevices: "Authenticator စက်များ",
       securityVerifiedCount: "အတည်ပြုပြီး {n} ခု",
       securityNoDevices: "Authenticator စက် မရှိသေးပါ",

@@ -118,6 +118,18 @@ export interface Shop {
   createdAt: string;
 }
 
+// Business-wide brand (singleton). Edited on the Profile page; shown in the
+// sidebar header and on receipts. All fields optional — fall back to the
+// built-in "Shwe PhaLar" / static logo defaults when unset.
+export interface BusinessProfile {
+  businessName?: string;
+  logoUrl?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  tagline?: string;
+}
+
 export interface User {
   id: string;
   name: string;

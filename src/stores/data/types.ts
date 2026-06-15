@@ -1,6 +1,7 @@
 import type {
   AuditLog,
   Brand,
+  BusinessProfile,
   CartItem,
   Category,
   Inventory,
@@ -97,11 +98,15 @@ export interface AdjustStockInput {
 export interface ShopState {
   shops: Shop[];
   users: User[];
+  // Business-wide brand (singleton). Loaded with the rest of the data; null
+  // until loaded. Callers fall back to built-in defaults when unset.
+  businessProfile: BusinessProfile | null;
   addShop: (shop: Shop) => Promise<void>;
   updateShop: (shop: Shop) => Promise<void>;
   deleteShop: (shopId: string) => Promise<void>;
   addUser: (user: User) => Promise<void>;
   updateUser: (user: User) => Promise<void>;
+  updateBusinessProfile: (profile: BusinessProfile) => Promise<void>;
 }
 
 export interface CategoryState {

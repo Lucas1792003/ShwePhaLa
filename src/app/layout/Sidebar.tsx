@@ -44,25 +44,26 @@ const navSections: NavSection[] = [
     ],
   },
   {
+    // Catalog (Products) lives here with the stock operations it relates to,
+    // not under Administration.
     titleKey: "inventorySection",
     items: [
       { to: "/app/inventory", labelKey: "inventory", permission: ROUTE_PERMISSIONS.inventory, icon: "inventory_2" },
+      { to: "/app/admin/products", labelKey: "products", permission: ROUTE_PERMISSIONS.adminProducts, icon: "inventory", allowedRoles: ["ADMIN", "MANAGER"] },
       { to: "/app/transfers", labelKey: "transfers", permission: ROUTE_PERMISSIONS.transfers, icon: "swap_horiz" },
       { to: "/app/purchases", labelKey: "purchases", permission: ROUTE_PERMISSIONS.purchases, icon: "local_shipping" },
       { to: "/app/suppliers", labelKey: "suppliers", permission: ROUTE_PERMISSIONS.suppliers, icon: "handshake" },
     ],
   },
   {
-    titleKey: "settings",
+    // Store administration + the Settings hub (Security/authenticator tab).
+    titleKey: "administration",
     items: [
       { to: "/app/admin/shops", labelKey: "shops", permission: ROUTE_PERMISSIONS.adminShops, icon: "store" },
       { to: "/app/admin/users", labelKey: "users", permission: ROUTE_PERMISSIONS.adminUsers, icon: "group" },
-      { to: "/app/admin/products", labelKey: "products", permission: ROUTE_PERMISSIONS.adminProducts, icon: "inventory", allowedRoles: ["ADMIN", "MANAGER"] },
-      // Unit Types + Pricing removed from sidebar — both surfaces are
-      // now edited inline from the Product form (Units & Prices section).
-      // The routes themselves still exist for direct linking / deep-links.
-      { to: "/app/security", labelKey: "security", permission: ROUTE_PERMISSIONS.adminSecurity, icon: "shield_lock", allowedRoles: ["ADMIN"] },
       { to: "/app/admin/audit", labelKey: "auditLog", permission: ROUTE_PERMISSIONS.adminAudit, icon: "policy" },
+      { to: "/app/profile", labelKey: "profile", permission: ROUTE_PERMISSIONS.adminSecurity, icon: "storefront", allowedRoles: ["ADMIN"] },
+      { to: "/app/security", labelKey: "security", permission: ROUTE_PERMISSIONS.adminSecurity, icon: "shield_lock", allowedRoles: ["ADMIN"] },
     ],
   },
 ];
@@ -82,6 +83,10 @@ export const Sidebar = () => {
   const { currentUserId, logout } = useAuthStore();
   const setShopId = useAppStore((state) => state.setShopId);
   const currentUser = useDataStore((state) => state.users.find((user) => user.id === currentUserId));
+  const businessProfile = useDataStore((state) => state.businessProfile);
+  const brandName = businessProfile?.businessName?.trim() || "Shwe PhaLar";
+  const brandLogo = businessProfile?.logoUrl?.trim() || "/logo_real.png";
+  const brandMeta = businessProfile?.tagline?.trim() || "Multi-shop console";
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed);
   const { t } = useTranslation();
@@ -122,13 +127,13 @@ export const Sidebar = () => {
             background it blends into the sidebar's white panel; if it
             is already transparent the blend mode is a no-op. */}
         <img
-          src="/logo_real.png"
-          alt="Shwe PhaLar logo"
+          src={brandLogo}
+          alt={`${brandName} logo`}
           className="header-logo mix-blend-multiply"
         />
         <div className="sidebar-brand-copy">
-          <div className="shopName">Shwe PhaLar</div>
-          <div className="shop-meta">Multi-shop console</div>
+          <div className="shopName">{brandName}</div>
+          <div className="shop-meta">{brandMeta}</div>
         </div>
         {!isTabletNav && (
           <button

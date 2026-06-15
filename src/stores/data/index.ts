@@ -4,7 +4,7 @@ import { supabase } from "../../lib/supabase";
 import { reportError } from "../../lib/errors";
 import { useAppStore } from "../appStore";
 import type {
-  AuditLog, Brand, Category, Inventory, InventoryMovement, PriceLevel, PriceTier,
+  AuditLog, Brand, BusinessProfile, Category, Inventory, InventoryMovement, PriceLevel, PriceTier,
   Product, ProductBarcode, ProductUnit, ProductUnitPrice, PurchaseOrder, PurchaseOrderItem,
   Refund, Sale, SaleItem, Shift, Shop, StockTransfer, StockTransferItem,
   Supplier, SupplierPayment, SupplierProduct, UnitType, User,
@@ -34,6 +34,16 @@ const mapShop = (r: any): Shop => ({
   id: r.id, code: r.code, name: r.name, address: r.address,
   phone: r.phone ?? undefined, email: r.email ?? undefined,
   isActive: r.is_active, createdAt: r.created_at,
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapBusinessProfile = (r: any): BusinessProfile => ({
+  businessName: r.business_name ?? undefined,
+  logoUrl: r.logo_url ?? undefined,
+  address: r.address ?? undefined,
+  phone: r.phone ?? undefined,
+  email: r.email ?? undefined,
+  tagline: r.tagline ?? undefined,
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -330,7 +340,7 @@ export const useDataStore = create<DataState>()((...args) => {
           inventory, movements, suppliers, purchaseOrders, purchaseOrderItems, supplierPayments,
           supplierProducts,
           stockTransfers, stockTransferItems, shifts, sales, saleItems,
-          reprintLogs, refunds, auditLogs,
+          reprintLogs, refunds, auditLogs, businessProfileRes,
         ] = await Promise.all([
           supabase.from("shops").select("*"),
           supabase.from("users").select("*"),
@@ -358,6 +368,7 @@ export const useDataStore = create<DataState>()((...args) => {
           supabase.from("reprint_logs").select("*"),
           supabase.from("refund_void_requests").select("*"),
           supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(500),
+          supabase.from("business_profile").select("*").eq("id", "default").maybeSingle(),
         ]);
 
         // Surface RLS / network failures from any of the parallel reads.
@@ -370,7 +381,7 @@ export const useDataStore = create<DataState>()((...args) => {
           suppliers, purchaseOrders, purchaseOrderItems, supplierPayments,
           supplierProducts,
           stockTransfers, stockTransferItems, shifts, sales, saleItems,
-          reprintLogs, refunds, auditLogs,
+          reprintLogs, refunds, auditLogs, businessProfileRes,
         ].find((result) => result.error);
         if (failedRead?.error) throw failedRead.error;
 
@@ -415,6 +426,7 @@ export const useDataStore = create<DataState>()((...args) => {
           refunds: mappedRefunds,
           refundVoidRequests: mappedRefunds,
           auditLogs: (auditLogs.data ?? []).map(mapAuditLog),
+          businessProfile: businessProfileRes.data ? mapBusinessProfile(businessProfileRes.data) : null,
           isLoading: false,
           isLoaded: true,
         });

@@ -4,6 +4,7 @@ import { RequireAuth } from "./guards/RequireAuth";
 import { RequireRole } from "./guards/RequireRole";
 import { LoginPage } from "../../features/auth/pages/LoginPage";
 import { AdminVerifyPage } from "../../features/auth/pages/AdminVerifyPage";
+import { ProfilePage } from "../../features/admin/pages/ProfilePage";
 import { SecurityPage } from "../../features/auth/pages/SecurityPage";
 import { PosPage } from "../../features/pos/pages/PosPage";
 import { SalesListPage } from "../../features/sales/pages/SalesListPage";
@@ -275,6 +276,14 @@ export const AppRouter = () => (
         }
       />
       <Route
+        path="profile"
+        element={
+          <RequireRole allowed={["ADMIN"]} permission={ROUTE_PERMISSIONS.adminSecurity}>
+            <ProfilePage />
+          </RequireRole>
+        }
+      />
+      <Route
         path="security"
         element={
           <RequireRole allowed={["ADMIN"]} permission={ROUTE_PERMISSIONS.adminSecurity}>
@@ -282,6 +291,8 @@ export const AppRouter = () => (
           </RequireRole>
         }
       />
+      {/* Old Settings hub removed; send any stale link to Profile. */}
+      <Route path="settings" element={<Navigate to="/app/profile" replace />} />
       <Route path="*" element={<NotFoundPage />} />
     </Route>
     <Route path="*" element={<Navigate to="/app" replace />} />

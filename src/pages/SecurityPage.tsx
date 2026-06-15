@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Navigate } from "react-router-dom";
-import { PageHeader } from "../components/layout/PageHeader";
 import { Card } from "../components/ui/Card";
+import { PageHeader } from "../components/layout/PageHeader";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
@@ -16,7 +24,9 @@ interface EnrollState {
   secret: string;
 }
 
-export const SecurityPage = () => {
+// Authenticator-device management, rendered as the Security tab of the Settings
+// page. Self-guards to ADMIN so it's safe to mount anywhere.
+export function SecuritySection() {
   const { t } = useTranslation();
   const currentRole = useAuthStore((state) => state.currentRole);
   const listTotpFactors = useAuthStore((state) => state.listTotpFactors);
@@ -143,17 +153,13 @@ export const SecurityPage = () => {
   };
 
   return (
-    <Card>
-      <PageHeader
-        title={t("auth", "securityTitle")}
-        subtitle={t("auth", "securitySubtitle")}
-        actions={
-          <Button onClick={startEnrollment} disabled={enrolling || Boolean(enrollData)}>
-            <span className="material-symbols-rounded mr-1 text-base">add</span>
-            {enrolling ? t("auth", "securityStarting") : t("auth", "securityAddDevice")}
-          </Button>
-        }
-      />
+    <div>
+      <div className="flex justify-end">
+        <Button onClick={startEnrollment} disabled={enrolling || Boolean(enrollData)}>
+          <span className="material-symbols-rounded mr-1 text-base">add</span>
+          {enrolling ? t("auth", "securityStarting") : t("auth", "securityAddDevice")}
+        </Button>
+      </div>
 
       <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="space-y-3">
@@ -283,6 +289,120 @@ export const SecurityPage = () => {
             </div>
           )}
         </aside>
+      </div>
+    </div>
+  );
+}
+
+// Re-verification gate: the admin must confirm a fresh code (authenticator app,
+// or emailed code) before the device list is shown. Unlock is local state, so
+// leaving and returning to the page requires verifying again.
+function SecurityGate({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
+  const hasTotp = useAuthStore((s) => s.hasTotp);
+  const requestAdminCode = useAuthStore((s) => s.requestAdminCode);
+  const verifyAdminCode = useAuthStore((s) => s.verifyAdminCode);
+  const verifyTotpLogin = useAuthStore((s) => s.verifyTotpLogin);
+
+  const [unlocked, setUnlocked] = useState(false);
+  const [mode, setMode] = useState<"totp" | "email">(hasTotp ? "totp" : "email");
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [sending, setSending] = useState(false);
+  const emailRequestedRef = useRef(false);
+
+  // Send an email code when the email path is active (no app, or "use email").
+  useEffect(() => {
+    if (unlocked || mode !== "email" || emailRequestedRef.current) return;
+    emailRequestedRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      setSending(true);
+      const res = await requestAdminCode();
+      if (cancelled) return;
+      setSending(false);
+      if (res.error) setError(res.error);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [unlocked, mode, requestAdminCode]);
+
+  if (unlocked) return <>{children}</>;
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (code.length !== CODE_LENGTH || submitting) return;
+    setSubmitting(true);
+    setError("");
+    const res = mode === "totp" ? await verifyTotpLogin(code) : await verifyAdminCode(code);
+    setSubmitting(false);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    setUnlocked(true);
+  };
+
+  return (
+    <div className="mx-auto max-w-sm py-6 text-center">
+      <span className="material-symbols-rounded text-4xl text-emerald-600">lock</span>
+      <h2 className="mt-3 text-xl font-semibold text-slate-900">{t("auth", "verifyTitle")}</h2>
+      <p className="mt-2 text-sm text-slate-500">
+        {mode === "totp" ? t("auth", "totpSubtitle") : t("auth", "securityEmailPrompt")}
+      </p>
+
+      <form className="mt-6 space-y-4 text-left" onSubmit={handleSubmit} autoComplete="off">
+        <CodeCells
+          value={code}
+          invalid={!!error}
+          onChange={(next) => {
+            setCode(next);
+            if (error) setError("");
+          }}
+        />
+        {error && (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
+        )}
+        <Button className="w-full" type="submit" disabled={submitting || code.length !== CODE_LENGTH}>
+          {submitting ? t("auth", "verifying") : t("auth", "verify")}
+        </Button>
+      </form>
+
+      <div className="mt-4 h-4 text-sm">
+        {mode === "totp" ? (
+          <button
+            type="button"
+            onClick={() => {
+              setMode("email");
+              setCode("");
+              setError("");
+            }}
+            className="font-medium text-emerald-700 hover:text-emerald-800"
+          >
+            {t("auth", "useEmailInstead")}
+          </button>
+        ) : sending ? (
+          <span className="text-slate-400">{t("auth", "sendingCode")}</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// Full Security page: brand chrome + the re-verify gate around device management.
+export const SecurityPage = () => {
+  const { t } = useTranslation();
+  const currentRole = useAuthStore((s) => s.currentRole);
+  if (currentRole !== "ADMIN") return <Navigate to="/app" replace />;
+  return (
+    <Card>
+      <PageHeader title={t("sidebar", "security")} subtitle={t("auth", "securitySubtitle")} />
+      <div className="mt-6">
+        <SecurityGate>
+          <SecuritySection />
+        </SecurityGate>
       </div>
     </Card>
   );

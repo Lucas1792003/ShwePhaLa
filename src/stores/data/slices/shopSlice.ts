@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { DataState, ShopState } from "../types";
-import type { Shop, User } from "../../../types";
+import type { BusinessProfile, Shop, User } from "../../../types";
 import { supabase, dbExec } from "../../../lib/supabase";
 import { mapShopFormError, normalizeShopInput } from "../../../lib/shopValidation";
 import {
@@ -23,6 +23,27 @@ const execShopWrite = async (query: PromiseLike<{ error: any }>, label: string):
 export const createShopSlice: StateCreator<DataState, [], [], ShopState> = (set, get) => ({
   shops: [],
   users: [],
+  businessProfile: null,
+
+  // Update the singleton business brand (id = 'default'). ADMIN-gated by RLS.
+  updateBusinessProfile: async (profile: BusinessProfile) => {
+    await execShopWrite(
+      supabase
+        .from("business_profile")
+        .update({
+          business_name: profile.businessName?.trim() || null,
+          logo_url: profile.logoUrl?.trim() || null,
+          address: profile.address?.trim() || null,
+          phone: profile.phone?.trim() || null,
+          email: profile.email?.trim() || null,
+          tagline: profile.tagline?.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", "default"),
+      "Update business profile",
+    );
+    set({ businessProfile: profile });
+  },
 
   addShop: async (shop: Shop) => {
     const normalized = normalizeShopInput(shop);
