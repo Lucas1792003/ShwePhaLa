@@ -305,7 +305,11 @@ function SecurityGate({ children }: { children: ReactNode }) {
   const verifyTotpLogin = useAuthStore((s) => s.verifyTotpLogin);
 
   const [unlocked, setUnlocked] = useState(false);
-  const [mode, setMode] = useState<"totp" | "email">(hasTotp ? "totp" : "email");
+  // Managing existing factors (enroll a 2nd device / remove) requires an aal2
+  // session, which only the authenticator code produces — so when a factor
+  // already exists we require the app code here (no email fallback). The email
+  // path is only for the first-ever device (allowed at aal1).
+  const mode: "totp" | "email" = hasTotp ? "totp" : "email";
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -371,19 +375,7 @@ function SecurityGate({ children }: { children: ReactNode }) {
       </form>
 
       <div className="mt-4 h-4 text-sm">
-        {mode === "totp" ? (
-          <button
-            type="button"
-            onClick={() => {
-              setMode("email");
-              setCode("");
-              setError("");
-            }}
-            className="font-medium text-emerald-700 hover:text-emerald-800"
-          >
-            {t("auth", "useEmailInstead")}
-          </button>
-        ) : sending ? (
+        {mode === "email" && sending ? (
           <span className="text-slate-400">{t("auth", "sendingCode")}</span>
         ) : null}
       </div>
