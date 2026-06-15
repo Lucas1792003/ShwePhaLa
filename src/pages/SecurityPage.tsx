@@ -8,14 +8,13 @@ import { Badge } from "../components/ui/Badge";
 import { useTranslation } from "../hooks/useTranslation";
 import { formatDateTime } from "../lib/utils";
 import { useAuthStore, type TotpFactor } from "../stores/authStore";
+import { CodeCells, CODE_LENGTH } from "../components/forms/CodeCells";
 
 interface EnrollState {
   factorId: string;
   qrCode: string;
   secret: string;
 }
-
-const CODE_LENGTH = 6;
 
 export const SecurityPage = () => {
   const { t } = useTranslation();
@@ -253,16 +252,13 @@ export const SecurityPage = () => {
               </div>
 
               <div className="mt-4 space-y-3">
-                <Input
+                <CodeCells
                   value={code}
-                  onChange={(event) => {
-                    setCode(event.target.value.replace(/\D/g, "").slice(0, CODE_LENGTH));
+                  invalid={Boolean(error)}
+                  onChange={(next) => {
+                    setCode(next);
                     if (error) setError("");
                   }}
-                  inputMode="numeric"
-                  maxLength={CODE_LENGTH}
-                  placeholder={t("auth", "codePlaceholder")}
-                  error={Boolean(error)}
                 />
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={activateEnrollment} disabled={verifying || code.length !== CODE_LENGTH}>
