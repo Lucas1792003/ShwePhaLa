@@ -21,6 +21,7 @@ interface EnrollTotpResult {
   uri?: string;
 }
 
+// A registered authenticator (TOTP) factor, as shown on the Security page.
 export interface TotpFactor {
   id: string;
   friendlyName?: string;
