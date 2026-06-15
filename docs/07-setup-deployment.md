@@ -43,7 +43,7 @@ For a fresh Supabase project:
 
 1. Apply `supabase/schema.sql` in the SQL Editor.
 2. Apply every file in `supabase/migrations/` **in numeric order**
-   (`001` → `019`). See
+   (`001` → `043`). See
    [03-database-security.md](./03-database-security.md) for the full
    migration list.
 3. Verify the `auth` and `public` schemas have the expected tables, RPCs,
@@ -137,6 +137,53 @@ After deploy:
 4. If it errors, check **Edge Functions → email-sales-report → Logs**;
    the latest invocation reports the failing branch (config, admin
    lookup, Resend response)
+
+## Admin Login Verification (2FA)
+
+After an ADMIN passes the password check, they must complete a second factor
+before reaching the app — an **authenticator-app (TOTP) code** if one is set
+up, otherwise a **6-digit code emailed** to them (10-minute expiry). Feature
+spec in [04-features-workflows.md](./04-features-workflows.md#admin-login-verification-2fa).
+
+### Email-code path — `admin-2fa` edge function
+
+1. **Migration:** apply `042_admin_login_codes.sql` (service-role-only table
+   holding code hashes + expiry).
+2. **Secrets:** reuses the same Resend config as the email report — no new
+   secrets (`RESEND_API_KEY`, `REPORT_EMAIL_FROM`; `SUPABASE_URL` +
+   `SUPABASE_SERVICE_ROLE_KEY` auto-injected).
+3. **Deploy:**
+   ```bash
+   supabase functions deploy admin-2fa
+   ```
+   …or paste `supabase/functions/admin-2fa/index.ts` into **Edge Functions →
+   admin-2fa → Code editor** and Deploy. The name must match exactly so
+   `supabase.functions.invoke("admin-2fa", …)` reaches it.
+   - `action: "request"` → generates a code, stores its SHA-256 hash, emails
+     the plaintext via Resend.
+   - `action: "verify"` → checks the latest unconsumed code (expiry / attempts
+     / consume).
+4. **Codes landing in spam:** the same Resend deliverability rules apply —
+   verify a sender domain and set `REPORT_EMAIL_FROM` to an address on it.
+
+### Authenticator-app path — Supabase MFA (TOTP)
+
+1. **Enable TOTP MFA:** Supabase dashboard → **Authentication →
+   Multi-Factor Authentication** → enable **Authenticator app (TOTP)** (on by
+   default). No code or secret needed — enrollment/verification use the native
+   `supabase.auth.mfa.*` API.
+2. Admins enroll/manage devices on the in-app **Security** page
+   (`/app/security`); the enrolled-issuer label is set to the brand
+   ("Shwe PhaLar") so the entry reads sensibly in the authenticator app.
+3. **Recovery:** a lost phone falls back to the email-code path ("Use email
+   code instead"), so no separate backup codes are required.
+
+## Business Profile (brand)
+
+Apply `043_business_profile.sql` (singleton brand row: name, logo, contacts).
+Admins edit it on the **Profile** page (`/app/profile`); the sidebar header and
+receipts render it (fallback to the built-in "Shwe PhaLar" / static logo). The
+logo upload reuses the existing `product-images` bucket — no new storage setup.
 
 ## Audit Log Rotation
 

@@ -422,23 +422,39 @@ approved / canceled POs add no debt.
   `payment_status` (`UNPAID` / `PARTIAL` / `PAID`), writes audit.
 - **Does not affect cashier shift cash, POS, sales, inventory movements,
   or shifts.**
+- `void_supplier_payment(p_payment_id, p_reason)` (migration `039`) reverses a
+  payment: subtracts it from the PO's `paid_mmk` (floored at 0), recomputes
+  `payment_status`, and stamps `voided_at/by/reason`. Gated ADMIN or shop
+  `supplier:payment_create`. Voided rows show struck-through on the Payments
+  tab.
+- `pay_supplier_lump_sum(...)` (migration `040`) takes one amount and a shop and
+  allocates it across that supplier's RECEIVED unpaid POs **oldest-first**
+  (`LEAST(remaining, balance)` per PO), writing one `supplier_payments` row per
+  PO and never overpaying. Surfaced as the **Pay supplier** action with an
+  allocation preview.
+- PO debt is billed at **received value** (migration `037`): a short receive
+  recomputes the PO total from `received × unit_cost`, so partial deliveries
+  don't over-count debt.
 
 ### Supplier UI
 
 - `/app/suppliers` — list with search, financial summary columns, and a
   "View details" navigation per row.
 - `/app/suppliers/:supplierId` — full detail page. Header (Back / Edit
-  supplier / Create purchase order), five summary cards (Outstanding debt,
-  Received purchases, Paid, Unpaid/partial POs, Last purchase), and three
-  tabs:
+  supplier / **Pay supplier** lump-sum / Create purchase order), five summary
+  cards (Outstanding debt, Received purchases, Paid, Unpaid/partial POs, Last
+  purchase), and four tabs:
   - **Overview** — profile card + notes.
+  - **Products** — the supplier⇄product links (migration `036`): add/remove
+    which products this supplier supplies (gated `product:create`/`update`).
   - **Purchase Orders** — one card per PO with status / received /
     payment / next-step hint badges, Total / Paid / Balance money grid,
     and per-PO actions. Inline expand shows ordered/received qty, unit
     cost, line total, supplier invoice no, delivery note no, approved
     at/by, and the receiving-confirmation banner.
   - **Payments** — full-width table (date, PO #, amount, method,
-    reference, notes, recorded by).
+    reference, notes, recorded by, status) with a **Void** action per
+    non-voided row (`void_supplier_payment`).
 - Per-PO actions follow `getPurchaseOrderActionState(po, user)`:
 
   | PO state | Next action button | Hint when user lacks permission |
@@ -456,8 +472,10 @@ approved / canceled POs add no debt.
 
 ## Stock Transfers
 
-Lifecycle: `PENDING → APPROVED → COMPLETED`, with `CANCELED` and `REJECTED`
-exits.
+Lifecycle: `PENDING → APPROVED → IN_TRANSIT → COMPLETED`, with `CANCELED`
+and `REJECTED` exits. Migration `038` split the old one-shot completion into
+a **dispatch → receive** handshake so stock is held at the source until the
+destination confirms what actually arrived.
 
 Transfer creation is unit-aware. The UI lets the user choose a Product
 Unit (`Can`, `Case`, `Package`, ...) and enter a quantity in that unit.
@@ -476,17 +494,22 @@ across all transfer lines. Example: with 25 cans available, `1 Case`
 - **Create** at the source shop — `transfer:create`.
 - **Approve / reject** at the destination shop — `transfer:approve`. Can
   adjust quantities (partial approval).
-- **Complete** at the source shop — `complete_stock_transfer(...)`,
-  permission gated by `transfer:approve` for the source shop. Locks the
-  transfer + both inventory rows, rejects insufficient source stock,
-  writes paired `TRANSFER_OUT` + `TRANSFER_IN` movements, updates both
-  shops' stock, writes audit — all atomically. Sorted per-shop advisory
-  locks prevent transfer-vs-transfer deadlocks.
+- **Dispatch** at the source shop — `dispatch_stock_transfer(...)`
+  (`transfer:approve` on the source). Marks the transfer `IN_TRANSIT` and
+  writes audit only; **inventory does not move yet** (hold-at-source), so a
+  cancel before receipt needs no reversal.
+- **Receive** at the destination shop — `receive_stock_transfer(p_transfer_id,
+  p_received_items)` (`transfer:approve` on the destination). Moves the
+  received quantity (≤ approved), advisory-locks both shops, rejects
+  insufficient source stock, writes paired `TRANSFER_OUT` + `TRANSFER_IN`
+  movements, updates both shops' stock, writes audit — all atomically.
+  Receiving less than dispatched is allowed (short receive).
 - **Cancel** pending transfers — `transfer:cancel`.
 
-Completion moves the stored base quantities and propagates the stored unit
+Receiving moves the stored base quantities and propagates the stored unit
 snapshots into movement history, so the ledger can show `-48 Can` with
-`Entered as 2 Case`.
+`Entered as 2 Case`. (`complete_stock_transfer` from migration `007` is
+superseded by this two-step flow.)
 
 ## Refund / Void
 
@@ -778,8 +801,8 @@ visible until resolved.
 | Total Orders / Today Orders | `calculateSalesCount` of ranged `NORMAL` sales | VOID and REFUNDED excluded by `scopeSales` |
 | Avg Order Value | `round(net revenue / order count)` | Returns 0 for empty data; whole MMK only |
 | Profit / Margin | `revenue - calculateCostOfGoods`; margin = `profit / revenue * 100` | Requires `report:shop_profit`; ADMIN by default |
-| Cost of goods | `sum(current product.costMmk * sale item qty)` | Profit-only approximation; sale items do not capture historical cost |
-| Revenue, Cost & Profit Trend | `calculateDailyRevenueCostProfitTrend`, grouped by day; revenue is net revenue, cost is current product-cost approximation, profit = revenue - cost | ADMIN analytics; requires `report:shop_profit`; All Shops aggregates, selected shop filters. Rendered as a 3-series smooth LineChart with compact chip legend top-right and MMK-formatted Y-axis ticks (`MMK 60k`); ranges with fewer than 2 grouped days show the data as dots with the hint `More days of sales are needed to show a trend.` (e.g. a single-day Today range with sales). Cost approximation uses `product.costMmk` — sale items don't yet store historical unit cost. |
+| Cost of goods | `calculateCostOfGoods` = `sum((sale item unit_cost_mmk_snapshot ?? current product.costMmk) * qty)` | Prefers the per-line cost captured at sale time (migration `041`); falls back to current product cost only for legacy rows |
+| Revenue, Cost & Profit Trend | `calculateDailyRevenueCostProfitTrend`, grouped by day; revenue is net revenue, cost is current product-cost approximation, profit = revenue - cost | ADMIN analytics; requires `report:shop_profit`; All Shops aggregates, selected shop filters. Rendered as a 3-series smooth LineChart with compact chip legend top-right and MMK-formatted Y-axis ticks (`MMK 60k`); ranges with fewer than 2 grouped days show the data as dots with the hint `More days of sales are needed to show a trend.` (e.g. a single-day Today range with sales). Cost prefers the per-line `unit_cost_mmk_snapshot` (migration `041`), falling back to current `product.costMmk` for legacy rows. |
 | Active Shift / Expected Cash | open shifts in scope; `opening cash + CASH sales(status != VOID) - approved PARTIAL cash refunds` | MANAGER assigned shop; ADMIN selected/all; CASHIER own shift |
 | Action Needed | low stock + out of stock + requested approvals + approved PO receipts + pending transfers | Each sub-count is only rendered when the matching permission exists |
 | Sales by Category | `calculateSalesByCategoryPercent`; `sum(sale_items.lineTotalMmk)` by `product.category`, then percent of category total | ADMIN all/selected shop; MANAGER assigned shop; line basis does not allocate cart-level discounts yet |
@@ -799,9 +822,12 @@ visible until resolved.
 
 The Admin trend chart is profit-sensitive: revenue uses `sale.totalMmk`
 for `NORMAL` sales, approved PARTIAL refunds are subtracted when present,
-cost/investment uses current `products.costMmk * sale_items.qtyUnits`, and
-profit is `revenue - cost`. This is an approximation until sale items
-store historical unit cost. Sales by Category is safe for managers because
+cost/investment uses the per-line `unit_cost_mmk_snapshot` captured at sale
+time (falling back to current `products.costMmk` only for legacy rows), and
+profit is `revenue - cost`. The dedicated **Profit report** fetches sales +
+items for the full selected `[from, to]` range via `useRangedSales` (id-batched
+direct query), so it isn't limited by the data store's most-recent-1000-sales
+cache. Sales by Category is safe for managers because
 it is sales mix only; it uses line totals and does not allocate cart-level
 discounts back to categories yet.
 
@@ -857,6 +883,56 @@ rules baked into migration `020`:
   replace them). Friendly error: `Cannot remove the only manager of this
   shop while active cashiers remain. Reassign or deactivate the cashiers
   first, or assign another manager.`
+
+## Admin Login Verification (2FA)
+
+After an ADMIN passes `signInWithPassword`, they finish on a `/verify` page
+before reaching the app. Non-admins are unaffected. `authStore` exposes
+`adminVerified` (true when the Supabase session is `aal2` **or** an emailed
+code was confirmed this browser session) and `hasTotp`; `RequireAuth` redirects
+an unverified admin to `/verify`.
+
+Two methods, **either** is sufficient:
+
+- **Authenticator app (TOTP)** — Supabase native MFA (`supabase.auth.mfa.*`).
+  Preferred when a factor is enrolled: enter the app's 6-digit code
+  (`verifyTotpLogin`, which accepts **any** enrolled factor, so multiple phones
+  work).
+- **Emailed code** — when no app is set up (or via "Use email code instead"):
+  the `admin-2fa` edge function generates a 6-digit code, stores only its
+  SHA-256 hash in `admin_login_codes` (migration `042`) with a 10-minute
+  expiry, and emails the plaintext via Resend. The page shows a live countdown
+  + resend. Verified with `verifyAdminCode`.
+
+The code input is a segmented 6-box field (`CodeCells`). Recovery for a lost
+phone is the email path (no separate backup codes). Verified state persists per
+browser session (sessionStorage) — a refresh stays in, a new session
+re-verifies.
+
+### Security page (device management)
+
+`/app/security` (ADMIN) manages authenticator devices: list factors, **Add
+device** (enroll → scan QR → confirm), and **Remove**. The page is itself
+behind a fresh **re-verify gate** — opening it requires a current code (app or
+email); leaving and returning re-locks it. Enrollment sets the issuer to the
+business brand so the entry reads sensibly in the authenticator app.
+
+## Business Profile (brand)
+
+`/app/profile` (ADMIN) edits the app-wide business brand — logo (uploaded via
+the shared product-image pipeline), business name, tagline, address, phone,
+email — stored in the `business_profile` singleton (migration `043`, ADMIN-only
+UPDATE). The **sidebar header** and **printed receipts** render the brand,
+falling back to the built-in "Shwe PhaLar" name + static `/logo_real.png` when
+unset. The login page stays on defaults (it renders pre-auth).
+
+## Internationalization (English / Myanmar)
+
+Every page renders through `useTranslation().t(section, key, vars?)` backed by
+`src/i18n/translations.ts` (nested `en` / `my` objects). `t()` substitutes
+`{placeholder}` vars, and Myanmar text is converted to Zawgyi on the fly when
+the user picks that script (`unicodeToZawgyi`). The language + script toggle
+lives in the sidebar footer and is persisted (`languageStore`).
 
 ## Daily Sales Email Report
 

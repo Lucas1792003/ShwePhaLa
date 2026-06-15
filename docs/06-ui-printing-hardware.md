@@ -118,7 +118,7 @@ row — by design, a logged reprint is a reprint *intent*.
 
 | Block | Content |
 | --- | --- |
-| Brand header | Logo (`/logo_real.png`, `mix-blend-multiply` so a white PNG bg blends out) → `Shwe PhaLar` → shop name → address + phone → receipt no |
+| Brand header | Logo + business name from the editable `business_profile` (Profile page), falling back to `/logo_real.png` + `Shwe PhaLar` (`mix-blend-multiply` so a white PNG bg blends out) → shop name → address + phone → receipt no |
 | Meta | Stacked grid rows: Branch · Date · Cashier · Price · Payment · Items. Fixed-width label column so colons align |
 | Items table | 4 columns: Description / Qty / Price / Amount. Plain integers in numeric columns (no `MMK` per row). Dashed rule above and below the header |
 | Totals | Subtotal / Discount → dashed rule → **Total** (sm + semibold) → dashed rule → Paid / Change |

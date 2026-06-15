@@ -3,7 +3,9 @@
 Shwe Phala POS is a multi-shop POS + inventory system. React 19 +
 TypeScript + Vite on top of **Supabase Auth + PostgreSQL**. RLS is on;
 critical operational writes go through `SECURITY DEFINER` RPCs;
-business data lives in Supabase, not localStorage.
+business data lives in Supabase, not localStorage. Admin sign-in adds a
+second factor (authenticator app or emailed code), the UI is fully
+English/Myanmar, and the business brand (name + logo) is admin-editable.
 
 ## Quick Start
 
@@ -52,7 +54,11 @@ Full setup, env, Supabase, and deployment notes:
 - **`src/lib/`** — Supabase client (`supabase.ts`), permission registry
   (`permissions.ts`), central error utility (`errors.ts`), formatting
   helpers.
-- **`supabase/`** — `schema.sql` + ordered `migrations/`.
+- **`src/i18n/`** — `translations.ts` (English / Myanmar) used by
+  `useTranslation`.
+- **`supabase/`** — `schema.sql`, ordered `migrations/`, and Edge
+  Functions in `functions/` (`email-sales-report`, `rotate-audit-log`,
+  `admin-2fa`).
 
 ## Where Did The Old Docs Go?
 

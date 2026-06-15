@@ -21,12 +21,15 @@ the Supabase Auth session.
 | Shifts | Open/close with server-side expected cash, live breakdown, variance reason gate. |
 | Inventory | One row per `(shop_id, product_id)`. Adjustments and damage via `adjust_stock` RPC. Movement ledger with before/after qty. |
 | Purchases | Create / approve / receive / cancel POs. `receive_purchase_order` writes inventory, movements, audit, and PO status atomically. |
-| Suppliers | Supplier list + full detail page (`/app/suppliers/:supplierId`) with Overview / Purchase Orders / Payments tabs. Debt starts only when a PO is RECEIVED; payments via `record_supplier_payment`. |
-| Transfers | Inter-shop transfers via `complete_stock_transfer`. Source/destination ledger rows and audit row in one transaction. |
+| Suppliers | Supplier list + full detail page (`/app/suppliers/:supplierId`) with Overview / Products / Purchase Orders / Payments tabs. Debt starts only when a PO is RECEIVED (billed at received value); payments via `record_supplier_payment`, plus `void_supplier_payment` and oldest-first `pay_supplier_lump_sum`. Supplier⇄product catalog links. |
+| Transfers | Two-step inter-shop transfers: `dispatch_stock_transfer` (hold at source) → `receive_stock_transfer` (move received qty). Paired ledger rows + audit per step. |
 | Refund / Void | Cashier requests, manager approves via `approve_refund_request` / `approve_void_request`. Inventory restocked atomically. |
-| Catalog | Products, categories, brands, barcodes, product CSV import/export with dry-run preview, pricing tiers, price levels, product images in Supabase Storage. |
-| Reports | Dashboard, shop sales, profit (ADMIN by default), inventory health, supplier debt. |
+| Catalog | Products, categories (convenience-store icon set), brands, barcodes, product CSV import/export with dry-run preview, pricing tiers, price levels, product images in Supabase Storage. |
+| Reports | Dashboard, shop sales, profit (ADMIN by default, date-range fetch that bypasses the 1000-row cache), captured COGS via per-line cost snapshot, inventory health, supplier debt. |
+| Auth / 2FA | Supabase password login + an admin second factor: authenticator-app (TOTP) code, or an emailed 6-digit code (10-min expiry). Managed on the Security page; gated re-verify to view it. |
+| Profile / Branding | Admin-editable business brand (name, logo, contacts) shown in the sidebar header and on receipts. |
 | Audit | Every operational write inserts an `audit_logs` row through an RPC; direct authenticated writes to `audit_logs` are blocked. |
+| i18n | Full English / Myanmar (Unicode + Zawgyi) across every page via `useTranslation`. |
 
 ## Current Readiness
 
@@ -47,8 +50,19 @@ the Supabase Auth session.
 - ✅ Central error utility (`src/lib/errors.ts`) maps Postgres / network /
   storage / domain errors to friendly user-facing strings; bootstrap has a
   retry surface; top-level `ErrorBoundary` is in place.
+- ✅ Admin 2FA: authenticator-app (TOTP, Supabase native MFA) or emailed code
+  (`admin-2fa` edge function + `admin_login_codes`); Security page manages
+  devices behind a re-verify gate.
+- ✅ Full English / Myanmar i18n across all pages.
+- ✅ Editable business brand (`business_profile`) in the sidebar + receipts.
+- ✅ Captured COGS (`sale_items.unit_cost_mmk_snapshot`) so profit uses
+  historical cost; profit reports fetch the full selected date range.
+- ✅ Integration-style flow tests (store + mocked Supabase) for checkout,
+  PO receive, transfer dispatch/receive, refund/void approval.
 - ⏳ Live RPC / RLS verification still required against the production project
   (checklist preserved in [`archive/29-live-supabase-rls-rpc-verification.md`](./archive/29-live-supabase-rls-rpc-verification.md)).
+- ⏳ Apply migrations through `043` and deploy the `admin-2fa` edge function on
+  the target project; enable TOTP MFA in Supabase Auth.
 
 ## High-Priority Next Steps
 
@@ -56,9 +70,11 @@ See [09-roadmap-todo.md](./09-roadmap-todo.md) for the full list. Current
 priorities:
 
 - Run the live Supabase RLS / RPC verification against the target project.
+- Apply migrations through `043`; deploy `admin-2fa`; enable TOTP MFA.
 - Move `src/data/seedSupabase.ts` out of browser source.
-- Add Playwright smoke tests for the critical workflows.
-- Add Vite manualChunks / dynamic import for the main bundle (~1.3 MB).
+- Add browser-level Playwright smoke tests (store + mocked-Supabase flow
+  tests already cover checkout / receive / transfer / refund logic).
+- Add Vite manualChunks / dynamic import for the main bundle (~1.5 MB).
 - Orphan cleanup for `product-images` storage objects.
 
 ## Where To Read More

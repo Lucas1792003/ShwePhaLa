@@ -279,7 +279,14 @@ navigation icons, logout icon, and toggle button.
 | `/app/admin/products/new` | `product:create` (`ROUTE_PERMISSIONS.adminProductCreate`) |
 | `/app/admin/products/:productId/edit` | `product:update` + ADMIN/MANAGER role gate (`ROUTE_PERMISSIONS.adminProductEdit`) |
 | `/app/admin/unit-types` | `product:create` (`ROUTE_PERMISSIONS.adminUnitTypes`) |
+| `/app/profile` | `user:update` + ADMIN role gate (`ROUTE_PERMISSIONS.adminSecurity`) — business brand |
+| `/app/security` | `user:update` + ADMIN role gate — authenticator devices (re-verify gated) |
 | `/app/admin/*` | each gated by its admin permission |
+
+Under the **Administration** sidebar group: Shops, Users, Audit Log, Profile,
+Security. Products moved to the **Inventory & Catalog** group. ADMIN sign-in
+additionally requires a second factor (`/verify`) before any `/app` route loads
+— see [04-features-workflows.md](./04-features-workflows.md#admin-login-verification-2fa).
 
 ## Helpers
 

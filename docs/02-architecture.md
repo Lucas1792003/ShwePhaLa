@@ -50,13 +50,14 @@ src/
 supabase/
   schema.sql         Base schema
   migrations/        Ordered SQL migrations (apply in numeric order)
+  functions/         Edge Functions: email-sales-report, rotate-audit-log, admin-2fa
 ```
 
 ## Runtime State
 
 | Store | Responsibility | Persisted |
 | --- | --- | --- |
-| `authStore` | Supabase Auth session + `currentUserId` (app `users.id`). | Auth session in localStorage via the Supabase client. |
+| `authStore` | Supabase Auth session + `currentUserId`, `currentRole`, and the admin 2FA state (`adminVerified`, `hasTotp`) + MFA actions (`requestAdminCode`/`verifyAdminCode`, `enrollTotp`/`verifyTotpEnrollment`/`verifyTotpLogin`/`unenrollTotp`/`listTotpFactors`). | Auth session in localStorage; admin-verified flag in sessionStorage (per browser session). |
 | `appStore` | Currently selected shop. | `pos-app` in localStorage. |
 | `languageStore` | Language / Zawgyi-Unicode toggle. | `pos-language` in localStorage. |
 | `toastStore` | Toast queue. | — |
@@ -95,17 +96,22 @@ Writes split cleanly into two paths:
    | `saleSlice` | `complete_sale`, `create_refund_void_request`, `approve_refund_request`, `approve_void_request`, `reject_refund_void_request` |
    | `inventorySlice` | `adjust_stock` |
    | `shiftSlice` | `open_shift`, `close_shift` |
-   | `purchaseSlice` | `create_purchase_order`, `approve_purchase_order`, `receive_purchase_order`, `cancel_purchase_order`, `record_supplier_payment` |
-   | `transferSlice` | `create_stock_transfer`, `approve_stock_transfer`, `reject_stock_transfer`, `cancel_stock_transfer`, `complete_stock_transfer` |
+   | `purchaseSlice` | `create_purchase_order`, `approve_purchase_order`, `receive_purchase_order`, `cancel_purchase_order`, `record_supplier_payment`, `void_supplier_payment`, `pay_supplier_lump_sum` |
+   | `transferSlice` | `create_stock_transfer`, `approve_stock_transfer`, `reject_stock_transfer`, `dispatch_stock_transfer`, `receive_stock_transfer`, `cancel_stock_transfer` |
    | `auditSlice` | `log_receipt_reprint`, `log_audit_event` |
+
+   Admin 2FA additionally calls the `admin-2fa` **edge function** (email-code
+   path) and Supabase native MFA (`supabase.auth.mfa.*`, authenticator path)
+   from `authStore` — these are not table RPCs.
 
 2. **Direct, permission-gated writes (admin / reference).** Direct
    `supabase.from(...).insert / update` writes via `dbWrite` (fire-and-forget
    + friendly toast on failure) or `dbExec` (awaited; throws a friendly
    `Error` on failure). Applies to: `shops`, `users`, `categories`,
    `brands`, `products`, `product_units`, `product_barcodes`,
-   `product_unit_prices`, `price_tiers`, `suppliers`. RLS still gates by
-   permission server-side.
+   `product_unit_prices`, `price_tiers`, `suppliers`, `supplier_products`,
+   `business_profile`. RLS still gates by permission server-side
+   (`business_profile` UPDATE is ADMIN-only).
 
 ## Multi-Shop Model
 
@@ -222,7 +228,10 @@ single source of truth used by both the router guard and the sidebar.
 | `/app/reports`, `/app/reports/profit` | `report:shop_sales` / `report:shop_profit` |
 | `/app/catalog` | `product:read` |
 | `/app/barcode-labels` | `product:read` + role gate (ADMIN/MANAGER) |
+| `/app/profile` | `user:update` (ADMIN) — business brand editor |
+| `/app/security` | `user:update` (ADMIN) — authenticator devices, behind a re-verify gate |
 | `/app/admin/*` | each gated by the relevant admin permission |
+| `/verify` | post-password admin 2FA step (session present, not yet verified) |
 | `/phone-upload/product-image/:token` | unauthenticated (token-gated) |
 
 ## Deployment

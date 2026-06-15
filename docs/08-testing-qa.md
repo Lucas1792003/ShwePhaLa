@@ -5,7 +5,7 @@ supplier debt + action matrix, barcode lookup, error mapper, etc.). End-
 to-end UI assertions and database-side verification live in checklists.
 
 ```bash
-npm test             # Vitest (currently 32 files / 427 tests passing)
+npm test             # Vitest (currently 49 files / 570 tests passing)
 npx tsc -b           # Type check
 npm run build        # Production build
 npm run lint         # ESLint
@@ -47,10 +47,30 @@ npm run lint         # ESLint
 | `src/features/suppliers/phoneUploadSession.test.ts` (under productImages) | Session lifecycle |
 | `src/components/products/productPickerUtils.test.ts` | ProductPicker search |
 | `src/components/barcodes/BarcodePrintSheet.test.tsx` | Print sheet structure |
+| `src/features/pos/completeSaleCostSnapshot.test.ts` | Migration 041 SQL guards: `unit_cost_mmk_snapshot` column + `complete_sale` cost capture, checkout safety preserved |
+| `src/features/suppliers/poReceiveValue.test.ts` | Migration 037 — receive bills at received value |
+| `src/features/transfers/transferDispatchReceive.test.ts` | Migration 038 — dispatch (no inventory) / receive (paired ledger) SQL guards |
+| `src/features/suppliers/voidSupplierPayment.test.ts`, `paySupplierLumpSum.test.ts` | Migrations 039 / 040 SQL guards |
+| `src/features/auth/adminLoginCodes.test.ts` | Migration 042 — `admin_login_codes` shape + service-role-only RLS lockdown |
+| `src/features/admin/businessProfile.test.ts` | Migration 043 — `business_profile` singleton + read-all / ADMIN-update RLS |
 
-> No React Testing Library / DOM tests yet. Modal-behavior assertions
-> ("modal stays open on failure", "double-click disabled") live in the
-> manual QA checklists below.
+### Flow tests (store + mocked Supabase)
+
+Integration-style tests that drive the real data-store actions with the
+Supabase client mocked (`vi.mock("…/lib/supabase")`), asserting the RPC
+parameter contract, state reconciliation (inventory merge-in-place), and
+error/no-data paths:
+
+| File | Flow |
+| --- | --- |
+| `src/stores/data/slices/saleSlice.checkout.test.ts` | POS checkout — `complete_sale` payload, fixed/override/open-price branches, reconcile |
+| `src/stores/data/slices/purchaseSlice.receive.test.ts` | PO receive — base-qty vs unit-aware lines, PO/item/inventory reconcile |
+| `src/stores/data/slices/transferSlice.dispatchReceive.test.ts` | Transfer dispatch (no inventory) → receive (both shops merged) |
+| `src/stores/data/slices/saleSlice.refund.test.ts` | Refund/void approval — VOID vs PARTIAL routing, sale + inventory reconcile |
+
+> No React Testing Library / DOM tests yet (one SSR-render test exists for
+> `ProductFinder`). Modal-behavior assertions ("modal stays open on failure",
+> "double-click disabled") live in the manual QA checklists below.
 
 ## Live Supabase RLS / RPC Verification
 
@@ -454,6 +474,24 @@ Highlights:
 - [ ] Payment > outstanding balance → submit disabled, inline error.
 - [ ] BUYER sees Create PO + Cancel-PO; no Receive / Pay buttons.
 - [ ] CASHIER does not see the Suppliers menu at all.
+
+## Admin 2FA & Profile QA
+
+Prereqs: migration `042`/`043` applied, `admin-2fa` deployed, TOTP MFA enabled.
+
+- [ ] ADMIN login with no authenticator set up → routed to `/verify`, email
+      code arrives, correct code → dashboard; wrong/expired code rejected;
+      resend works.
+- [ ] Non-admin login → straight in, no `/verify` step.
+- [ ] Security page → "Set up an authenticator app" → scan QR → confirm code →
+      future logins prompt for the **app** code; "use email code instead" still
+      works (lost-phone recovery).
+- [ ] Security page → Add a second device → either phone's code logs in.
+- [ ] Opening the Security page requires a fresh code; leaving + returning
+      asks again.
+- [ ] Refresh within a session stays verified; closing the browser re-verifies.
+- [ ] Profile → change business name + upload logo → Save → sidebar header and
+      a printed receipt show the new brand; non-admins can't reach `/app/profile`.
 
 ## Barcode + Print QA
 

@@ -4,37 +4,22 @@ Open work, grouped by area.
 
 ## High Priority
 
-- [ ] **Admin 2FA (authenticator app / TOTP).** Add an authenticator-app
-      verification step for ADMIN sign-in. Built on Supabase Auth's native
-      TOTP MFA (`supabase.auth.mfa.*`) — enroll/challenge/verify are
-      provided; **backup codes are NOT, so they are the bespoke piece.**
-      Scope decided: **required for all admins, with backup codes for
-      recovery.** Estimate ~2–3 days.
-      - **Supabase setup:** enable TOTP MFA in the dashboard
-        (Authentication → settings).
-      - **DB (backup codes):** `mfa_backup_codes` table (user_id,
-        code_hash, used_at) storing **hashes only**; a `SECURITY DEFINER`
-        RPC `consume_backup_code(code)` that hashes input, matches an
-        unused code for the caller, marks it used, returns ok/fail; RLS so
-        a user only touches their own codes.
-      - **Enrollment (forced for admins with no factor):** `mfa.enroll()`
-        → show QR + secret → confirm first code via
-        `mfa.challengeAndVerify()` → generate ~10 backup codes, show once,
-        store hashes.
-      - **Login flow (`authStore.login`):** after `signInWithPassword`, for
-        ADMIN check assurance level — no factor → route to forced
-        enrollment; factor + still aal1 → verification step accepting
-        **either** a TOTP code or a backup code (`consume_backup_code`).
-        Non-admins unchanged.
-      - **Settings + recovery:** remaining-backup-code count, regenerate
-        codes, re-enroll device. **Break-glass:** document a manual
-        Supabase factor reset for lost-phone-AND-lost-codes (backup-codes-
-        only recovery can still strand someone).
-      - **Risks:** lost phone + lost codes → manual reset only; forcing MFA
-        on a *shared* admin login is awkward — nudges toward per-person
-        admin accounts. Role lives in the `users` table (not the JWT), so
-        admin enforcement is app-side unless an `aal` claim is added to RLS
-        for sensitive writes (optional, more work).
+- [x] **Admin 2FA — shipped (different design than originally scoped).**
+      After the password check, ADMIN sign-in requires a second factor on a
+      `/verify` page: an **authenticator-app (TOTP) code** if one is enrolled,
+      otherwise a **6-digit emailed code** (10-min expiry). Built on Supabase
+      native TOTP MFA (`supabase.auth.mfa.*`) for the app path and a service-
+      role `admin-2fa` edge function + `admin_login_codes` table (migration
+      `042`) for the email path. **No backup codes** — the email path is the
+      recovery route ("Use email code instead"). Verified once per browser
+      session (`adminVerified` = session `aal2` OR email flag). Admins manage
+      devices (enroll / add a second phone / remove) on the in-app **Security**
+      page, which is itself behind a fresh re-verify gate. `verifyTotpLogin`
+      accepts **any** enrolled factor, so multiple phones work. Enrolled
+      issuer is set to the brand. **Remaining (optional):** if session-level
+      MFA enforcement on sensitive RLS writes is ever needed, add an `aal`
+      claim check (today the gate is UI-level; the Supabase session is still
+      live for an unverified admin).
 - [ ] **Auto-create inventory rows.** A product only gets an
       `inventory (shop_id, product_id, qty_base_units)` row the first time
       it's stocked (purchase receive / adjust). Never-stocked products
@@ -129,8 +114,13 @@ Open work, grouped by area.
 - [x] **POS Bills polish.** Bills has line-level price-level selection,
       icon-only delete, stacked quantity controls, separate name/unit lines,
       and an `All` modal for the full cart.
-- [ ] **Playwright smoke tests** for the workflows enumerated in
-      [08-testing-qa.md](./08-testing-qa.md).
+- [~] **Flow tests (store + mocked Supabase) added; Playwright still open.**
+      Critical flows now have integration-style tests that drive the data-store
+      actions with the Supabase client mocked: POS checkout (`complete_sale`
+      payload/price branches/reconcile), PO receive, transfer
+      dispatch/receive, and refund/void approval. A full browser-level
+      Playwright suite for the workflows in
+      [08-testing-qa.md](./08-testing-qa.md) is still the remaining piece.
 - [ ] **Print + barcode hardware QA.** Test ESC/POS thermal printers at
       80 mm; test CODE128 labels at each of the four template sizes on
       real label paper.
@@ -187,6 +177,22 @@ These were the headline backend hardening milestones; details are in
 - [x] Brand registry (migration `031`), product quick fields
       (migration `032`), and Open Price / Non Stock `complete_sale`
       enforcement (migration `033`).
+- [x] Multi-line checkout stock fix (running per-product tally, migration
+      `034`).
+- [x] Unique supplier code + supplier⇄product catalog (migrations `035`,
+      `036`).
+- [x] Receive-at-received-value PO billing (migration `037`).
+- [x] Two-step transfers — `dispatch_stock_transfer` →
+      `receive_stock_transfer` (migration `038`, supersedes
+      `complete_stock_transfer`).
+- [x] Void supplier payment + lump-sum supplier payment (migrations `039`,
+      `040`).
+- [x] Captured COGS — `sale_items.unit_cost_mmk_snapshot` written by
+      `complete_sale` so profit uses historical cost (migration `041`).
+- [x] Admin email-code 2FA table + `admin-2fa` edge function (migration
+      `042`); authenticator-app TOTP via Supabase native MFA.
+- [x] Business profile (brand name/logo/contacts) singleton (migration
+      `043`).
 
 ## Completed Frontend Hardening (for reference)
 
@@ -241,3 +247,18 @@ These were the headline backend hardening milestones; details are in
       of blocking the send. See
       [04-features-workflows.md](./04-features-workflows.md#daily-sales-email-report)
       and [07-setup-deployment.md](./07-setup-deployment.md#daily-sales-email-function).
+- [x] **Full English / Myanmar i18n** across the app (sidebar already had it;
+      now suppliers, supplier detail, POS + cart/payment/finder, products
+      management + form, login, inventory, purchases, transfers, profile,
+      security). `useTranslation().t(section, key, vars?)` gained
+      `{placeholder}` interpolation.
+- [x] **Reports uncapped to the selected range.** Profit/COGS reports use
+      `useRangedSales` to fetch sales + items for the chosen `[from, to]`
+      straight from Supabase (id-batched), bypassing the 1000-row store cache
+      cap, and prefer `unit_cost_mmk_snapshot` for cost.
+- [x] **Admin Profile + Security sidebar pages** (under Administration);
+      Products moved to "Inventory & Catalog". Sidebar header + receipts now
+      render the editable business brand.
+- [x] **Convenience-store category icon set** + smarter name→icon aliases.
+- [x] **Dashboard cards** — unified Low Stock (single + all-shops) with
+      "View all", and a Transfers-status card in the admin Action Queue.

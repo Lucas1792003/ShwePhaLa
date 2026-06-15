@@ -7,12 +7,13 @@ writes are RPC-only, and `audit_logs` direct writes are blocked.
 
 | Group | Tables |
 | --- | --- |
-| Core / reference | `shops`, `users`, `categories`, `brands`, `products`, `product_units`, `product_barcodes`, `price_levels`, `product_unit_prices`, `price_tiers`, `suppliers`, `product_image_upload_sessions` |
+| Core / reference | `shops`, `users`, `categories`, `brands`, `products`, `product_units`, `product_barcodes`, `price_levels`, `product_unit_prices`, `price_tiers`, `suppliers`, `supplier_products`, `product_image_upload_sessions`, `business_profile` |
 | Inventory | `inventory` (PK `(shop_id, product_id)`), `inventory_movements` |
 | Sales / POS | `shifts`, `sales`, `sale_items`, `refund_void_requests`, `reprint_logs` |
 | Purchasing | `purchase_orders`, `purchase_order_items`, `supplier_payments` |
 | Transfers | `stock_transfers`, `stock_transfer_items` |
 | Audit | `audit_logs` |
+| Auth (2FA) | `admin_login_codes` (service-role only — admin email-code step) |
 
 `users.auth_id` links app staff profiles to `auth.users(id)`.
 `users.granted_permissions` and `users.revoked_permissions` are the
@@ -58,6 +59,16 @@ Apply in numeric order. The current ordered list:
 | `031_brands.sql` | Adds category-scoped `brands`, product `brand_id`, brand RLS policies, and data-store support for catalog/POS brand filtering. |
 | `032_product_quick_fields.sql` | Adds product quick fields: `alias_code`, `short_name`, `max_qty`, `is_open_price`, `is_non_stock`, and `purchase_type`. |
 | `033_complete_sale_open_price_non_stock.sql` | Updates `complete_sale` so Open Price items require client `unit_price_mmk`, Non Stock items skip inventory checks/deductions/movements, and price-level snapshots still record the selected level. |
+| `034_complete_sale_multiline_stock_fix.sql` | Fixes multi-line checkout stock validation: `complete_sale` runs a running per-product stock tally across all cart lines (advisory lock per shop) so two lines of the same product can't oversell. |
+| `035_unique_normalized_suppliers.sql` | Preflight duplicate supplier-code detection + partial unique index `suppliers_unique_normalized_code` on `lower(btrim(code))`. |
+| `036_supplier_products.sql` | `supplier_products` join table (supplier ⇄ product many-to-many, both FKs `ON DELETE CASCADE`). Read = any authenticated; write gated `product:create` OR `product:update`. |
+| `037_po_received_value.sql` | `receive_purchase_order` bills at **received** value: recomputes line + PO totals from `received × unit_cost` so a short receive doesn't over-count debt. |
+| `038_transfer_dispatch_receive.sql` | Splits transfer completion into **dispatch → receive**. Adds `dispatched_by/at`, `received_by/at` to `stock_transfers`; `dispatch_stock_transfer` (APPROVED → IN_TRANSIT, no inventory) and `receive_stock_transfer` (IN_TRANSIT → COMPLETED, moves received ≤ approved, advisory-locks both shops, paired ledger). Supersedes `complete_stock_transfer`. |
+| `039_void_supplier_payment.sql` | `void_supplier_payment(p_payment_id, p_reason)`: reverses a payment's `paid_mmk`, recomputes `payment_status`, stamps `voided_*`. Gated ADMIN or shop `supplier:payment_create`. |
+| `040_pay_supplier_lump_sum.sql` | `pay_supplier_lump_sum(...)`: allocates one amount across a supplier's RECEIVED unpaid POs oldest-first, one `supplier_payments` row per PO, never overpays. |
+| `041_complete_sale_cost_snapshot.sql` | Adds `sale_items.unit_cost_mmk_snapshot`; `complete_sale` captures product cost at sale time so profit/COGS use historical cost, not drifting current cost. |
+| `042_admin_login_codes.sql` | `admin_login_codes` table (auth_id, code_hash, expires_at, consumed_at, attempts) for the admin email-code 2FA step. **Service-role only**: RLS on, no policies, privileges revoked from anon/authenticated. |
+| `043_business_profile.sql` | `business_profile` singleton (business_name, logo_url, address, phone, email, tagline) for the app-wide brand. Read = any authenticated; UPDATE = ADMIN only; INSERT/DELETE revoked (seeded single row). |
 
 > **Migration order warning.** Some later migrations depend on identity
 > helpers from `003` and the audit-write lockdown from `013`. Always apply
@@ -98,19 +109,22 @@ the audit row — all in one transaction.
 
 | RPC | Purpose |
 | --- | --- |
-| `complete_sale(...)` | POS checkout: validates product units/prices/stock, requires cashier-supplied prices for Open Price items, skips inventory writes for Non Stock items, writes sale + items + inventory + movements + audit |
+| `complete_sale(...)` | POS checkout: validates product units/prices/stock (running per-product tally across lines, migration `034`), requires cashier-supplied prices for Open Price items, skips inventory writes for Non Stock items, captures `unit_cost_mmk_snapshot` per line for historical COGS (migration `041`), writes sale + items + inventory + movements + audit |
 | `create_refund_void_request(...)` | Cashier raises a refund or void request |
 | `approve_refund_request(p_request_id)` | Manager approves a refund; restores stock, writes movements + audit |
 | `approve_void_request(p_request_id)` | Manager approves a void; restocks all items |
 | `reject_refund_void_request(p_request_id, p_reason)` | Reject a pending request |
 | `receive_purchase_order(p_purchase_order_id, p_received_items)` | Receive a PO: PO status, received qty, inventory, `PURCHASE_IN` movements, audit |
-| `complete_stock_transfer(p_transfer_id)` | Complete a transfer: source `TRANSFER_OUT` + destination `TRANSFER_IN` + audit; moves base units and propagates stored unit snapshots into movements |
+| `dispatch_stock_transfer(p_transfer_id)` | Source releases the goods: APPROVED → IN_TRANSIT, audit only, **no inventory change** (hold-at-source). Migration `038` |
+| `receive_stock_transfer(p_transfer_id, p_received_items)` | Destination confirms receipt: IN_TRANSIT → COMPLETED, moves received ≤ approved base units, advisory-locks both shops, writes paired `TRANSFER_OUT`/`TRANSFER_IN` + audit. Migration `038`, supersedes `complete_stock_transfer` |
 | `adjust_stock(...)` | Manual adjustment / damage; checks `inventory:override_negative` if delta drives stock negative |
 | `open_shift(p_shop_id, p_opening_cash_mmk)` | Open a shift; rejects concurrent open shifts per cashier |
 | `close_shift(p_shift_id, p_closing_cash_mmk, p_variance_reason)` | Close a shift; recomputes expected cash; requires reason on non-zero variance |
 | `create_purchase_order(...)`, `approve_purchase_order(p_purchase_order_id)`, `cancel_purchase_order(p_purchase_order_id, p_reason)` | PO lifecycle (non-receiving steps) |
 | `create_stock_transfer(...)`, `approve_stock_transfer(p_transfer_id)`, `reject_stock_transfer(p_transfer_id, p_reason)`, `cancel_stock_transfer(p_transfer_id, p_reason)` | Transfer lifecycle (non-completion steps). Create accepts unit-aware lines but stores requested/approved quantity as base units. |
 | `record_supplier_payment(p_purchase_order_id, p_amount_mmk, p_payment_method, p_reference_no, p_notes)` | Supplier payment against a RECEIVED PO; updates `paid_mmk` + `payment_status` |
+| `void_supplier_payment(p_payment_id, p_reason)` | Reverse a supplier payment; recompute `payment_status`, stamp `voided_*`. ADMIN or shop `supplier:payment_create`. Migration `039` |
+| `pay_supplier_lump_sum(...)` | Allocate one amount across a supplier's RECEIVED unpaid POs oldest-first (one payment row per PO, no overpay). Migration `040` |
 | `log_receipt_reprint(p_sale_id)` | Reprint log + audit row |
 | `log_audit_event(...)` | Generic audit writer for admin/reference events; forces `actor_id` to `current_app_user()` |
 | `create_product_image_upload_session(...)` + family | QR-based phone product image uploads (see migration 019) |
@@ -127,8 +141,14 @@ RLS is enabled on all listed tables.
   authenticated writes** after migrations `010`–`013`. The only way to
   modify them is via the RPCs above.
 - Admin / reference tables (`shops`, `users`, `categories`, `products`,
-  `product_units`, `product_barcodes`, `price_tiers`, `suppliers`) accept direct writes
-  gated by RLS that checks the relevant granular permission.
+  `product_units`, `product_barcodes`, `price_tiers`, `suppliers`,
+  `supplier_products`, `business_profile`) accept direct writes
+  gated by RLS that checks the relevant granular permission. `supplier_products`
+  writes need `product:create` OR `product:update`; `business_profile` UPDATE is
+  ADMIN-only (single seeded row; INSERT/DELETE revoked).
+- `admin_login_codes` (admin email-code 2FA) is **service-role only**: RLS is
+  enabled with no policies and all privileges revoked from anon/authenticated,
+  so only the `admin-2fa` edge function (service role) can read/write codes.
 - `shops` additionally enforces normalized uniqueness at the DB layer:
   `shops_unique_normalized_name` on `lower(trim(name))` and
   `shops_unique_normalized_code` on `lower(trim(code))` for non-empty
@@ -186,6 +206,9 @@ the POS and shared UI need them.
 - Phone-upload paths: `product-images/temp/<sessionId>/...` — only
   reachable through the temporary one-time session token in migration
   `019`. The phone never needs to log in.
+- The **business logo** (Profile page) reuses this same public bucket
+  (path `products/brand/...`) via the shared `uploadProductImage` pipeline;
+  `business_profile.logo_url` stores the resulting public URL.
 
 If `CREATE POLICY ON storage.objects` fails from the SQL editor, see the
 dashboard fallback in
