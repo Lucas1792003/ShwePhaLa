@@ -331,10 +331,13 @@ export const useAuthStore = create<AuthState>()((set) => ({
   listTotpFactors: listTotpFactorRows,
 
   // Start TOTP enrollment: returns the QR + secret to show the admin.
+  // `issuer` is the label authenticator apps show as the account title — set it
+  // to the brand so the entry reads "Shwe PhaLar", not the site URL.
   enrollTotp: async (friendlyName?: string) => {
     const name = friendlyName?.trim();
     const { data, error } = await supabase.auth.mfa.enroll({
       factorType: "totp",
+      issuer: "Shwe PhaLar",
       ...(name ? { friendlyName: name } : {}),
     });
     if (error) return { error: error.message };
