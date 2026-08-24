@@ -11,9 +11,12 @@ const RELEASE_TAG = "v1.0.0";
 const RELEASE_BASE = `https://github.com/Lucas1792003/ShwePhaLa/releases/download/${RELEASE_TAG}`;
 const DOWNLOADS = {
   macArm: `${RELEASE_BASE}/Shwe-Pha-La-POS-1.0.0-arm64.dmg`,
-  macIntel: `${RELEASE_BASE}/Shwe-Pha-La-POS-1.0.0.dmg`,
   windows: `${RELEASE_BASE}/Shwe-Pha-La-POS-Setup-1.0.0.exe`,
 };
+// Intel Mac build (Shwe-Pha-La-POS-1.0.0.dmg) is still published in the
+// release for anyone who needs it directly, just not offered here — every
+// Mac sold since 2020 is Apple Silicon, and keeping the picker to 2 options
+// reads cleaner than 3.
 
 type OsOption = {
   key: string;
@@ -22,11 +25,8 @@ type OsOption = {
   url: string;
 };
 
-// Best-effort guess at which download to highlight — cosmetic only, every
-// option is always shown regardless. Can't reliably tell Apple Silicon from
-// Intel from the browser (Apple Silicon Macs can report "Intel" under
-// Rosetta), so on a Mac this just guesses the now-more-common Apple
-// Silicon build.
+// Best-effort guess at which download to highlight — cosmetic only, both
+// options are always shown regardless.
 function detectLikelyOs(): string | null {
   if (typeof navigator === "undefined") return null;
   const ua = navigator.userAgent;
@@ -36,8 +36,7 @@ function detectLikelyOs(): string | null {
 }
 
 const OPTIONS: OsOption[] = [
-  { key: "mac-arm", label: "macOS — Apple Silicon", hint: "M1 / M2 / M3 / M4 Macs (most Macs sold since 2020)", url: DOWNLOADS.macArm },
-  { key: "mac-intel", label: "macOS — Intel", hint: "Older Macs with an Intel chip", url: DOWNLOADS.macIntel },
+  { key: "mac-arm", label: "macOS", hint: "Apple Silicon Macs (M1 and later)", url: DOWNLOADS.macArm },
   { key: "windows", label: "Windows", hint: "64-bit Windows 10 / 11", url: DOWNLOADS.windows },
 ];
 
@@ -54,7 +53,7 @@ export const DownloadAppModal = ({ open, onClose }: DownloadAppModalProps) => {
       open={open}
       onClose={onClose}
       title="Download the desktop app"
-      description="Pick your operating system. Not sure which Mac you have? Apple menu → About This Mac — it lists the chip."
+      description="Pick your operating system."
       size="sm"
     >
       <div className="space-y-2">

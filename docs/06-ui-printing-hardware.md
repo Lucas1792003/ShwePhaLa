@@ -220,17 +220,36 @@ Security:
   deleting objects with no referencing `products.image_url` + old
   `product-images/temp/*` whose sessions are expired/canceled).
 
-## Future Desktop Wrapper / Hardware
+## Desktop Wrapper (Electron)
 
-Currently the app is a browser SPA. A future desktop wrapper (e.g.
-Electron) could:
+The app now also ships as a native Windows/Mac desktop app — an Electron
+shell (`electron/main.cjs`, `electron/preload.cjs`) around the exact same
+React app, distributed as a `.dmg` (Mac, Apple Silicon + Intel) / `.exe`
+(Windows) via a **Download App** button in the sidebar footer
+(`DownloadAppModal.tsx`), which links to installers published as GitHub
+Releases on this repo.
 
-- Drive a USB ESC/POS thermal printer directly instead of relying on the
-  browser's print dialog.
-- Offer offline POS mode with sync (sales queued while the network is
-  down).
-- Talk to OPOS / JavaPOS cash drawers and barcode scanners with native
-  drivers instead of HID keyboard emulation.
+What it adds over the browser version:
+- **Silent receipt printing** — `webContents.print({ silent: true, ... })`
+  to a system printer, no print-preview dialog and no need for the
+  `--kiosk-printing` browser flag described above. Works with the existing
+  80mm receipt HTML/CSS unchanged; most ESC/POS thermal printers install as
+  a normal OS printer via the manufacturer's driver, so no raw ESC/POS byte
+  protocol was needed. `src/lib/print.ts` feature-detects
+  `window.electronAPI` and falls back to `window.print()` in the browser.
+- **Offline POS mode with sync** — this is the bigger piece; see
+  [`10-offline-desktop-known-issues.md`](./10-offline-desktop-known-issues.md)
+  for the full design (local IndexedDB mirror, write outbox, delta sync)
+  and exactly which flows are offline-capable vs. still online-only. This
+  part works identically in the browser and in the desktop app — it's not
+  Electron-specific.
+- **Auto-update** — the desktop app checks this repo's GitHub Releases on
+  launch and periodically, downloading and prompting to install updates.
 
-These are not implemented and are in the roadmap, not the current code
-path. See [09-roadmap-todo.md](./09-roadmap-todo.md).
+Still not implemented: talking to OPOS/JavaPOS cash drawers or barcode
+scanners with native drivers (scanners still work today via HID keyboard
+emulation, same as the browser version; drawers need a printer-model-
+specific ESC/POS kick command or direct USB/serial access, neither
+wired up yet — no hardware available to build/verify it against). Full
+gap list, including code-signing status and the release/publish process,
+is in [`10-offline-desktop-known-issues.md`](./10-offline-desktop-known-issues.md).

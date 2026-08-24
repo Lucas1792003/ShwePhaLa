@@ -134,8 +134,20 @@ Open work, grouped by area.
 
 ## Low Priority
 
-- [ ] **Future desktop wrapper** (Electron / Tauri) for native
-      ESC/POS / OPOS hardware and offline POS with sync.
+- [x] **Desktop wrapper (Electron) + offline POS with sync.** Shipped —
+      native Windows/Mac app (installers via a sidebar Download button,
+      GitHub Releases + auto-update), silent ESC/POS-compatible printing,
+      and a full offline-first sync layer (local IndexedDB mirror, write
+      outbox, delta sync) covering the floor-critical flows — POS
+      checkout, stock adjustments, shift open/close, refund/void requests,
+      PO receiving, supplier payments, transfer dispatch/receive, and
+      simple catalog edits. See
+      [06-ui-printing-hardware.md](./06-ui-printing-hardware.md#desktop-wrapper-electron)
+      and [10-offline-desktop-known-issues.md](./10-offline-desktop-known-issues.md)
+      for the full scope map (what's still online-only and why), known
+      gaps (no cash-drawer support, no code signing), and verification
+      status. OPOS/JavaPOS native hardware drivers remain undone — no
+      hardware available to build against.
 - [ ] **Email / SMS notifications** (e.g. low stock, shift variance,
       pending approvals).
 - [ ] **Public API** for third-party integrations.

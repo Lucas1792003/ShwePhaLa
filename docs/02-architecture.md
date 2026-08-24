@@ -35,16 +35,23 @@ src/
   pages/             Page compositions used by routes (incl. SupplierDetailPage)
   hooks/             useAsyncAction, useViewportWidth, useTranslation, …
   stores/
-    authStore.ts     Supabase Auth session + current app user id
-    appStore.ts      Selected shop UI state (persisted to localStorage)
-    languageStore.ts Language + Zawgyi/Unicode preference (persisted)
-    toastStore.ts    Toast queue
-    data/            Zustand domain slices + Supabase row mappers
+    authStore.ts       Supabase Auth session + current app user id + offline auth cache
+    appStore.ts        Selected shop UI state (persisted to localStorage)
+    languageStore.ts   Language + Zawgyi/Unicode preference (persisted)
+    connectivityStore.ts  Online/offline tracking (navigator.onLine + events)
+    toastStore.ts      Toast queue
+    data/              Zustand domain slices + Supabase row mappers (mappers.ts)
+      outbox.ts        Offline write queue: enqueue, drain/reconcile, conflicts
+      deltaSync.ts      Cursor-based incremental pull for tables with updated_at
+      localSync.ts, localWrites.ts, tableWrite.ts   Local IndexedDB mirror I/O
   lib/
-    permissions.ts   Central permission registry + ROUTE_PERMISSIONS
-    supabase.ts      Supabase client, dbWrite / dbExec / dbAudit
-    errors.ts        Central error utility + classifiers + getErrorMessage
-    utils.ts         Formatting, getEffectiveShopId, normalizeAmountInput, …
+    permissions.ts     Central permission registry + ROUTE_PERMISSIONS
+    supabase.ts        Supabase client, dbWrite / dbExec / dbAudit
+    localDb.ts         Dexie (IndexedDB) schema — the local offline mirror
+    errors.ts          Central error utility + classifiers + getErrorMessage
+    id.ts              Collision-safe id generation for offline-created rows
+    print.ts           Receipt printing — Electron silent print, else window.print()
+    utils.ts           Formatting, getEffectiveShopId, normalizeAmountInput, …
   types/domain.ts    TypeScript domain model (User, Sale, Inventory, …)
   data/seedSupabase.ts  Dev-only seed; refuses to run in browser by default
 supabase/
@@ -57,30 +64,54 @@ supabase/
 
 | Store | Responsibility | Persisted |
 | --- | --- | --- |
-| `authStore` | Supabase Auth session + `currentUserId`, `currentRole`, and the admin 2FA state (`adminVerified`, `hasTotp`) + MFA actions (`requestAdminCode`/`verifyAdminCode`, `enrollTotp`/`verifyTotpEnrollment`/`verifyTotpLogin`/`unenrollTotp`/`listTotpFactors`). | Auth session in localStorage; admin-verified flag in sessionStorage (per browser session). |
+| `authStore` | Supabase Auth session + `currentUserId`, `currentRole`, and the admin 2FA state (`adminVerified`, `hasTotp`) + MFA actions (`requestAdminCode`/`verifyAdminCode`, `enrollTotp`/`verifyTotpEnrollment`/`verifyTotpLogin`/`unenrollTotp`/`listTotpFactors`). | Auth session in localStorage; admin-verified flag in sessionStorage (per browser session); last-resolved user cached in IndexedDB for up to 24h so `restoreSession()` doesn't log the user out on a cold boot with no network. |
 | `appStore` | Currently selected shop. | `pos-app` in localStorage. |
 | `languageStore` | Language / Zawgyi-Unicode toggle. | `pos-language` in localStorage. |
+| `connectivityStore` | Online/offline flag, updated live from `window`'s `online`/`offline` events. | — (derived from `navigator.onLine` at init). |
 | `toastStore` | Toast queue. | — |
-| `dataStore` (`stores/data/`) | In-memory cache of all Supabase domain rows, hydrated by `loadData()` after auth. | **Not persisted.** |
+| `dataStore` (`stores/data/`) | In-memory cache of all Supabase domain rows, hydrated by `loadData()`. | **Yes — mirrored to IndexedDB** (Dexie, `lib/localDb.ts`) so the app boots instantly from cache (works offline) and re-persists after every load/sync. |
 
-Older docs that called localStorage "the data store" are stale. Today
-localStorage holds only the three lightweight items above.
+localStorage holds only the small UI-preference items above (shop
+selection, language, admin-verified session flag). The much larger
+business-data mirror — and the offline write queue — live in **IndexedDB**,
+a separate browser storage mechanism, not localStorage. See
+[10-offline-desktop-known-issues.md](./10-offline-desktop-known-issues.md)
+for the full offline-first design (local-first boot, the write outbox,
+delta sync, and exactly which write flows are offline-capable).
 
 ## Data Loading
 
 `stores/data/index.ts` composes the domain slices (shop, category, brand,
 unit type, product, inventory, shift, sale, transfer, purchase, pricing,
-audit). `loadData()`
-fetches all relevant tables in parallel and exposes:
+audit) and exposes:
 
 - `isLoading`, `isLoaded`, `loadError`
-- `loadData({ force? })`
+- `loadData({ force? })` — full reload (all tables, in parallel)
 - `retryLoadData()` for the bootstrap retry surface
+- `pullDeltas()` — lightweight incremental refresh (see below)
+
+**Boot is local-first**: before touching the network, `loadData()` hydrates
+the store from the IndexedDB mirror (`localSync.ts`'s `readLocalSnapshot()`)
+if one exists, so the app renders immediately — offline or on a slow
+connection — instead of blocking on a spinner. It then still runs the full
+network fetch in the background to refresh it; `isLoading` stays true
+during that background refresh so `AppLayout` can show a non-blocking
+"Syncing…" badge instead of a full-screen block. If the device is offline
+and nothing is cached yet, `loadError` is set and `AppLayout` shows the
+"Couldn't load your data" Retry card.
+
+After every full load, `bootstrapDeltaCursors()` seeds a per-table cursor
+(`updated_at` of the newest row) for the 11 tables that reliably track it.
+`AppLayout`'s routine background refresh (30s-throttled focus regain, 120s
+interval) then calls `pullDeltas()` instead of a full reload — cheaper,
+since it only fetches rows changed since the cursor. Reconnect-after-offline
+and cold boot still do a full `loadData({ force: true })`, since delta pull
+can't detect a hard-deleted row (only `products` supports a real hard
+delete). See `stores/data/deltaSync.ts` and
+[10-offline-desktop-known-issues.md](./10-offline-desktop-known-issues.md).
 
 Each parallel query's `.error` is checked; the first failure becomes
-`loadError`. `AppLayout` renders a "Couldn't load your data" Retry card
-**before** falling back to the generic spinner so a failed bootstrap is
-actionable instead of stuck.
+`loadError`.
 
 ## Write Model
 
@@ -104,6 +135,20 @@ Writes split cleanly into two paths:
    path) and Supabase native MFA (`supabase.auth.mfa.*`, authenticator path)
    from `authStore` — these are not table RPCs.
 
+   **Offline-capable subset**: `complete_sale`, `adjust_stock`, `open_shift`/
+   `close_shift`, `create_refund_void_request`, `receive_purchase_order`,
+   `record_supplier_payment`, `dispatch_stock_transfer`/
+   `receive_stock_transfer` each have an `*Online`/`*Offline` pair — offline,
+   the action stages a provisional result locally (client-computed, using
+   the same math the UI already shows) and queues the exact RPC call via
+   `stores/data/outbox.ts`'s `enqueueOutbox()`. A registered `reconcile*`
+   function (`registerOutboxReconciler`) swaps the provisional record for
+   the server's authoritative one once the queued call actually runs — RPCs
+   mint their own ids server-side, so this is a replace, not a merge. The
+   rest of this table's RPCs stay online-only (desk/admin operations); see
+   [10-offline-desktop-known-issues.md](./10-offline-desktop-known-issues.md)
+   for the full scope map and why.
+
 2. **Direct, permission-gated writes (admin / reference).** Direct
    `supabase.from(...).insert / update` writes via `dbWrite` (fire-and-forget
    + friendly toast on failure) or `dbExec` (awaited; throws a friendly
@@ -112,6 +157,19 @@ Writes split cleanly into two paths:
    `product_unit_prices`, `price_tiers`, `suppliers`, `supplier_products`,
    `business_profile`. RLS still gates by permission server-side
    (`business_profile` UPDATE is ADMIN-only).
+
+   **Offline-capable subset**: `shops`, `users`, `categories`, `brands`,
+   `unit_types`, `price_tiers`, `suppliers` go through
+   `stores/data/tableWrite.ts`'s `writeTableRow()` — a drop-in replacement
+   for the raw `supabase.from(...)` call that queues a `table_write` outbox
+   entry when offline (same `enqueueOutbox()`/outbox as above, replayed by
+   `tableWrite.ts`'s `replayTableWrite()`). These are last-write-wins with
+   no server invariant to reconcile, so a synced write just clears the
+   queue entry — no id-swap needed, since the row's id was already
+   client-chosen. `products` (+ its barcodes/units/supplier links) and
+   `product_unit_prices` are multi-row batch writes that don't fit this
+   single-row helper and stay online-only; `business_profile` is a
+   singleton keyed `"default"` rather than `id`, same reason.
 
 ## Multi-Shop Model
 
