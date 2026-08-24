@@ -234,7 +234,13 @@ function isFontAvailable(fontName: string): boolean {
 }
 
 export function detectZawgyiSystem(): boolean {
-  const fonts = ["Zawgyi-One", "ZawgyiOne", "Zawgyi One", "Myanmar3"];
+  // Only an actual Zawgyi-named font implies the system needs Zawgyi
+  // conversion. "Myanmar3" (previously included here) is itself a Unicode
+  // font — its presence means proper Unicode rendering is available, not
+  // the opposite, and false-flagged modern systems (e.g. macOS, which
+  // ships Myanmar Unicode support) into unnecessary — and visibly broken —
+  // Zawgyi conversion.
+  const fonts = ["Zawgyi-One", "ZawgyiOne", "Zawgyi One"];
   return fonts.some(isFontAvailable);
 }
 

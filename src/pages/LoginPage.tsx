@@ -6,6 +6,7 @@ import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { useTranslation } from "../hooks/useTranslation";
+import { LanguageSwitcher } from "../components/layout/LanguageSwitcher";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -66,6 +67,9 @@ export const LoginPage = () => {
             </div>
           </div>
           <div className="p-8">
+            <div className="mb-4 flex justify-end">
+              <LanguageSwitcher />
+            </div>
             <div className="text-sm text-slate-500">{t("auth", "signInToAccount")}</div>
             {/* autoComplete off everywhere: this is a shared till, so the
                 browser must not cache or auto-fill the previous user's
