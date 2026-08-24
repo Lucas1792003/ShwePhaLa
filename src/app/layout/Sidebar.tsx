@@ -88,7 +88,7 @@ export const Sidebar = () => {
   const currentUser = useDataStore((state) => state.users.find((user) => user.id === currentUserId));
   const businessProfile = useDataStore((state) => state.businessProfile);
   const brandName = businessProfile?.businessName?.trim() || "Shwe PhaLar";
-  const brandLogo = businessProfile?.logoUrl?.trim() || "/logo_real.png";
+  const brandLogo = businessProfile?.logoUrl?.trim() || `${import.meta.env.BASE_URL}logo_real.png`;
   const brandMeta = businessProfile?.tagline?.trim() || "Multi-shop console";
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed);

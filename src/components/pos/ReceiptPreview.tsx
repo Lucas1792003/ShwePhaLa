@@ -36,7 +36,7 @@ export const ReceiptPreview = ({ sale, lines, shop, cashier, statusNote }: Recei
   const { t } = useTranslation();
   const businessProfile = useDataStore((state) => state.businessProfile);
   const brandName = businessProfile?.businessName?.trim() || "Shwe PhaLar";
-  const brandLogo = businessProfile?.logoUrl?.trim() || "/logo_real.png";
+  const brandLogo = businessProfile?.logoUrl?.trim() || `${import.meta.env.BASE_URL}logo_real.png`;
   const itemCount = lines.reduce((sum, line) => sum + line.qty, 0);
 
   // Collect the distinct price-level names used on this receipt. The

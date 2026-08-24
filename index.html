@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The app has no dark theme — this stops Chrome's forced-dark-mode
+         and dark-mode extensions from auto-inverting the page (which mangles
+         the sidebar logo's mix-blend-multiply against the inverted background). -->
+    <meta name="color-scheme" content="light" />
     <link rel="icon" type="image/png" href="/logo1.png" />
     <link rel="apple-touch-icon" href="/logo1.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
