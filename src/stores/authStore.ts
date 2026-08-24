@@ -307,13 +307,21 @@ export const useAuthStore = create<AuthState>()((set) => ({
     let authResult = await supabase.auth.signInWithPassword({ email, password });
 
     if (authResult.error) {
-      // Allow signup only for the very first user (empty users table).
-      const { data: anyUser } = await supabase.from("users").select("id").limit(1);
-      const isFirstSetup = !anyUser || anyUser.length === 0;
-      if (!isFirstSetup) return { error: "Invalid email or password." };
-
+      // Allow signup only for the very first user. We can't pre-check the
+      // `users` table here — its SELECT policy is `TO authenticated` only
+      // (migration 010), and this call is still anonymous, so it would
+      // always read back empty and misreport every failed login as
+      // "first-time setup". Let Supabase's own signUp() be the source of
+      // truth instead: if the email already has an auth account, signUp
+      // rejects with "already registered", which means the original
+      // failure really was a bad password — surface that, not the signUp
+      // error. (The `users`-table-empty check after this block, once we
+      // have a session, runs `to authenticated` and is accurate.)
       const signUp = await supabase.auth.signUp({ email, password });
-      if (signUp.error) return { error: signUp.error.message };
+      if (signUp.error) {
+        const alreadyRegistered = /already registered/i.test(signUp.error.message);
+        return { error: alreadyRegistered ? "Invalid email or password." : signUp.error.message };
+      }
       authResult = await supabase.auth.signInWithPassword({ email, password });
       if (authResult.error) return { error: authResult.error.message };
     }
