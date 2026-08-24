@@ -2,8 +2,9 @@
 // package is "type": "module" for the Vite/React app, but Electron's main
 // process is simplest as a small, unbundled .cjs entry point; no build step
 // needed for it.
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
 const path = require("node:path");
+const { autoUpdater } = require("electron-updater");
 
 const isDev = !app.isPackaged;
 // Vite's default dev server port (see vite.config.ts) — overridable for a
@@ -53,10 +54,69 @@ app.whenReady().then(() => {
     // macOS: clicking the dock icon with no windows open should reopen one.
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  if (!isDev) {
+    // Give the window a moment to render before firing a network check.
+    setTimeout(() => checkForUpdates(), 5_000);
+    // Keep checking periodically for anyone who leaves the app open for days.
+    setInterval(() => checkForUpdates(), UPDATE_CHECK_INTERVAL_MS);
+  }
 });
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+// ------------------------------------------------------------------
+// Auto-update via electron-updater, checking GitHub Releases directly
+// (see package.json's "build.publish") — no separate update server needed.
+// A new version just needs `npm run electron:build:mac`/`:win` followed by
+// `electron-builder --publish always` (with a GH_TOKEN set) so the release
+// includes the latest.yml/latest-mac.yml metadata files this depends on;
+// a manually-uploaded release without those files won't be detected.
+//
+// Real limitation, not yet worked around: on macOS, electron-updater's
+// actual install step (Squirrel.Mac) requires the app to be code-signed —
+// our builds aren't (no Apple Developer certificate set up), so an update
+// will likely be DETECTED but fail to apply. Windows (NSIS) does not have
+// this requirement and should auto-update even unsigned, aside from a
+// possible SmartScreen prompt on the downloaded update itself.
+// ------------------------------------------------------------------
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+let updateCheckInFlight = false;
+
+function checkForUpdates() {
+  if (updateCheckInFlight) return;
+  updateCheckInFlight = true;
+  autoUpdater.checkForUpdates().catch((err) => {
+    console.error("[update] check failed:", err);
+  }).finally(() => {
+    updateCheckInFlight = false;
+  });
+}
+
+autoUpdater.autoDownload = true;
+autoUpdater.logger = console;
+
+autoUpdater.on("error", (err) => {
+  console.error("[update] error:", err);
+});
+
+autoUpdater.on("update-downloaded", (info) => {
+  if (!mainWindow) return;
+  dialog
+    .showMessageBox(mainWindow, {
+      type: "info",
+      buttons: ["Restart now", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "Update ready",
+      message: `Shwe Pha La POS ${info.version} has been downloaded.`,
+      detail: "Restart now to install it, or it'll install automatically the next time you quit the app.",
+    })
+    .then((result) => {
+      if (result.response === 0) autoUpdater.quitAndInstall();
+    });
 });
 
 // ------------------------------------------------------------------

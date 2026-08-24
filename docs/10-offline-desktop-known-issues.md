@@ -129,11 +129,13 @@ already established:
 
 ## Electron desktop wrapper
 
-- [ ] **Never verified to actually launch.** The Electron binary in the
-      sandbox this was built in downloaded in a broken state (reports as
-      plain Node, not the real Electron runtime) — looks like a sandbox
-      limitation, not a code issue, but `npm run electron:dev` has not been
-      confirmed to open a real window on real hardware. Do this first.
+- [x] **Build pipeline verified end-to-end on real hardware.** `npm run
+      electron:build:mac` / `:win` (run directly on the user's own Mac, not
+      this dev sandbox) produced real, working installers — Mac (arm64 +
+      x64 `.dmg`), Windows (x64 `.exe`) — published to a GitHub Release and
+      installed via the in-app Download button (`DownloadAppModal.tsx`).
+      `npm run electron:dev` (the live-reload dev flow) is still unverified,
+      as is actually opening/using the packaged app post-install.
 - [ ] **No cash-drawer support.** `electron/main.cjs` only wires silent
       receipt printing (`webContents.print()` to a system printer). Kicking
       a cash drawer needs either a drawer-kick ESC/POS command embedded in
@@ -152,8 +154,23 @@ already established:
 - [ ] **No app icon.** `package.json`'s `build` (electron-builder) config
       has no `icon` set for `mac`/`win` — packaged builds use Electron's
       default icon until one is added.
-- [ ] **No auto-update.** electron-builder supports it
-      (`electron-updater` + a publish target), not configured.
+- [x] **Auto-update wired up, with a real caveat.** `electron/main.cjs`
+      checks GitHub Releases via `electron-updater` on launch and every 4h,
+      downloads in the background, and prompts to restart via a native
+      dialog. `package.json`'s `build.publish` points at this repo; a new
+      version ships via `electron-builder --mac --win --publish always`
+      (with `GH_TOKEN` set — `export GH_TOKEN=$(gh auth token)` works if
+      you're logged in via `gh`), **then `gh release edit v<version>
+      --draft=false`** — electron-builder publishes releases as drafts by
+      default, which are not publicly downloadable, easy to miss.
+      **The real caveat**: on macOS, electron-updater's install step
+      (Squirrel.Mac) requires the app to be code-signed. Our builds aren't
+      (no Apple Developer certificate) — an update will likely be detected
+      and downloaded but may fail to actually apply. Windows (NSIS) has no
+      such requirement and should auto-update fine even unsigned.
+      `mac.target` now includes `zip` alongside `dmg` — electron-updater's
+      Mac update mechanism needs the zip artifact even though the dmg is
+      what a fresh install uses.
 - [ ] **Barcode label printing was deliberately left on `window.print()`**
       (`pages/BarcodeLabelsPage.tsx`) — per `06-ui-printing-hardware.md`,
       operators currently rely on the OS print dialog to pick matching

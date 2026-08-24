@@ -1,7 +1,7 @@
 {
   "name": "retails-shop",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -19,6 +19,7 @@
     "@hookform/resolvers": "^3.10.0",
     "@supabase/supabase-js": "^2.106.1",
     "dexie": "^4.4.5",
+    "electron-updater": "^6.8.9",
     "jsbarcode": "^3.12.3",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
@@ -63,7 +64,7 @@
       "output": "release"
     },
     "mac": {
-      "target": "dmg",
+      "target": ["dmg", "zip"],
       "category": "public.app-category.business"
     },
     "win": {
@@ -72,6 +73,11 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Lucas1792003",
+      "repo": "ShwePhaLa"
     }
   }
 }

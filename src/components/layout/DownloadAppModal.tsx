@@ -1,13 +1,18 @@
 import { Modal } from "../ui/Modal";
 import { Badge } from "../ui/Badge";
 
-// GitHub Release asset URLs — stable/public, no auth needed. Rebuild +
-// re-upload via `npm run electron:build:mac` / `:win` and `gh release
-// upload` (or `gh release create` for a new version) to update these.
+// GitHub Release asset URLs — the canonical /releases/download/<tag>/<file>
+// form, stable/public, no auth needed as long as the release is published
+// (not a draft — electron-builder's --publish creates a draft by default;
+// see the `gh release edit <tag> --draft=false` step after publishing).
+// Bump the tag here whenever electron-builder --publish always ships a new
+// version (it derives the tag from package.json's "version").
+const RELEASE_TAG = "v1.0.0";
+const RELEASE_BASE = `https://github.com/Lucas1792003/ShwePhaLa/releases/download/${RELEASE_TAG}`;
 const DOWNLOADS = {
-  macArm: "https://github.com/Lucas1792003/ShwePhaLa/releases/download/desktop-v1.0.0/Shwe.Pha.La.POS-0.0.0-arm64.dmg",
-  macIntel: "https://github.com/Lucas1792003/ShwePhaLa/releases/download/desktop-v1.0.0/Shwe.Pha.La.POS-0.0.0.dmg",
-  windows: "https://github.com/Lucas1792003/ShwePhaLa/releases/download/desktop-v1.0.0/Shwe.Pha.La.POS.Setup.0.0.0.exe",
+  macArm: `${RELEASE_BASE}/Shwe-Pha-La-POS-1.0.0-arm64.dmg`,
+  macIntel: `${RELEASE_BASE}/Shwe-Pha-La-POS-1.0.0.dmg`,
+  windows: `${RELEASE_BASE}/Shwe-Pha-La-POS-Setup-1.0.0.exe`,
 };
 
 type OsOption = {
