@@ -49,6 +49,34 @@ being up to date immediately after `writeTableRow()` resolves could
 occasionally read stale data. Found via a newly-flaky test, not a code
 review — now awaited in both the online-success and queued-for-later paths.
 
+## ✅ Fixed — wrong password misreported as "User already registered"
+
+**`src/stores/authStore.ts`'s `login()`** decided whether to allow
+first-time-admin signup by reading the `users` table *before*
+authenticating, to check "is this table empty?" But `users`' SELECT RLS
+policy is `TO authenticated` only (migration 010) — an anonymous read
+always comes back empty regardless of how many users actually exist. So
+**any** failed sign-in (most commonly: an existing user just mistyping
+their password) was misdiagnosed as "first-time setup" and routed into a
+`supabase.auth.signUp()` call, which correctly rejected with "User already
+registered" for any account that already existed — a confusing, wrong
+error shown instead of "Invalid email or password."
+
+**Fixed**: removed the broken pre-check entirely. On a failed sign-in, the
+code now just attempts `signUp()` and treats Supabase's own response as
+the source of truth — an "already registered" result means the email has
+an account, so the *original* sign-in failure was real bad credentials
+("Invalid email or password."); any other `signUp()` error (rate limit,
+etc.) is surfaced as-is instead of being masked. The second, later
+`users`-table-empty check (used once actually authenticated, to decide
+whether to auto-create the first ADMIN row) was already correct and
+untouched — it runs with a session, where the `authenticated` policy
+applies. Tests: `src/stores/authStore.login.test.ts`.
+
+This bug affected the web app too, not just desktop — it wasn't
+Electron-specific, just more likely to be hit there since offline/first
+runs increase the odds of a failed sign-in attempt.
+
 ## Deliberately out of scope (not bugs)
 
 These were explicit, discussed decisions during the build — documented here
