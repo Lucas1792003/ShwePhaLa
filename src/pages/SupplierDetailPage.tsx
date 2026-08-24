@@ -590,7 +590,10 @@ export const SupplierDetailPage = () => {
                 <tr key={payment.id} className="border-b last:border-0">
                   <td className="px-4 py-3 text-slate-500">{formatDateTime(payment.paidAt)}</td>
                   <td className="px-4 py-3 font-medium text-slate-900">
-                    {po?.orderNo ?? payment.purchaseOrderId}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span>{po?.orderNo ?? payment.purchaseOrderId}</span>
+                      {payment.pendingSync && <Badge tone="amber">Pending sync</Badge>}
+                    </div>
                   </td>
                   <td
                     className={`px-4 py-3 text-right font-bold tabular-nums ${

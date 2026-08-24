@@ -30,6 +30,7 @@ import {
   validatePosCart,
 } from "../features/pos/cartStock";
 import { hasShopPermission } from "../lib/permissions";
+import { printReceipt as triggerPrint } from "../lib/print";
 import { getEffectiveShopId } from "../lib/utils";
 import { useTranslation } from "../hooks/useTranslation";
 
@@ -539,7 +540,7 @@ export const PosPage = () => {
         return;
       }
       printedSaleIdsRef.current.add(saleId);
-      window.print();
+      void triggerPrint();
       setPrintSaleId(null);
     }, 500);
     return () => window.clearTimeout(timeout);

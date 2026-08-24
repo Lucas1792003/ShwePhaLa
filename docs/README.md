@@ -37,6 +37,7 @@ Full setup, env, Supabase, and deployment notes:
 | 07 | [Setup & Deployment](./07-setup-deployment.md) | Onboarding a new env / Vercel deploy / Supabase setup. |
 | 08 | [Testing & QA](./08-testing-qa.md) | Verifying a change end-to-end before shipping. |
 | 09 | [Roadmap & TODO](./09-roadmap-todo.md) | Picking up open work; tracking what's still outstanding. |
+| 10 | [Offline-First & Desktop — Known Issues & TODO](./10-offline-desktop-known-issues.md) | Touching the sync outbox, local cache, or the Electron wrapper; before trusting offline mode in production. |
 
 ## Code Layout (one-screen orientation)
 

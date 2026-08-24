@@ -6,6 +6,7 @@ import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { hasPermission } from "../lib/permissions";
+import { newId } from "../lib/id";
 import {
   mapShopFormError,
   normalizeShopInput,
@@ -108,7 +109,7 @@ export const ShopsPage = () => {
         });
       } else {
         await addShop({
-          id: `shop-${Date.now()}`,
+          id: newId("shop"),
           name: normalized.name,
           code: normalized.code,
           address: normalized.address,

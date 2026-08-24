@@ -5,6 +5,7 @@ import { useToast } from "../ui/Toast";
 import { useDataStore } from "../../stores/dataStore";
 import { mapSupplierFormError, validateSupplierInput } from "../../lib/supplierValidation";
 import { useTranslation } from "../../hooks/useTranslation";
+import { newId } from "../../lib/id";
 import type { Supplier } from "../../types";
 
 interface SupplierFormModalProps {
@@ -102,7 +103,7 @@ export const SupplierFormModal = ({
         toast({ variant: "success", title: t("suppliers", "updated") });
       } else {
         await addSupplier({
-          id: `supplier-${Date.now()}`,
+          id: newId("supplier"),
           code: form.code,
           name: form.name,
           contactPerson: form.contactPerson || undefined,

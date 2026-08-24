@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import type { DataState, PriceLevelState } from "../types";
 import type { ProductUnitPrice } from "../../../types";
 import { supabase } from "../../../lib/supabase";
+import { newId } from "../../../lib/id";
 
 export const createPriceLevelSlice: StateCreator<DataState, [], [], PriceLevelState> = (set, get) => ({
   priceLevels: [],
@@ -33,7 +34,7 @@ export const createPriceLevelSlice: StateCreator<DataState, [], [], PriceLevelSt
       const key = matchKey(input.priceLevelId, input.shopId);
       const prior = existingByKey.get(key);
       return {
-        id: prior?.id ?? `pup-${Math.random().toString(36).slice(2, 11)}-${Date.now()}`,
+        id: prior?.id ?? newId("pup"),
         productUnitId,
         priceLevelId: input.priceLevelId,
         shopId: input.shopId,

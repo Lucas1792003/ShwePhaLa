@@ -56,6 +56,11 @@ export const ROUTE_PERMISSIONS = {
   adminPricing: "pricing:manage",
   adminReports: "report:global",
   adminAudit: "audit:view_global",
+  // Reuses the audit permission rather than adding a new granular one — this
+  // is the same "admin-only operational review" sensitivity as the audit
+  // log, and adding a DB-driven permission is out of scope for a
+  // frontend-only page.
+  adminSyncConflicts: "audit:view_global",
   adminSecurity: "user:update",
   suppliers: "supplier:read",
   supplierDetail: "supplier:read",

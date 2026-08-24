@@ -190,6 +190,7 @@ See [`docs/`](docs/) for full documentation:
 - [Setup & Deployment](docs/07-setup-deployment.md)
 - [Testing & QA](docs/08-testing-qa.md)
 - [Roadmap & TODO](docs/09-roadmap-todo.md)
+- [Offline-First & Desktop — Known Issues & TODO](docs/10-offline-desktop-known-issues.md)
 
 ## License
 

@@ -62,6 +62,7 @@ const navSections: NavSection[] = [
       { to: "/app/admin/shops", labelKey: "shops", permission: ROUTE_PERMISSIONS.adminShops, icon: "store" },
       { to: "/app/admin/users", labelKey: "users", permission: ROUTE_PERMISSIONS.adminUsers, icon: "group" },
       { to: "/app/admin/audit", labelKey: "auditLog", permission: ROUTE_PERMISSIONS.adminAudit, icon: "policy" },
+      { to: "/app/admin/sync-conflicts", labelKey: "syncConflicts", permission: ROUTE_PERMISSIONS.adminSyncConflicts, icon: "sync_problem" },
       { to: "/app/profile", labelKey: "profile", permission: ROUTE_PERMISSIONS.adminSecurity, icon: "storefront", allowedRoles: ["ADMIN"] },
       { to: "/app/security", labelKey: "security", permission: ROUTE_PERMISSIONS.adminSecurity, icon: "shield_lock", allowedRoles: ["ADMIN"] },
     ],

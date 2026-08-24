@@ -4,6 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { SmallScreenGuard } from "./SmallScreenGuard";
 import { Button } from "../../components/ui/Button";
 import { useDataStore } from "../../stores/dataStore";
+import { useConnectivityStore } from "../../stores/connectivityStore";
 import { useViewportWidth } from "../../hooks/useViewportWidth";
 
 const MIN_SUPPORTED_WIDTH = 768;
@@ -14,6 +15,8 @@ export const AppLayout = () => {
   const loadError = useDataStore((state) => state.loadError);
   const loadData = useDataStore((state) => state.loadData);
   const retryLoadData = useDataStore((state) => state.retryLoadData);
+  const pullDeltas = useDataStore((state) => state.pullDeltas);
+  const isOnline = useConnectivityStore((state) => state.isOnline);
   const viewportWidth = useViewportWidth();
 
   useEffect(() => {
@@ -22,11 +25,27 @@ export const AppLayout = () => {
     }
   }, [isLoaded, isLoading, loadError, loadData]);
 
+  // loadData() bails out immediately while offline (see stores/data/index.ts)
+  // rather than firing requests doomed to fail, so nothing else re-triggers
+  // it once connectivity returns — do that here.
+  const wasOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    if (isOnline && !wasOnlineRef.current) {
+      void loadData({ force: true });
+    }
+    wasOnlineRef.current = isOnline;
+  }, [isOnline, loadData]);
+
   // Keep the cached data fresh: re-sync when the tab regains focus/visibility
   // and on a slow interval while open. The client store is loaded once, so
   // without this a returning user would see stale stock/debt/transfers that
   // another device changed. Throttled so rapid focus changes don't hammer the
-  // backend; loadData({force}) refreshes in place without a loading flash.
+  // backend. Uses pullDeltas() (cursor-based, only tables that support it —
+  // see stores/data/deltaSync.ts) rather than a full loadData({force:true}):
+  // this fires often (every 30-120s), so keeping it cheap matters. It does
+  // NOT catch a hard-deleted product (delta pull can't see a row that no
+  // longer exists) — that's still caught by the full reload on reconnect
+  // (below) or the next cold boot.
   const lastRefreshRef = useRef(0);
   useEffect(() => {
     const THROTTLE_MS = 30_000;
@@ -39,7 +58,7 @@ export const AppLayout = () => {
       const now = Date.now();
       if (now - lastRefreshRef.current < THROTTLE_MS) return;
       lastRefreshRef.current = now;
-      void loadData({ force: true });
+      void pullDeltas();
     };
     const onVisibility = () => {
       if (document.visibilityState === "visible") refresh();
@@ -52,7 +71,7 @@ export const AppLayout = () => {
       document.removeEventListener("visibilitychange", onVisibility);
       window.clearInterval(interval);
     };
-  }, [loadData]);
+  }, [pullDeltas]);
 
   if (viewportWidth < MIN_SUPPORTED_WIDTH) {
     return <SmallScreenGuard />;
@@ -92,6 +111,16 @@ export const AppLayout = () => {
           <Outlet />
         </div>
       </main>
+      {!isOnline && (
+        <div className="fixed bottom-3 right-3 z-50 rounded-full bg-slate-800 px-3 py-1 text-xs text-white shadow-lg">
+          Offline — showing cached data
+        </div>
+      )}
+      {isOnline && isLoading && (
+        <div className="fixed bottom-3 right-3 z-50 rounded-full bg-white px-3 py-1 text-xs text-slate-500 shadow-lg border border-slate-200">
+          Syncing…
+        </div>
+      )}
     </div>
   );
 };

@@ -28,6 +28,7 @@ import { SuppliersPage } from "../../features/admin/pages/SuppliersPage";
 import { SupplierDetailPage } from "../../pages/SupplierDetailPage";
 import { PricingPage } from "../../features/admin/pages/PricingPage";
 import { AuditLogPage } from "../../features/admin/pages/AuditLogPage";
+import { SyncConflictsPage } from "../../pages/SyncConflictsPage";
 import { CatalogPage } from "../../features/catalog/pages/CatalogPage";
 import { DashboardPage } from "../../pages/DashboardPage";
 import { BarcodeLabelsPage } from "../../pages/BarcodeLabelsPage";
@@ -272,6 +273,14 @@ export const AppRouter = () => (
         element={
           <RequireRole permission={ROUTE_PERMISSIONS.adminAudit}>
             <AuditLogPage />
+          </RequireRole>
+        }
+      />
+      <Route
+        path="admin/sync-conflicts"
+        element={
+          <RequireRole permission={ROUTE_PERMISSIONS.adminSyncConflicts}>
+            <SyncConflictsPage />
           </RequireRole>
         }
       />

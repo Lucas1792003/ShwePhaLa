@@ -15,6 +15,9 @@ dist
 dist-ssr
 *.local
 
+# electron-builder packaged output
+release
+
 # Environment variables
 .env
 .env.local

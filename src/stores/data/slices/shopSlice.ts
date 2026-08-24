@@ -10,6 +10,7 @@ import {
   mapShopDeleteError,
 } from "../../../lib/shopDelete";
 import { useAppStore } from "../../appStore";
+import { writeTableRow } from "../tableWrite";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const execShopWrite = async (query: PromiseLike<{ error: any }>, label: string): Promise<void> => {
@@ -25,7 +26,10 @@ export const createShopSlice: StateCreator<DataState, [], [], ShopState> = (set,
   users: [],
   businessProfile: null,
 
-  // Update the singleton business brand (id = 'default'). ADMIN-gated by RLS.
+  // Update the singleton business brand (id = 'default'). ADMIN-gated by
+  // RLS. Not offline-capable — it's a rare, low-urgency desk edit and its
+  // singleton shape (keyed "default", not "id") doesn't fit the generic
+  // table-write helper the rest of this file uses.
   updateBusinessProfile: async (profile: BusinessProfile) => {
     await execShopWrite(
       supabase
@@ -50,10 +54,14 @@ export const createShopSlice: StateCreator<DataState, [], [], ShopState> = (set,
     const savedShop = { ...shop, ...normalized };
     // Persist first — only show the shop locally once the database confirms it.
     await execShopWrite(
-      supabase.from("shops").insert({
-        id: savedShop.id, code: savedShop.code, name: savedShop.name, address: savedShop.address,
-        phone: savedShop.phone ?? null, email: savedShop.email ?? null,
-        is_active: savedShop.isActive, created_at: savedShop.createdAt,
+      writeTableRow({
+        table: "shops", op: "insert", id: savedShop.id,
+        row: {
+          id: savedShop.id, code: savedShop.code, name: savedShop.name, address: savedShop.address,
+          phone: savedShop.phone ?? null, email: savedShop.email ?? null,
+          is_active: savedShop.isActive, created_at: savedShop.createdAt,
+        },
+        appRow: savedShop,
       }),
       "Add shop"
     );
@@ -64,10 +72,14 @@ export const createShopSlice: StateCreator<DataState, [], [], ShopState> = (set,
     const normalized = normalizeShopInput(shop);
     const savedShop = { ...shop, ...normalized };
     await execShopWrite(
-      supabase.from("shops").update({
-        code: savedShop.code, name: savedShop.name, address: savedShop.address,
-        phone: savedShop.phone ?? null, email: savedShop.email ?? null, is_active: savedShop.isActive,
-      }).eq("id", savedShop.id),
+      writeTableRow({
+        table: "shops", op: "update", id: savedShop.id,
+        row: {
+          code: savedShop.code, name: savedShop.name, address: savedShop.address,
+          phone: savedShop.phone ?? null, email: savedShop.email ?? null, is_active: savedShop.isActive,
+        },
+        appRow: savedShop,
+      }),
       "Update shop"
     );
     set((state) => ({
@@ -98,7 +110,7 @@ export const createShopSlice: StateCreator<DataState, [], [], ShopState> = (set,
         `${SHOP_DELETE_MESSAGES.referenced} References: ${formatShopReferenceSummary(counts)}.`
       );
     }
-    const { error } = await supabase.from("shops").delete().eq("id", shopId);
+    const { error } = await writeTableRow({ table: "shops", op: "delete", id: shopId, row: {} });
     if (error) {
       console.error(`[DB] Delete shop failed:`, error);
       throw new Error(mapShopDeleteError(error));
@@ -112,25 +124,33 @@ export const createShopSlice: StateCreator<DataState, [], [], ShopState> = (set,
     // Persist first so a failed insert never leaves a phantom user in the UI.
     // auth_id is stored at creation so the new user is RLS-identifiable from
     // their first login (no reliance on the email self-heal).
-    await dbExec(supabase.from("users").insert({
-      id: user.id, name: user.name, email: user.email, role: user.role,
-      shop_id: user.shopId ?? null, auth_id: user.authId ?? null,
-      permissions: user.permissions ?? null,
-      granted_permissions: user.grantedPermissions ?? null,
-      revoked_permissions: user.revokedPermissions ?? null,
-      is_active: user.isActive, created_at: user.createdAt,
+    await dbExec(writeTableRow({
+      table: "users", op: "insert", id: user.id,
+      row: {
+        id: user.id, name: user.name, email: user.email, role: user.role,
+        shop_id: user.shopId ?? null, auth_id: user.authId ?? null,
+        permissions: user.permissions ?? null,
+        granted_permissions: user.grantedPermissions ?? null,
+        revoked_permissions: user.revokedPermissions ?? null,
+        is_active: user.isActive, created_at: user.createdAt,
+      },
+      appRow: user,
     }), "Add user");
     set((state) => ({ users: [...state.users, user] }));
   },
 
   updateUser: async (user: User) => {
-    await dbExec(supabase.from("users").update({
-      name: user.name, email: user.email, role: user.role,
-      shop_id: user.shopId ?? null, permissions: user.permissions ?? null,
-      granted_permissions: user.grantedPermissions ?? null,
-      revoked_permissions: user.revokedPermissions ?? null,
-      is_active: user.isActive,
-    }).eq("id", user.id), "Update user");
+    await dbExec(writeTableRow({
+      table: "users", op: "update", id: user.id,
+      row: {
+        name: user.name, email: user.email, role: user.role,
+        shop_id: user.shopId ?? null, permissions: user.permissions ?? null,
+        granted_permissions: user.grantedPermissions ?? null,
+        revoked_permissions: user.revokedPermissions ?? null,
+        is_active: user.isActive,
+      },
+      appRow: user,
+    }), "Update user");
     set((state) => ({
       users: state.users.map((item) => (item.id === user.id ? user : item)),
     }));

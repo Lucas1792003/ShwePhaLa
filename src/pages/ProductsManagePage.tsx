@@ -7,6 +7,7 @@ import { useDataStore } from "../stores/dataStore";
 import type { ProductCategory, Brand, Category, Product } from "../types";
 import { getErrorMessage } from "../lib/errors";
 import { hasPermission } from "../lib/permissions";
+import { newId } from "../lib/id";
 import { useTranslation } from "../hooks/useTranslation";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Card } from "../components/ui/Card";
@@ -239,7 +240,7 @@ export const ProductsManagePage = () => {
     }
 
     void addAuditLog({
-      id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+      id: newId("audit"),
       actorId: currentUserId ?? "system",
       actionType: "PRODUCT_DELETE",
       message: `Deleted product ${product.name}.`,
@@ -306,7 +307,7 @@ export const ProductsManagePage = () => {
       }
 
       void addAuditLog({
-        id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+        id: newId("audit"),
         actorId: currentUserId ?? "system",
         actionType: "PRODUCT_IMPORT",
         message: `Imported ${importPlan.items.length} product(s) from ${importFileName || "CSV"}.`,
@@ -363,7 +364,7 @@ export const ProductsManagePage = () => {
         iconKey: newCategoryIconKey || undefined,
       });
       void addAuditLog({
-        id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+        id: newId("audit"),
         actorId: currentUserId ?? "system",
         actionType: "CATEGORY_EDIT",
         message: `Updated category "${categoryName}".`,
@@ -373,7 +374,7 @@ export const ProductsManagePage = () => {
       });
     } else {
       const newCategory: Category = {
-        id: `cat-${Math.random().toString(36).slice(2, 9)}`,
+        id: newId("cat"),
         name: categoryName,
         color: newCategoryColor,
         iconKey: newCategoryIconKey || undefined,
@@ -382,7 +383,7 @@ export const ProductsManagePage = () => {
       };
       addCategory(newCategory);
       void addAuditLog({
-        id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+        id: newId("audit"),
         actorId: currentUserId ?? "system",
         actionType: "CATEGORY_CREATE",
         message: `Created category "${categoryName}".`,
@@ -429,7 +430,7 @@ export const ProductsManagePage = () => {
     }
 
     void addAuditLog({
-      id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+      id: newId("audit"),
       actorId: currentUserId ?? "system",
       actionType: "CATEGORY_DELETE",
       message: `Deleted category "${category.name}".`,
@@ -503,7 +504,7 @@ export const ProductsManagePage = () => {
       } else {
         const now = new Date().toISOString();
         await addBrand({
-          id: `brand-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          id: newId("brand"),
           categoryId: newBrandCategoryId,
           name: trimmed,
           isActive: true,

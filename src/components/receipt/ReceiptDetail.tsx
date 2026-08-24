@@ -13,6 +13,7 @@ import { VoidModal } from "../sales/VoidModal";
 import { buildRefundItems } from "../../features/sales/service";
 import { hasPermission } from "../../lib/permissions";
 import { formatDateTime } from "../../lib/utils";
+import { printReceipt } from "../../lib/print";
 
 interface ReceiptDetailProps {
   saleId: string;
@@ -120,7 +121,7 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
 
   const handlePrint = () => {
     if (!hasPrintableContent) return;
-    window.print();
+    void printReceipt();
   };
 
   const handleReprint = async () => {
@@ -128,7 +129,7 @@ export const ReceiptDetail = ({ saleId, variant = "page", backTo }: ReceiptDetai
     setReprintInFlight(true);
     try {
       if (currentUserId) await addReprintLog({ saleId: sale.id, actorId: currentUserId });
-      window.print();
+      void printReceipt();
     } catch (error) {
       toast({
         title: "Reprint log failed",

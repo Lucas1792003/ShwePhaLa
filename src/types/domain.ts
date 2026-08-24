@@ -14,6 +14,9 @@ export interface Category {
   iconKey?: string;
   isActive: boolean;
   createdAt: string;
+  /** Auto-touched on every UPDATE (migration 044) — drives delta pull-sync,
+   *  see stores/data/deltaSync.ts. */
+  updatedAt?: string;
 }
 
 /**
@@ -214,6 +217,10 @@ export interface Product {
   imageUrl?: string; // Product image URL
   isActive: boolean;
   createdAt: string;
+  /** Auto-touched on every UPDATE (migration 044) — drives delta pull-sync,
+   *  see stores/data/deltaSync.ts. Optional only for rows read before the
+   *  migration ran; always present afterward. */
+  updatedAt?: string;
 }
 
 /**
@@ -320,6 +327,9 @@ export interface Supplier {
   notes?: string;
   isActive: boolean;
   createdAt: string;
+  /** Auto-touched on every UPDATE (migration 044) — drives delta pull-sync,
+   *  see stores/data/deltaSync.ts. */
+  updatedAt?: string;
 }
 
 // Many-to-many link between a supplier and the products it can supply.
@@ -349,6 +359,12 @@ export interface PurchaseOrder {
   approvedAt?: string;
   receivedBy?: string;
   receivedAt?: string;
+  /** Set on a PO received locally while offline, cleared once the outbox
+   *  entry that produced it has synced. See stores/data/outbox.ts. */
+  pendingSync?: boolean;
+  /** Auto-touched on every UPDATE (migration 044) — drives delta pull-sync,
+   *  see stores/data/deltaSync.ts. */
+  updatedAt?: string;
 }
 
 export interface PurchaseOrderItem {
@@ -386,6 +402,9 @@ export interface SupplierPayment {
   voidedAt?: string;
   voidedBy?: string;
   voidReason?: string;
+  /** Set on a payment recorded locally while offline, cleared once the
+   *  outbox entry that produced it has synced. See stores/data/outbox.ts. */
+  pendingSync?: boolean;
 }
 
 // Stock Transfer Between Shops
@@ -408,6 +427,13 @@ export interface StockTransfer {
   canceledBy?: string;
   canceledAt?: string;
   cancelReason?: string;
+  /** Set on a transfer dispatched/received locally while offline, cleared
+   *  once the outbox entry that produced it has synced. See
+   *  stores/data/outbox.ts. */
+  pendingSync?: boolean;
+  /** Auto-touched on every UPDATE (migration 044) — drives delta pull-sync,
+   *  see stores/data/deltaSync.ts. */
+  updatedAt?: string;
 }
 
 export interface StockTransferItem {
@@ -467,6 +493,9 @@ export interface InventoryMovement {
   unitNameSnapshot?: string;
   unitBaseQuantitySnapshot?: number;
   selectedUnitQuantity?: number;
+  /** Set on a movement created locally while offline, cleared once the
+   *  outbox entry that produced it has synced. See stores/data/outbox.ts. */
+  pendingSync?: boolean;
 }
 
 // Legacy movement type alias for backward compatibility
@@ -483,6 +512,12 @@ export interface Shift {
   expectedCashMmk?: number;
   varianceMmk?: number;
   varianceReason?: string;
+  /** Set on a shift opened/closed locally while offline, cleared once the
+   *  outbox entry that produced it has synced. See stores/data/outbox.ts. */
+  pendingSync?: boolean;
+  /** Auto-touched on every UPDATE (migration 044) — drives delta pull-sync,
+   *  see stores/data/deltaSync.ts. */
+  updatedAt?: string;
 }
 
 export interface Sale {
@@ -500,6 +535,10 @@ export interface Sale {
   paidMmk: number;
   changeMmk: number;
   createdAt: string;
+  /** Set on a sale completed locally while offline (a provisional record —
+   *  receiptNo is a placeholder until the real complete_sale RPC runs).
+   *  Cleared once the outbox entry syncs. See stores/data/outbox.ts. */
+  pendingSync?: boolean;
 }
 
 export interface SaleItem {
@@ -545,6 +584,9 @@ export interface RefundVoidRequest {
   createdAt: string;
   items?: { productId: string; qtyUnits: number; amountMmk: number }[];
   status?: ApprovalStatus;
+  /** Set on a request created locally while offline, cleared once the
+   *  outbox entry that produced it has synced. See stores/data/outbox.ts. */
+  pendingSync?: boolean;
 }
 
 export interface AuditLog {

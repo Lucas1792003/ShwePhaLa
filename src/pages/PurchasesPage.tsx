@@ -188,7 +188,10 @@ export const PurchasesPage = () => {
                       <td className="px-3 py-3">{items.length} {t("purchases", "itemsSuffix")}</td>
                       <td className="px-3 py-3 font-medium">MMK {po.totalMmk.toLocaleString()}</td>
                       <td className="px-3 py-3">
-                        <Badge color={statusColors[po.status]}>{statusLabels[po.status]}</Badge>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge color={statusColors[po.status]}>{statusLabels[po.status]}</Badge>
+                          {po.pendingSync && <Badge tone="amber">Pending sync</Badge>}
+                        </div>
                       </td>
                       <td className="px-3 py-3">
                         <div>{formatDateTime(po.createdAt)}</div>

@@ -3,12 +3,16 @@ import type { DataState } from "./types";
 import { supabase } from "../../lib/supabase";
 import { reportError } from "../../lib/errors";
 import { useAppStore } from "../appStore";
-import type {
-  AuditLog, Brand, BusinessProfile, Category, Inventory, InventoryMovement, PriceLevel, PriceTier,
-  Product, ProductBarcode, ProductUnit, ProductUnitPrice, PurchaseOrder, PurchaseOrderItem,
-  Refund, Sale, SaleItem, Shift, Shop, StockTransfer, StockTransferItem,
-  Supplier, SupplierPayment, SupplierProduct, UnitType, User,
-} from "../../types";
+import { persistSnapshotToLocal, readLocalSnapshot, type LocalSnapshot } from "./localSync";
+import { drainOutbox, registerOutboxReconciler } from "./outbox";
+import { bootstrapDeltaCursors, pullDeltaChanges } from "./deltaSync";
+import {
+  mapAuditLog, mapBarcode, mapBrand, mapBusinessProfile, mapCategory, mapInventory, mapMovement,
+  mapPriceLevel, mapPriceTier, mapProduct, mapProductUnit, mapProductUnitPrice, mapPurchaseOrder,
+  mapPurchaseOrderItem, mapRefund, mapReprintLog, mapSale, mapSaleItem, mapShift, mapShop,
+  mapStockTransfer, mapStockTransferItem, mapSupplier, mapSupplierPayment, mapSupplierProduct,
+  mapUnitType, mapUser,
+} from "./mappers";
 
 // Import all slices
 import { createShopSlice } from "./slices/shopSlice";
@@ -24,281 +28,6 @@ import { createTransferSlice } from "./slices/transferSlice";
 import { createPurchaseSlice } from "./slices/purchaseSlice";
 import { createPricingSlice } from "./slices/pricingSlice";
 import { createAuditSlice } from "./slices/auditSlice";
-
-// ============================================================
-// Row Mappers: DB snake_case → TypeScript camelCase
-// ============================================================
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapShop = (r: any): Shop => ({
-  id: r.id, code: r.code, name: r.name, address: r.address,
-  phone: r.phone ?? undefined, email: r.email ?? undefined,
-  isActive: r.is_active, createdAt: r.created_at,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapBusinessProfile = (r: any): BusinessProfile => ({
-  businessName: r.business_name ?? undefined,
-  logoUrl: r.logo_url ?? undefined,
-  address: r.address ?? undefined,
-  phone: r.phone ?? undefined,
-  email: r.email ?? undefined,
-  tagline: r.tagline ?? undefined,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapUser = (r: any): User => ({
-  id: r.id, name: r.name, email: r.email ?? undefined, role: r.role,
-  shopId: r.shop_id ?? undefined, authId: r.auth_id ?? undefined,
-  permissions: r.permissions ?? undefined,
-  grantedPermissions: r.granted_permissions ?? undefined,
-  revokedPermissions: r.revoked_permissions ?? undefined,
-  isActive: r.is_active, createdAt: r.created_at,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapCategory = (r: any): Category => ({
-  id: r.id, name: r.name, color: r.color, iconKey: r.icon_key ?? undefined,
-  isActive: r.is_active, createdAt: r.created_at,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapBrand = (r: any): Brand => ({
-  id: r.id,
-  categoryId: r.category_id,
-  name: r.name,
-  color: r.color ?? undefined,
-  isActive: r.is_active,
-  sortOrder: r.sort_order,
-  createdAt: r.created_at,
-  updatedAt: r.updated_at,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapUnitType = (r: any): UnitType => ({
-  id: r.id, name: r.name,
-  abbreviation: r.abbreviation ?? undefined,
-  description: r.description ?? undefined,
-  isActive: r.is_active, sortOrder: r.sort_order,
-  createdAt: r.created_at, updatedAt: r.updated_at,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapProduct = (r: any): Product => ({
-  id: r.id, sku: r.sku ?? undefined,
-  aliasCode: r.alias_code ?? undefined,
-  name: r.name,
-  shortName: r.short_name ?? undefined,
-  category: r.category,
-  brandId: r.brand_id ?? undefined,
-  unitType: r.unit_type, priceMmk: r.price_mmk, costMmk: r.cost_mmk ?? undefined,
-  packSize: r.pack_size ?? undefined, lowStockThreshold: r.low_stock_threshold,
-  maxQty: r.max_qty ?? undefined,
-  isOpenPrice: r.is_open_price ?? false,
-  isNonStock: r.is_non_stock ?? false,
-  purchaseType: r.purchase_type ?? undefined,
-  expiryDate: r.expiry_date ?? undefined, imageUrl: r.image_url ?? undefined,
-  isActive: r.is_active, createdAt: r.created_at,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapBarcode = (r: any): ProductBarcode => ({
-  id: r.id, productId: r.product_id, productUnitId: r.product_unit_id ?? undefined,
-  value: r.value, type: r.type,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapProductUnit = (r: any): ProductUnit => ({
-  id: r.id,
-  productId: r.product_id,
-  name: r.name,
-  baseQuantity: r.base_quantity,
-  // `price_mmk` is the legacy column read once after migration 027 ships
-  // (kept here only to survive a partial deploy where the column briefly
-  // overlaps both names). After the migration runs everywhere, the
-  // `price_mmk` branch never matches.
-  salePriceMmk: r.sale_price_mmk ?? r.price_mmk,
-  purchasePriceMmk: r.purchase_price_mmk ?? undefined,
-  isDefault: r.is_default,
-  isActive: r.is_active,
-  sortOrder: r.sort_order,
-  createdAt: r.created_at,
-  updatedAt: r.updated_at,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapPriceLevel = (r: any): PriceLevel => ({
-  id: r.id,
-  code: r.code,
-  name: r.name,
-  isDefault: r.is_default,
-  isActive: r.is_active,
-  sortOrder: r.sort_order,
-  createdAt: r.created_at,
-  updatedAt: r.updated_at,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapProductUnitPrice = (r: any): ProductUnitPrice => ({
-  id: r.id,
-  productUnitId: r.product_unit_id,
-  priceLevelId: r.price_level_id,
-  shopId: r.shop_id ?? undefined,
-  priceMmk: r.price_mmk,
-  isActive: r.is_active,
-  createdAt: r.created_at,
-  updatedAt: r.updated_at,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapPriceTier = (r: any): PriceTier => ({
-  id: r.id, productId: r.product_id, shopId: r.shop_id ?? undefined,
-  minQty: r.min_qty, maxQty: r.max_qty ?? undefined, priceMmk: r.price_mmk,
-  isActive: r.is_active, createdAt: r.created_at, createdBy: r.created_by,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapInventory = (r: any): Inventory => ({
-  shopId: r.shop_id, productId: r.product_id, qtyBaseUnits: r.qty_base_units,
-  storageLocation: r.storage_location ?? undefined, lastCountedAt: r.last_counted_at ?? undefined,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapMovement = (r: any): InventoryMovement => ({
-  id: r.id, shopId: r.shop_id, productId: r.product_id, type: r.type,
-  qtyChange: r.qty_change, qtyBefore: r.qty_before, qtyAfter: r.qty_after,
-  reason: r.reason, referenceType: r.reference_type ?? undefined,
-  referenceId: r.reference_id ?? undefined, createdBy: r.created_by, createdAt: r.created_at,
-  productUnitId: r.product_unit_id ?? undefined,
-  unitNameSnapshot: r.unit_name_snapshot ?? undefined,
-  unitBaseQuantitySnapshot: r.unit_base_quantity_snapshot ?? undefined,
-  selectedUnitQuantity: r.selected_unit_quantity ?? undefined,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapSupplier = (r: any): Supplier => ({
-  id: r.id, code: r.code, name: r.name, contactPerson: r.contact_person ?? undefined,
-  phone: r.phone ?? undefined, email: r.email ?? undefined, address: r.address ?? undefined,
-  notes: r.notes ?? undefined, isActive: r.is_active, createdAt: r.created_at,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapPurchaseOrder = (r: any): PurchaseOrder => ({
-  id: r.id, orderNo: r.order_no, shopId: r.shop_id, supplierId: r.supplier_id,
-  status: r.status, subtotalMmk: r.subtotal_mmk, taxMmk: r.tax_mmk ?? undefined,
-  totalMmk: r.total_mmk, paidMmk: r.paid_mmk ?? undefined,
-  paymentStatus: r.payment_status ?? undefined,
-  supplierInvoiceNo: r.supplier_invoice_no ?? undefined,
-  deliveryNoteNo: r.delivery_note_no ?? undefined,
-  notes: r.notes ?? undefined, createdBy: r.created_by,
-  createdAt: r.created_at, approvedBy: r.approved_by ?? undefined,
-  approvedAt: r.approved_at ?? undefined, receivedBy: r.received_by ?? undefined,
-  receivedAt: r.received_at ?? undefined,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapPurchaseOrderItem = (r: any): PurchaseOrderItem => ({
-  id: r.id, purchaseOrderId: r.purchase_order_id, productId: r.product_id,
-  orderedQty: r.ordered_qty, receivedQty: r.received_qty ?? undefined,
-  unitCostMmk: r.unit_cost_mmk, lineTotalMmk: r.line_total_mmk,
-  productUnitId: r.product_unit_id ?? undefined,
-  unitNameSnapshot: r.unit_name_snapshot ?? undefined,
-  unitBaseQuantitySnapshot: r.unit_base_quantity_snapshot ?? undefined,
-  selectedUnitQuantity: r.selected_unit_quantity ?? undefined,
-  unitPurchasePriceSnapshot: r.unit_purchase_price_snapshot ?? undefined,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapSupplierPayment = (r: any): SupplierPayment => ({
-  id: r.id, supplierId: r.supplier_id, purchaseOrderId: r.purchase_order_id,
-  shopId: r.shop_id, amountMmk: r.amount_mmk, paymentMethod: r.payment_method,
-  referenceNo: r.reference_no ?? undefined, notes: r.notes ?? undefined,
-  paidAt: r.paid_at, createdBy: r.created_by, createdAt: r.created_at,
-  voidedAt: r.voided_at ?? undefined, voidedBy: r.voided_by ?? undefined,
-  voidReason: r.void_reason ?? undefined,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapSupplierProduct = (r: any): SupplierProduct => ({
-  supplierId: r.supplier_id, productId: r.product_id,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapStockTransfer = (r: any): StockTransfer => ({
-  id: r.id, transferNo: r.transfer_no, fromShopId: r.from_shop_id, toShopId: r.to_shop_id,
-  status: r.status, notes: r.notes ?? undefined, createdBy: r.created_by, createdAt: r.created_at,
-  approvedBy: r.approved_by ?? undefined, approvedAt: r.approved_at ?? undefined,
-  dispatchedBy: r.dispatched_by ?? undefined, dispatchedAt: r.dispatched_at ?? undefined,
-  receivedBy: r.received_by ?? undefined, receivedAt: r.received_at ?? undefined,
-  completedAt: r.completed_at ?? undefined, canceledBy: r.canceled_by ?? undefined,
-  canceledAt: r.canceled_at ?? undefined, cancelReason: r.cancel_reason ?? undefined,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapStockTransferItem = (r: any): StockTransferItem => ({
-  id: r.id, transferId: r.transfer_id, productId: r.product_id,
-  requestedQty: r.requested_qty, approvedQty: r.approved_qty ?? undefined,
-  transferredQty: r.transferred_qty ?? undefined,
-  productUnitId: r.product_unit_id ?? undefined,
-  unitNameSnapshot: r.unit_name_snapshot ?? undefined,
-  unitBaseQuantitySnapshot: r.unit_base_quantity_snapshot ?? undefined,
-  selectedUnitQuantity: r.selected_unit_quantity ?? undefined,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapShift = (r: any): Shift => ({
-  id: r.id, shopId: r.shop_id, cashierId: r.cashier_id, startedAt: r.started_at,
-  endedAt: r.ended_at ?? undefined, openingCashMmk: r.opening_cash_mmk,
-  closingCashMmk: r.closing_cash_mmk ?? undefined, expectedCashMmk: r.expected_cash_mmk ?? undefined,
-  varianceMmk: r.variance_mmk ?? undefined, varianceReason: r.variance_reason ?? undefined,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapSale = (r: any): Sale => ({
-  id: r.id, shopId: r.shop_id, shiftId: r.shift_id, receiptNo: r.receipt_no,
-  cashierId: r.cashier_id, status: r.status, subtotalMmk: r.subtotal_mmk,
-  discountMmk: r.discount_mmk, cartDiscountPct: r.cart_discount_pct ?? undefined,
-  totalMmk: r.total_mmk, paymentMethod: r.payment_method,
-  paidMmk: r.paid_mmk, changeMmk: r.change_mmk, createdAt: r.created_at,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapSaleItem = (r: any): SaleItem => ({
-  id: r.id ?? undefined,
-  saleId: r.sale_id, productId: r.product_id, qtyUnits: r.qty_units,
-  unitPriceMmk: r.unit_price_mmk, itemDiscountPct: r.item_discount_pct ?? undefined,
-  lineTotalMmk: r.line_total_mmk, priceOverriddenBy: r.price_overridden_by ?? undefined,
-  unitLabel: r.unit_label ?? undefined, unitsPerItem: r.units_per_item ?? undefined,
-  productUnitId: r.product_unit_id ?? undefined,
-  unitNameSnapshot: r.unit_name_snapshot ?? undefined,
-  unitBaseQuantitySnapshot: r.unit_base_quantity_snapshot ?? undefined,
-  unitPriceMmkSnapshot: r.unit_price_mmk_snapshot ?? undefined,
-  baseQuantitySold: r.base_quantity_sold ?? undefined,
-  unitCostMmkSnapshot: r.unit_cost_mmk_snapshot ?? undefined,
-  stockOverrideBy: r.stock_override_by ?? undefined,
-  priceLevelId: r.price_level_id ?? undefined,
-  priceLevelNameSnapshot: r.price_level_name_snapshot ?? undefined,
-  priceSourceSnapshot: r.price_source_snapshot ?? undefined,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapReprintLog = (r: any) => ({
-  id: r.id, saleId: r.sale_id, printedBy: r.printed_by, printedAt: r.printed_at,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapRefund = (r: any): Refund => ({
-  id: r.id, saleId: r.sale_id, shopId: r.shop_id, type: r.type,
-  reason: r.reason, createdBy: r.created_by, createdAt: r.created_at,
-  items: r.items ?? undefined, status: r.status ?? undefined,
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mapAuditLog = (r: any): AuditLog => ({
-  id: r.id, shopId: r.shop_id ?? undefined, actorId: r.actor_id,
-  actionType: r.action_type, message: r.message, entityType: r.entity_type,
-  entityId: r.entity_id, createdAt: r.created_at,
-});
 
 // ============================================================
 // Store
@@ -329,9 +58,42 @@ export const useDataStore = create<DataState>()((...args) => {
       await get().loadData({ force: true });
     },
 
+    pullDeltas: async () => {
+      if (!get().isLoaded) return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      try {
+        const { changes } = await pullDeltaChanges(get());
+        if (Object.keys(changes).length > 0) set(changes);
+      } catch (err) {
+        console.error("[DB] pullDeltas failed:", err);
+      }
+    },
+
     loadData: async (options) => {
       if (get().isLoading) return;
       if (get().isLoaded && !options?.force) return;
+
+      // Fast path: render immediately from the local mirror (works offline
+      // and on a cold, slow connection). The network fetch below still runs
+      // in the background to refresh it — isLoading stays true throughout so
+      // callers can show a non-blocking "syncing" indicator.
+      if (!get().isLoaded) {
+        try {
+          const cached = await readLocalSnapshot();
+          if (cached) set({ ...cached, refundVoidRequests: cached.refunds, isLoaded: true });
+        } catch (err) {
+          console.error("[DB] Failed to hydrate from local cache:", err);
+        }
+      }
+
+      // No point firing 27 requests that will just fail — leave whatever we
+      // rendered from cache (or the "Loading data…" / Retry screen if this is
+      // a first run with no cache yet) in place until connectivity returns.
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        if (!get().isLoaded) set({ loadError: "You're offline and no cached data is available yet." });
+        return;
+      }
+
       set({ isLoading: true, loadError: null });
       try {
         const [
@@ -398,7 +160,7 @@ export const useDataStore = create<DataState>()((...args) => {
         }
 
         const mappedRefunds = (refunds.data ?? []).map(mapRefund);
-        set({
+        const snapshot: LocalSnapshot = {
           shops: shopsList,
           users: (users.data ?? []).map(mapUser),
           categories: (categories.data ?? []).map(mapCategory),
@@ -424,11 +186,24 @@ export const useDataStore = create<DataState>()((...args) => {
           saleItems: (saleItems.data ?? []).map(mapSaleItem),
           reprintLogs: (reprintLogs.data ?? []).map(mapReprintLog),
           refunds: mappedRefunds,
-          refundVoidRequests: mappedRefunds,
           auditLogs: (auditLogs.data ?? []).map(mapAuditLog),
           businessProfile: businessProfileRes.data ? mapBusinessProfile(businessProfileRes.data) : null,
-          isLoading: false,
-          isLoaded: true,
+        };
+        set({ ...snapshot, refundVoidRequests: mappedRefunds, isLoading: false, isLoaded: true });
+        persistSnapshotToLocal(snapshot).catch((err) => {
+          console.error("[DB] Failed to persist local cache:", err);
+        });
+        // A full load always has the freshest data for every table, so it's
+        // always safe to (re)set the delta-pull cursors from it — the next
+        // background refresh (see AppLayout.tsx) can then pull just what
+        // changed since, instead of another full 27-table reload.
+        bootstrapDeltaCursors(snapshot).catch((err) => {
+          console.error("[DB] Failed to bootstrap delta-sync cursors:", err);
+        });
+        // We just proved the network is reachable — replay anything queued
+        // while offline (previous outages, or writes made before this boot).
+        drainOutbox().catch((err) => {
+          console.error("[DB] Failed to drain the sync outbox:", err);
         });
       } catch (err) {
         const message = reportError("loadData", err, "Failed to load data. Please try again.");
@@ -437,5 +212,24 @@ export const useDataStore = create<DataState>()((...args) => {
     },
   };
 });
+
+registerOutboxReconciler("complete_sale", (data, provisional) =>
+  useDataStore.getState().reconcileCompleteSale(data, provisional ?? []));
+registerOutboxReconciler("adjust_stock", (data, provisional) =>
+  useDataStore.getState().reconcileAdjustStock(data, provisional ?? []));
+registerOutboxReconciler("open_shift", (data, provisional) =>
+  useDataStore.getState().reconcileOpenShift(data, provisional ?? []));
+registerOutboxReconciler("close_shift", (data, provisional) =>
+  useDataStore.getState().reconcileCloseShift(data, provisional ?? []));
+registerOutboxReconciler("create_refund_void_request", (data, provisional) =>
+  useDataStore.getState().reconcileCreateRefundVoidRequest(data, provisional ?? []));
+registerOutboxReconciler("receive_purchase_order", (data, provisional) =>
+  useDataStore.getState().reconcileReceivePurchaseOrder(data, provisional ?? []));
+registerOutboxReconciler("record_supplier_payment", (data, provisional) =>
+  useDataStore.getState().reconcileRecordSupplierPayment(data, provisional ?? []));
+registerOutboxReconciler("dispatch_stock_transfer", (data, provisional) =>
+  useDataStore.getState().reconcileDispatchTransfer(data, provisional ?? []));
+registerOutboxReconciler("receive_stock_transfer", (data, provisional) =>
+  useDataStore.getState().reconcileReceiveTransfer(data, provisional ?? []));
 
 export type { DataState } from "./types";

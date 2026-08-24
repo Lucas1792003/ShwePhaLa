@@ -185,12 +185,20 @@ export interface ProductState {
   getProductByBarcode: (value: string) => { product: Product; unit: ProductUnit } | undefined;
 }
 
+/** Provisional local rows (by table + id) an offline write created — see
+ *  stores/data/outbox.ts and localWrites.ts. */
+export type ProvisionalRef = { table: string; ids: string[] }[];
+
 export interface InventoryState {
   inventory: Inventory[];
   movements: InventoryMovement[];
   adjustStock: (input: AdjustStockInput) => Promise<void>;
   recordDamage: (input: { shopId: string; productId: string; qty: number; reason: string; actorId: string }) => Promise<void>;
   getInventoryQty: (shopId: string, productId: string) => number;
+  /** Internal — called by the outbox drain once adjust_stock actually runs
+   *  server-side, to replace the provisional local movement with the
+   *  authoritative one. Not for direct UI use. */
+  reconcileAdjustStock: (data: unknown, provisional: ProvisionalRef) => void;
 }
 
 export interface ShiftState {
@@ -198,6 +206,10 @@ export interface ShiftState {
   startShift: (input: { shopId: string; cashierId: string; openingCashMmk: number }) => Promise<string>;
   endShift: (input: { shiftId: string; closingCashMmk: number; varianceReason?: string }) => Promise<void>;
   requireShiftForCashier: (shopId: string, cashierId: string) => Shift | undefined;
+  /** Internal — called by the outbox drain once open_shift/close_shift
+   *  actually runs server-side. Not for direct UI use. */
+  reconcileOpenShift: (data: unknown, provisional: ProvisionalRef) => void;
+  reconcileCloseShift: (data: unknown, provisional: ProvisionalRef) => void;
 }
 
 export interface SaleState {
@@ -210,6 +222,15 @@ export interface SaleState {
   requestVoid: (input: { saleId: string; reason: string; actorId: string }) => Promise<void>;
   requestRefund: (input: { saleId: string; items: RefundItemInput[]; reason: string; actorId: string }) => Promise<void>;
   approveRefund: (input: { refundId: string; approverId: string }) => Promise<void>;
+  /** Internal — called by the outbox drain once complete_sale actually runs
+   *  server-side, to replace the provisional local sale with the
+   *  authoritative one. Not for direct UI use. */
+  reconcileCompleteSale: (data: unknown, provisional: ProvisionalRef) => void;
+  /** Internal — called by the outbox drain once a queued
+   *  create_refund_void_request actually runs server-side (covers both
+   *  requestVoid and requestRefund, which share the RPC). Not for direct
+   *  UI use. */
+  reconcileCreateRefundVoidRequest: (data: unknown, provisional: ProvisionalRef) => void;
 }
 
 export interface TransferState {
@@ -234,6 +255,10 @@ export interface TransferState {
   cancelTransfer: (input: { transferId: string; actorId: string; reason: string }) => Promise<void>;
   getTransfersByShop: (shopId: string) => StockTransfer[];
   getPendingTransfersForApproval: (shopId: string) => StockTransfer[];
+  /** Internal — called by the outbox drain once a queued dispatch/receive
+   *  actually runs server-side. Not for direct UI use. */
+  reconcileDispatchTransfer: (data: unknown, provisional: ProvisionalRef) => void;
+  reconcileReceiveTransfer: (data: unknown, provisional: ProvisionalRef) => void;
 }
 
 export interface PurchaseState {
@@ -282,6 +307,10 @@ export interface PurchaseState {
     referenceNo?: string;
     notes?: string;
   }) => Promise<void>;
+  /** Internal — called by the outbox drain once a queued receive/payment
+   *  actually runs server-side. Not for direct UI use. */
+  reconcileReceivePurchaseOrder: (data: unknown, provisional: ProvisionalRef) => void;
+  reconcileRecordSupplierPayment: (data: unknown, provisional: ProvisionalRef) => void;
 }
 
 export interface PricingState {
@@ -309,6 +338,11 @@ export interface LoadingState {
   loadError: string | null;
   loadData: (options?: { force?: boolean }) => Promise<void>;
   retryLoadData: () => Promise<void>;
+  /** Lightweight incremental refresh for tables with reliable updated_at
+   *  tracking (see stores/data/deltaSync.ts) — a cheaper alternative to a
+   *  full loadData({force:true}) for routine background refreshes. No-op
+   *  before the first full load, or while offline. */
+  pullDeltas: () => Promise<void>;
 }
 
 // ============================================

@@ -1,23 +1,27 @@
 import type { StateCreator } from "zustand";
 import type { DataState, BrandState } from "../types";
 import type { Brand } from "../../../types";
-import { supabase } from "../../../lib/supabase";
 import { reportError } from "../../../lib/errors";
+import { writeTableRow } from "../tableWrite";
 
 export const createBrandSlice: StateCreator<DataState, [], [], BrandState> = (set, get) => ({
   brands: [],
 
   addBrand: async (brand: Brand) => {
     set((state) => ({ brands: [...state.brands, brand] }));
-    const { error } = await supabase.from("brands").insert({
-      id: brand.id,
-      category_id: brand.categoryId,
-      name: brand.name,
-      color: brand.color ?? null,
-      is_active: brand.isActive,
-      sort_order: brand.sortOrder,
-      created_at: brand.createdAt,
-      updated_at: brand.updatedAt,
+    const { error } = await writeTableRow({
+      table: "brands", op: "insert", id: brand.id,
+      row: {
+        id: brand.id,
+        category_id: brand.categoryId,
+        name: brand.name,
+        color: brand.color ?? null,
+        is_active: brand.isActive,
+        sort_order: brand.sortOrder,
+        created_at: brand.createdAt,
+        updated_at: brand.updatedAt,
+      },
+      appRow: brand,
     });
     if (error) {
       set((state) => ({ brands: state.brands.filter((b) => b.id !== brand.id) }));
@@ -30,16 +34,17 @@ export const createBrandSlice: StateCreator<DataState, [], [], BrandState> = (se
     set((state) => ({
       brands: state.brands.map((b) => (b.id === brand.id ? brand : b)),
     }));
-    const { error } = await supabase
-      .from("brands")
-      .update({
+    const { error } = await writeTableRow({
+      table: "brands", op: "update", id: brand.id,
+      row: {
         category_id: brand.categoryId,
         name: brand.name,
         color: brand.color ?? null,
         is_active: brand.isActive,
         sort_order: brand.sortOrder,
-      })
-      .eq("id", brand.id);
+      },
+      appRow: brand,
+    });
     if (error) {
       if (previous) {
         set((state) => ({
@@ -64,15 +69,15 @@ export const createBrandSlice: StateCreator<DataState, [], [], BrandState> = (se
       );
     }
 
+    const deactivated = { ...brand, isActive: false };
     set((s) => ({
       brands: s.brands.map((b) =>
-        b.id === brandId ? { ...b, isActive: false } : b,
+        b.id === brandId ? deactivated : b,
       ),
     }));
-    const { error } = await supabase
-      .from("brands")
-      .update({ is_active: false })
-      .eq("id", brandId);
+    const { error } = await writeTableRow({
+      table: "brands", op: "update", id: brandId, row: { is_active: false }, appRow: deactivated,
+    });
     if (error) {
       set((s) => ({
         brands: s.brands.map((b) =>

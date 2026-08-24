@@ -1,7 +1,8 @@
 import type { StateCreator } from "zustand";
 import type { DataState, PricingState } from "../types";
 import type { PriceTier } from "../../../types";
-import { supabase, dbExec } from "../../../lib/supabase";
+import { dbExec } from "../../../lib/supabase";
+import { writeTableRow } from "../tableWrite";
 
 // snake_case row mapper for the price_tiers table
 const priceTierRow = (t: PriceTier) => ({
@@ -14,17 +15,21 @@ export const createPricingSlice: StateCreator<DataState, [], [], PricingState> =
   priceTiers: [],
 
   addPriceTier: async (tier: PriceTier) => {
-    await dbExec(supabase.from("price_tiers").insert(priceTierRow(tier)), "Add price tier");
+    await dbExec(writeTableRow({ table: "price_tiers", op: "insert", id: tier.id, row: priceTierRow(tier), appRow: tier }), "Add price tier");
     set((state) => ({ priceTiers: [...state.priceTiers, tier] }));
   },
 
   updatePriceTier: async (tier: PriceTier) => {
     await dbExec(
-      supabase.from("price_tiers").update({
-        product_id: tier.productId, shop_id: tier.shopId ?? null,
-        min_qty: tier.minQty, max_qty: tier.maxQty ?? null,
-        price_mmk: tier.priceMmk, is_active: tier.isActive,
-      }).eq("id", tier.id),
+      writeTableRow({
+        table: "price_tiers", op: "update", id: tier.id,
+        row: {
+          product_id: tier.productId, shop_id: tier.shopId ?? null,
+          min_qty: tier.minQty, max_qty: tier.maxQty ?? null,
+          price_mmk: tier.priceMmk, is_active: tier.isActive,
+        },
+        appRow: tier,
+      }),
       "Update price tier"
     );
     set((state) => ({
@@ -33,7 +38,7 @@ export const createPricingSlice: StateCreator<DataState, [], [], PricingState> =
   },
 
   deletePriceTier: async (tierId: string) => {
-    await dbExec(supabase.from("price_tiers").delete().eq("id", tierId), "Delete price tier");
+    await dbExec(writeTableRow({ table: "price_tiers", op: "delete", id: tierId, row: {} }), "Delete price tier");
     set((state) => ({
       priceTiers: state.priceTiers.filter((t) => t.id !== tierId),
     }));

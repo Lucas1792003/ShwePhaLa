@@ -39,6 +39,7 @@ import {
 } from "../features/catalog/productUnits";
 import { getActivePriceLevels } from "../features/pricing/priceLevels";
 import { useTranslation } from "../hooks/useTranslation";
+import { newId } from "../lib/id";
 
 const PRODUCTS_ROUTE = "/app/admin/products";
 
@@ -147,7 +148,7 @@ export const ProductFormPage = () => {
   // existing id; create mode mints one up-front so the image upload can
   // happen before submit lands the row.
   const [formProductId, setFormProductId] = useState<string>(
-    () => routeProductId ?? `prod-${Date.now()}`,
+    () => routeProductId ?? newId("prod"),
   );
 
   const previousUnitTypeRef = useRef<string>("");
@@ -298,7 +299,7 @@ export const ProductFormPage = () => {
     } else {
       hydratedRef.current = hydrationKey;
       const initialUnitType = activeUnitTypes[0]?.name ?? "Piece";
-      const seedProductId = `prod-${Date.now()}`;
+      const seedProductId = newId("prod");
       form.reset({
         sku: "",
         aliasCode: "",
@@ -407,7 +408,7 @@ export const ProductFormPage = () => {
   };
 
   const addSellableUnit = () => {
-    const id = `unit-${formProductId || Date.now()}-${Date.now()}`;
+    const id = newId("unit");
     const now = new Date().toISOString();
     setFormUnits((units) => [
       ...units,
@@ -593,7 +594,7 @@ export const ProductFormPage = () => {
       return;
     }
 
-    const productId = editingId || formProductId || `prod-${Date.now()}`;
+    const productId = editingId || formProductId || newId("prod");
     const existingProduct = editingId ? products.find((p) => p.id === editingId) : null;
     const rawUnits = sanitizeProductUnits(formUnits.length > 0
       ? formUnits
@@ -686,11 +687,11 @@ export const ProductFormPage = () => {
       }
 
       const nextRows: ProductBarcode[] = nextUnits
-        .flatMap((unit, index): ProductBarcode[] => {
+        .flatMap((unit): ProductBarcode[] => {
           const value = normalizeBarcodeValue(unitBarcodes[unit.id] ?? "");
           if (!value) return [];
           return [{
-            id: `bc-${productId}-${unit.id}-${index}-${Date.now()}`,
+            id: newId("bc"),
             productId,
             productUnitId: unit.isDefault ? undefined : unit.id,
             value,
@@ -702,7 +703,7 @@ export const ProductFormPage = () => {
       await replaceProductSuppliers(productId, selectedSupplierIds);
 
       void addAuditLog({
-        id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+        id: newId("audit"),
         actorId: currentUserId ?? "system",
         actionType: editingId ? "PRODUCT_EDIT" : "PRODUCT_CREATE",
         message: `${editingId ? "Updated" : "Created"} product ${values.name}.`,

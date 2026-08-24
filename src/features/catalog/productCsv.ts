@@ -10,6 +10,7 @@ import type {
   UnitType,
 } from "../../types";
 import type { CsvCell } from "../../lib/csv";
+import { newId } from "../../lib/id";
 import {
   findBarcodeOwner,
   normalizeBarcodeKey,
@@ -224,12 +225,6 @@ const normalizeOptional = (raw: string): string | undefined => {
   return value ? value : undefined;
 };
 
-const makeGeneratedProductId = (rowNumber: number): string =>
-  `prod-import-${Date.now()}-${rowNumber}-${Math.random().toString(36).slice(2, 7)}`;
-
-const makeGeneratedBarcodeId = (productId: string, rowNumber: number): string =>
-  `bc-import-${productId}-${rowNumber}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-
 export const buildProductCsvImportPlan = (
   rawRecords: Record<string, string>[],
   context: ProductCsvContext,
@@ -299,7 +294,7 @@ export const buildProductCsvImportPlan = (
     }
     const existingProduct = productById ?? productBySku;
     const action: "create" | "update" = existingProduct ? "update" : "create";
-    const productId = (existingProduct?.id ?? idInput) || makeGeneratedProductId(rowNumber);
+    const productId = (existingProduct?.id ?? idInput) || newId("prod-import");
 
     if (aliasKey) {
       const aliasOwner = productsByAlias.get(aliasKey);
@@ -458,7 +453,7 @@ export const buildProductCsvImportPlan = (
         nextBarcodes = [
           ...nonDefaultBarcodes,
           {
-            id: existingDefaultBarcode?.id ?? makeGeneratedBarcodeId(productId, rowNumber),
+            id: existingDefaultBarcode?.id ?? newId("bc-import"),
             productId,
             productUnitId: undefined,
             value: defaultBarcode,

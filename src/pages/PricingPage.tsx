@@ -12,6 +12,7 @@ import { SearchInput } from "../components/forms/SearchInput";
 import { ProductPicker } from "../components/products/ProductPicker";
 import { getPriceTierProductError } from "../features/pricing/priceTierForm";
 import { formatMmk, getEffectiveShopId } from "../lib/utils";
+import { newId } from "../lib/id";
 import type { PriceTier } from "../types";
 
 export const PricingPage = () => {
@@ -115,7 +116,7 @@ export const PricingPage = () => {
     if (!currentUserId) return;
 
     const tierData: PriceTier = {
-      id: editingTier?.id ?? `tier-${Date.now()}`,
+      id: editingTier?.id ?? newId("tier"),
       productId: form.productId,
       shopId: form.shopId || undefined,
       minQty: form.minQty,

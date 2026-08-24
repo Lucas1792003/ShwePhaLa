@@ -1,0 +1,52 @@
+import "fake-indexeddb/auto";
+import { beforeEach, describe, expect, it } from "vitest";
+import { localDb } from "../../lib/localDb";
+import { persistSnapshotToLocal, readLocalSnapshot, type LocalSnapshot } from "./localSync";
+import type { Shop } from "../../types";
+
+const shop = (id: string): Shop => ({
+  id, code: id, name: `Shop ${id}`, address: "1 Main St", isActive: true, createdAt: "2026-01-01T00:00:00Z",
+});
+
+const emptySnapshot: LocalSnapshot = {
+  shops: [], users: [], categories: [], brands: [], unitTypes: [], products: [], productUnits: [],
+  barcodes: [], priceTiers: [], priceLevels: [], productUnitPrices: [], inventory: [], movements: [],
+  suppliers: [], purchaseOrders: [], purchaseOrderItems: [], supplierPayments: [], supplierProducts: [],
+  stockTransfers: [], stockTransferItems: [], shifts: [], sales: [], saleItems: [], reprintLogs: [],
+  refunds: [], auditLogs: [], businessProfile: null,
+};
+
+describe("localSync", () => {
+  beforeEach(async () => {
+    await Promise.all(localDb.tables.map((table) => table.clear()));
+  });
+
+  it("returns null before any snapshot has ever been persisted", async () => {
+    expect(await readLocalSnapshot()).toBeNull();
+  });
+
+  it("round-trips a full snapshot through IndexedDB", async () => {
+    const snapshot: LocalSnapshot = {
+      ...emptySnapshot,
+      shops: [shop("shop-1"), shop("shop-2")],
+      businessProfile: { businessName: "Shwe Pha La" },
+    };
+
+    await persistSnapshotToLocal(snapshot);
+    const restored = await readLocalSnapshot();
+
+    expect(restored).not.toBeNull();
+    expect(restored?.shops.map((s) => s.id).sort()).toEqual(["shop-1", "shop-2"]);
+    expect(restored?.businessProfile).toEqual({ businessName: "Shwe Pha La" });
+  });
+
+  it("replaces stale rows instead of accumulating them across syncs", async () => {
+    await persistSnapshotToLocal({ ...emptySnapshot, shops: [shop("shop-1")] });
+    await persistSnapshotToLocal({ ...emptySnapshot, shops: [shop("shop-2")] });
+
+    const restored = await readLocalSnapshot();
+    // shop-1 must be gone — a full sync fully replaces the mirror so a shop
+    // deleted/renamed on the server doesn't linger in the local cache forever.
+    expect(restored?.shops.map((s) => s.id)).toEqual(["shop-2"]);
+  });
+});

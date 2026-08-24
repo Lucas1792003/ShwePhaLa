@@ -13,6 +13,7 @@ import {
   compareUnitTypes,
   validateUnitTypeForm,
 } from "../features/unitTypes/unitTypeValidation";
+import { newId } from "../lib/id";
 
 interface FormState {
   name: string;
@@ -134,7 +135,7 @@ export const UnitTypesPage = () => {
       };
       updateUnitType(next);
       void addAuditLog({
-        id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+        id: newId("audit"),
         actorId: currentUserId ?? "system",
         actionType: "CATEGORY_EDIT",
         message: `Updated unit type "${next.name}".`,
@@ -144,7 +145,7 @@ export const UnitTypesPage = () => {
       });
     } else {
       const created: UnitType = {
-        id: `ut-${Math.random().toString(36).slice(2, 9)}`,
+        id: newId("ut"),
         name: form.name.trim(),
         abbreviation: form.abbreviation.trim() || undefined,
         description: form.description.trim() || undefined,
@@ -155,7 +156,7 @@ export const UnitTypesPage = () => {
       };
       addUnitType(created);
       void addAuditLog({
-        id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+        id: newId("audit"),
         actorId: currentUserId ?? "system",
         actionType: "CATEGORY_CREATE",
         message: `Created unit type "${created.name}".`,
@@ -177,7 +178,7 @@ export const UnitTypesPage = () => {
 
     deactivateUnitType(unit.id);
     void addAuditLog({
-      id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+      id: newId("audit"),
       actorId: currentUserId ?? "system",
       actionType: "CATEGORY_DELETE",
       message: `Deactivated unit type "${unit.name}".`,
@@ -191,7 +192,7 @@ export const UnitTypesPage = () => {
     const now = new Date().toISOString();
     updateUnitType({ ...unit, isActive: true, updatedAt: now });
     void addAuditLog({
-      id: `audit-${Math.random().toString(36).slice(2, 9)}`,
+      id: newId("audit"),
       actorId: currentUserId ?? "system",
       actionType: "CATEGORY_EDIT",
       message: `Reactivated unit type "${unit.name}".`,

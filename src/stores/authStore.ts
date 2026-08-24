@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { supabase } from "../lib/supabase";
+import { isNetworkError } from "../lib/errors";
+import { localDb, type CachedAuthUser } from "../lib/localDb";
 
 interface LoginResult {
   error: string | null;
@@ -199,6 +201,38 @@ async function resolveAppUser(authUser: { id: string; email?: string }): Promise
   return { user: row };
 }
 
+// How long a device trusts its last-known login while it can't reach the
+// network to re-verify (e.g. a deactivated/reassigned user's access should
+// still lapse within a shift-to-shift cycle, not stay open indefinitely).
+// See docs/10-offline-desktop-known-issues.md.
+const OFFLINE_SESSION_TRUST_MS = 24 * 60 * 60 * 1000;
+
+async function cacheAppUser(authId: string, user: AppUserRow, hasTotp: boolean): Promise<void> {
+  try {
+    await localDb.authCache.put({
+      authId, userId: user.id, role: user.role, shopId: user.shop_id,
+      isActive: user.is_active, hasTotp, cachedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("[auth] Failed to cache the resolved user for offline restore:", err);
+  }
+}
+
+// Returns the cached user only if it's still within the trust window —
+// past that, prefer today's "log out" behavior over trusting a
+// potentially-stale role/active flag indefinitely.
+async function getCachedAppUser(authId: string): Promise<CachedAuthUser | undefined> {
+  try {
+    const cached = await localDb.authCache.get(authId);
+    if (!cached) return undefined;
+    const age = Date.now() - Date.parse(cached.cachedAt);
+    return age <= OFFLINE_SESSION_TRUST_MS ? cached : undefined;
+  } catch (err) {
+    console.error("[auth] Failed to read the cached offline user:", err);
+    return undefined;
+  }
+}
+
 export const useAuthStore = create<AuthState>()((set) => ({
   currentUserId: null,
   currentRole: null,
@@ -207,18 +241,56 @@ export const useAuthStore = create<AuthState>()((set) => ({
   isAuthLoading: true,
 
   restoreSession: async () => {
+    // getSession() reads the already-persisted Supabase session locally —
+    // no network needed for this part even when offline.
     const { data } = await supabase.auth.getSession();
     const authUser = data.session?.user;
     if (!authUser) {
       set({ currentUserId: null, currentRole: null, adminVerified: false, hasTotp: false, isAuthLoading: false });
       return;
     }
-    const result = await resolveAppUser({ id: authUser.id, email: authUser.email ?? undefined });
-    if (result.error) console.error("[auth] restoreSession:", result.error);
-    const user = result.user;
+
+    let result: ResolveResult;
+    try {
+      result = await resolveAppUser({ id: authUser.id, email: authUser.email ?? undefined });
+    } catch (err) {
+      result = { error: err instanceof Error ? err.message : String(err) };
+    }
+
+    let user = result.user;
+    let fromCache = false;
+    let cachedHasTotp = false;
+
+    // A valid Supabase session exists but we couldn't reach `users` to
+    // confirm the role/active flag — fall back to the last-known-good
+    // resolution instead of treating this as "not logged in" (that would
+    // log a cashier out of an otherwise fully offline-capable till). A
+    // genuine, non-network error (e.g. RLS/data problem) still logs the
+    // failure and does NOT fall back, since that's not a connectivity issue.
+    if (!user && result.error) {
+      if (isNetworkError(result.error)) {
+        const cached = await getCachedAppUser(authUser.id);
+        if (cached) {
+          user = { id: cached.userId, role: cached.role, shop_id: cached.shopId, is_active: cached.isActive, auth_id: authUser.id };
+          fromCache = true;
+          cachedHasTotp = cached.hasTotp;
+        }
+      } else {
+        console.error("[auth] restoreSession:", result.error);
+      }
+    }
+
     const active = Boolean(user && user.is_active);
     const isAdmin = active && user!.role === "ADMIN";
-    const { hasTotp, isAal2 } = isAdmin ? await readMfaState() : { hasTotp: false, isAal2: false };
+    // Offline, there's no way to reach Supabase's MFA endpoints to confirm a
+    // fresh aal2 step-up — reuse the last-known hasTotp and rely on
+    // isVerifiedThisSession() below (this session's own prior verification,
+    // if any) rather than claiming a step-up that didn't happen.
+    const { hasTotp, isAal2 } = !isAdmin
+      ? { hasTotp: false, isAal2: false }
+      : fromCache
+        ? { hasTotp: cachedHasTotp, isAal2: false }
+        : await readMfaState();
     set({
       currentUserId: active ? user!.id : null,
       currentRole: active ? user!.role : null,
@@ -227,6 +299,8 @@ export const useAuthStore = create<AuthState>()((set) => ({
       adminVerified: isAdmin ? isAal2 || isVerifiedThisSession(authUser.id) : true,
       isAuthLoading: false,
     });
+
+    if (user && !fromCache) void cacheAppUser(authUser.id, user, hasTotp);
   },
 
   login: async (email, password) => {
@@ -281,6 +355,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
       }
       // First admin must still verify (no factor yet → email path).
       set({ currentUserId: adminId, currentRole: "ADMIN", adminVerified: false, hasTotp: false });
+      void cacheAppUser(authUser.id, { id: adminId, role: "ADMIN", shop_id: null, is_active: true, auth_id: authUser.id }, false);
       return { error: null, role: "ADMIN" };
     }
 
@@ -298,12 +373,16 @@ export const useAuthStore = create<AuthState>()((set) => ({
       hasTotp,
       adminVerified: isAdmin ? isAal2 || isVerifiedThisSession(authUser.id) : true,
     });
+    void cacheAppUser(authUser.id, user, hasTotp);
     return { error: null, role: user.role, shopId: user.shop_id ?? undefined };
   },
 
   logout: async () => {
+    const { data } = await supabase.auth.getSession();
+    const authId = data.session?.user.id;
     await supabase.auth.signOut();
     clearVerified();
+    if (authId) void localDb.authCache.delete(authId);
     set({ currentUserId: null, currentRole: null, adminVerified: false, hasTotp: false });
   },
 

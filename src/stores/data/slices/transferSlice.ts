@@ -4,6 +4,10 @@ import type {
   AuditLog, Inventory, InventoryMovement, StockTransfer, StockTransferItem,
 } from "../../../types";
 import { supabase } from "../../../lib/supabase";
+import { isNetworkError } from "../../../lib/errors";
+import { newId } from "../../../lib/id";
+import { enqueueOutbox } from "../outbox";
+import { deleteLocalRows, putLocalRows } from "../localWrites";
 
 // ---- RPC result shapes (camelCase, ready for the store) ----
 interface CreateTransferResult {
@@ -39,7 +43,161 @@ const mergeInventory = (current: Inventory[], updates: Inventory[]): Inventory[]
   return result;
 };
 
-export const createTransferSlice: StateCreator<DataState, [], [], TransferState> = (set, get) => ({
+export const createTransferSlice: StateCreator<DataState, [], [], TransferState> = (set, get) => {
+  // Dispatch: source releases the goods. Marks the transfer IN_TRANSIT with
+  // no inventory change ("hold at source" — stock only moves on receipt).
+  const dispatchTransferOnline = async (transferId: string): Promise<void> => {
+    const { data, error } = await supabase.rpc("dispatch_stock_transfer", { p_transfer_id: transferId });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Dispatch transfer returned no data.");
+    const result = data as ApproveTransferResult;
+
+    set((s) => ({
+      stockTransfers: s.stockTransfers.map((t) => (t.id === result.stockTransfer.id ? result.stockTransfer : t)),
+      stockTransferItems: s.stockTransferItems.map((i) => result.stockTransferItems.find((u) => u.id === i.id) ?? i),
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+    void putLocalRows({ stockTransfers: [result.stockTransfer], stockTransferItems: result.stockTransferItems, auditLogs: result.auditLogs });
+  };
+
+  // No network: no stock moves on dispatch (only on receipt), so this is
+  // just a status flip — nothing to approximate. The transfer this
+  // references is assumed to already have a real id (creation/approval stay
+  // online-only).
+  const dispatchTransferOffline = async (transferId: string, actorId: string): Promise<void> => {
+    const transfer = get().stockTransfers.find((t) => t.id === transferId);
+    if (!transfer) throw new Error("Stock transfer not found.");
+    if (transfer.status !== "APPROVED") {
+      throw new Error(`Transfer cannot be dispatched from status ${transfer.status}.`);
+    }
+
+    const updated: StockTransfer = {
+      ...transfer, status: "IN_TRANSIT", dispatchedBy: actorId,
+      dispatchedAt: new Date().toISOString(), pendingSync: true,
+    };
+    set((s) => ({ stockTransfers: s.stockTransfers.map((t) => (t.id === transferId ? updated : t)) }));
+    void putLocalRows({ stockTransfers: [updated] });
+
+    await enqueueOutbox({
+      kind: "rpc", name: "dispatch_stock_transfer", args: { p_transfer_id: transferId },
+      shopId: transfer.fromShopId,
+    });
+  };
+
+  // Receive: destination confirms receipt; atomic RPC moves stock (source →
+  // dest) for the received quantities and writes paired movements.
+  const receiveTransferOnline = async (
+    transferId: string, receivedItems: { productId: string; receivedQty: number }[] | undefined,
+  ): Promise<void> => {
+    const { data, error } = await supabase.rpc("receive_stock_transfer", {
+      p_transfer_id: transferId,
+      p_received_items: receivedItems ? receivedItems.map((r) => ({ product_id: r.productId, received_qty: r.receivedQty })) : null,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Receive transfer returned no data.");
+    const result = data as CompleteTransferResult;
+
+    set((s) => ({
+      stockTransfers: s.stockTransfers.map((t) => (t.id === result.stockTransfer.id ? result.stockTransfer : t)),
+      stockTransferItems: s.stockTransferItems.map((i) => result.stockTransferItems.find((u) => u.id === i.id) ?? i),
+      inventory: mergeInventory(s.inventory, result.inventory),
+      movements: [...result.movements, ...s.movements],
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+    void putLocalRows({
+      stockTransfers: [result.stockTransfer], stockTransferItems: result.stockTransferItems,
+      inventory: result.inventory, movements: result.movements, auditLogs: result.auditLogs,
+    });
+  };
+
+  // No network: receive against locally-known data, mirroring
+  // receive_stock_transfer's own math (clamp to the approved qty, move
+  // source → dest, write paired OUT/IN movements). The transfer this
+  // references is assumed to already have a real id.
+  const receiveTransferOffline = async (
+    transferId: string, actorId: string, receivedItems: { productId: string; receivedQty: number }[] | undefined,
+  ): Promise<void> => {
+    const transfer = get().stockTransfers.find((t) => t.id === transferId);
+    if (!transfer) throw new Error("Stock transfer not found.");
+    if (transfer.status !== "IN_TRANSIT") {
+      throw new Error(`Transfer cannot be received from status ${transfer.status}.`);
+    }
+
+    const now = new Date().toISOString();
+    const lines = get().stockTransferItems.filter((i) => i.transferId === transferId);
+    const inputByProduct = new Map((receivedItems ?? []).map((r) => [r.productId, r.receivedQty]));
+
+    const updatedItems: StockTransferItem[] = [];
+    const movements: InventoryMovement[] = [];
+    const inventoryUpdates: Inventory[] = [];
+
+    for (const item of lines) {
+      const approved = item.approvedQty ?? item.requestedQty;
+      const qty = inputByProduct.get(item.productId) ?? approved;
+      if (qty < 0 || qty > approved) {
+        throw new Error(`Received quantity for a line must be between 0 and the approved quantity.`);
+      }
+      updatedItems.push({ ...item, transferredQty: qty });
+      if (qty === 0) continue;
+
+      const srcBefore = get().getInventoryQty(transfer.fromShopId, item.productId);
+      const srcAfter = srcBefore - qty;
+      if (srcAfter < 0) {
+        throw new Error(`Insufficient stock at source for this product: have ${srcBefore}, need ${qty}.`);
+      }
+      const dstBefore = get().getInventoryQty(transfer.toShopId, item.productId);
+      const dstAfter = dstBefore + qty;
+      inventoryUpdates.push({ shopId: transfer.fromShopId, productId: item.productId, qtyBaseUnits: srcAfter });
+      inventoryUpdates.push({ shopId: transfer.toShopId, productId: item.productId, qtyBaseUnits: dstAfter });
+
+      const unitFields = {
+        productUnitId: item.productUnitId, unitNameSnapshot: item.unitNameSnapshot,
+        unitBaseQuantitySnapshot: item.unitBaseQuantitySnapshot, selectedUnitQuantity: item.selectedUnitQuantity,
+      };
+      movements.push({
+        id: newId("move"), shopId: transfer.fromShopId, productId: item.productId, type: "TRANSFER_OUT",
+        qtyChange: -qty, qtyBefore: srcBefore, qtyAfter: srcAfter,
+        reason: `Stock transfer ${transfer.transferNo} (offline — pending sync)`,
+        referenceType: "transfer", referenceId: transfer.id, createdBy: actorId, createdAt: now,
+        pendingSync: true, ...unitFields,
+      });
+      movements.push({
+        id: newId("move"), shopId: transfer.toShopId, productId: item.productId, type: "TRANSFER_IN",
+        qtyChange: qty, qtyBefore: dstBefore, qtyAfter: dstAfter,
+        reason: `Stock transfer ${transfer.transferNo} (offline — pending sync)`,
+        referenceType: "transfer", referenceId: transfer.id, createdBy: actorId, createdAt: now,
+        pendingSync: true, ...unitFields,
+      });
+    }
+
+    const updatedTransfer: StockTransfer = {
+      ...transfer, status: "COMPLETED", receivedBy: actorId, receivedAt: now, completedAt: now, pendingSync: true,
+    };
+
+    set((s) => ({
+      stockTransfers: s.stockTransfers.map((t) => (t.id === transferId ? updatedTransfer : t)),
+      stockTransferItems: s.stockTransferItems.map((i) => updatedItems.find((u) => u.id === i.id) ?? i),
+      inventory: mergeInventory(s.inventory, inventoryUpdates),
+      movements: [...movements, ...s.movements],
+    }));
+    void putLocalRows({
+      stockTransfers: [updatedTransfer], stockTransferItems: updatedItems,
+      inventory: inventoryUpdates, movements,
+    });
+
+    await enqueueOutbox({
+      kind: "rpc",
+      name: "receive_stock_transfer",
+      args: {
+        p_transfer_id: transferId,
+        p_received_items: receivedItems ? receivedItems.map((r) => ({ product_id: r.productId, received_qty: r.receivedQty })) : null,
+      },
+      shopId: transfer.toShopId,
+      provisional: [{ table: "movements", ids: movements.map((m) => m.id) }],
+    });
+  };
+
+  return {
   stockTransfers: [],
   stockTransferItems: [],
 
@@ -102,51 +260,60 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
     }));
   },
 
-  // Dispatch: source releases the goods. Marks the transfer IN_TRANSIT with no
-  // inventory change ("hold at source" — stock only moves on receipt).
-  dispatchTransfer: async ({ transferId }) => {
-    const { data, error } = await supabase.rpc("dispatch_stock_transfer", {
-      p_transfer_id: transferId,
-    });
-    if (error) throw new Error(error.message);
-    if (!data) throw new Error("Dispatch transfer returned no data.");
-    const result = data as ApproveTransferResult;
-
-    set((s) => ({
-      stockTransfers: s.stockTransfers.map((t) =>
-        t.id === result.stockTransfer.id ? result.stockTransfer : t
-      ),
-      stockTransferItems: s.stockTransferItems.map(
-        (i) => result.stockTransferItems.find((u) => u.id === i.id) ?? i
-      ),
-      auditLogs: [...result.auditLogs, ...s.auditLogs],
-    }));
+  dispatchTransfer: async ({ transferId, actorId }) => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return dispatchTransferOffline(transferId, actorId);
+    }
+    try {
+      return await dispatchTransferOnline(transferId);
+    } catch (err) {
+      if (isNetworkError(err)) return dispatchTransferOffline(transferId, actorId);
+      throw err;
+    }
   },
 
-  // Receive: destination confirms receipt; atomic RPC moves stock (source →
-  // dest) for the received quantities and writes paired movements.
-  receiveTransfer: async ({ transferId, receivedItems }) => {
-    const { data, error } = await supabase.rpc("receive_stock_transfer", {
-      p_transfer_id: transferId,
-      p_received_items: receivedItems
-        ? receivedItems.map((r) => ({ product_id: r.productId, received_qty: r.receivedQty }))
-        : null,
-    });
-    if (error) throw new Error(error.message);
-    if (!data) throw new Error("Receive transfer returned no data.");
-    const result = data as CompleteTransferResult;
+  receiveTransfer: async ({ transferId, actorId, receivedItems }) => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return receiveTransferOffline(transferId, actorId, receivedItems);
+    }
+    try {
+      return await receiveTransferOnline(transferId, receivedItems);
+    } catch (err) {
+      if (isNetworkError(err)) return receiveTransferOffline(transferId, actorId, receivedItems);
+      throw err;
+    }
+  },
 
+  // Called by the outbox once a queued dispatch actually runs — dispatch
+  // never touches inventory, so this just replaces the provisional status.
+  reconcileDispatchTransfer: (data) => {
+    const result = data as ApproveTransferResult;
     set((s) => ({
-      stockTransfers: s.stockTransfers.map((t) =>
-        t.id === result.stockTransfer.id ? result.stockTransfer : t
-      ),
-      stockTransferItems: s.stockTransferItems.map(
-        (i) => result.stockTransferItems.find((u) => u.id === i.id) ?? i
-      ),
-      inventory: mergeInventory(s.inventory, result.inventory),
-      movements: [...result.movements, ...s.movements],
+      stockTransfers: s.stockTransfers.map((t) => (t.id === result.stockTransfer.id ? result.stockTransfer : t)),
+      stockTransferItems: s.stockTransferItems.map((i) => result.stockTransferItems.find((u) => u.id === i.id) ?? i),
       auditLogs: [...result.auditLogs, ...s.auditLogs],
     }));
+    void putLocalRows({ stockTransfers: [result.stockTransfer], stockTransferItems: result.stockTransferItems, auditLogs: result.auditLogs });
+  },
+
+  // Called by the outbox once a queued receive actually runs — swaps the
+  // provisional OUT/IN movements for the server's authoritative ones.
+  reconcileReceiveTransfer: (data, provisional) => {
+    const result = data as CompleteTransferResult;
+    const provisionalMovementIds = new Set(provisional.find((p) => p.table === "movements")?.ids ?? []);
+
+    set((s) => ({
+      stockTransfers: s.stockTransfers.map((t) => (t.id === result.stockTransfer.id ? result.stockTransfer : t)),
+      stockTransferItems: s.stockTransferItems.map((i) => result.stockTransferItems.find((u) => u.id === i.id) ?? i),
+      inventory: mergeInventory(s.inventory, result.inventory),
+      movements: [...result.movements, ...s.movements.filter((m) => !provisionalMovementIds.has(m.id))],
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+    void deleteLocalRows(provisional);
+    void putLocalRows({
+      stockTransfers: [result.stockTransfer], stockTransferItems: result.stockTransferItems,
+      inventory: result.inventory, movements: result.movements, auditLogs: result.auditLogs,
+    });
   },
 
   cancelTransfer: async ({ transferId, reason }) => {
@@ -171,4 +338,5 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
 
   getPendingTransfersForApproval: (shopId: string) =>
     get().stockTransfers.filter((t) => t.fromShopId === shopId && t.status === "PENDING"),
-});
+  };
+};

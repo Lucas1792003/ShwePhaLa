@@ -381,7 +381,10 @@ export const TransfersPage = () => {
                       <td className="px-3 py-3">{toShop?.name ?? transfer.toShopId}</td>
                       <td className="px-3 py-3">{items.length} {t("transfers", "itemsSuffix")}</td>
                       <td className="px-3 py-3">
-                        <Badge color={statusColors[transfer.status]}>{statusLabels[transfer.status]}</Badge>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge color={statusColors[transfer.status]}>{statusLabels[transfer.status]}</Badge>
+                          {transfer.pendingSync && <Badge tone="amber">Pending sync</Badge>}
+                        </div>
                       </td>
                       <td className="px-3 py-3">
                         <div>{formatDateTime(transfer.createdAt)}</div>

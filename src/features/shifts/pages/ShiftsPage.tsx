@@ -709,7 +709,10 @@ export const ShiftsPage = () => {
                           {isClosed ? formatMmk(shift.varianceMmk ?? 0) : "Active"}
                         </TD>
                         <TD>
-                          <Badge tone={isClosed ? "slate" : "green"}>{statusLabel(shift)}</Badge>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge tone={isClosed ? "slate" : "green"}>{statusLabel(shift)}</Badge>
+                            {shift.pendingSync && <Badge tone="amber">Pending sync</Badge>}
+                          </div>
                         </TD>
                         <TD className="text-right">
                           <Button

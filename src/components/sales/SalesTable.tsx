@@ -33,7 +33,15 @@ export const SalesTable = ({ sales, users, onView }: SalesTableProps) => (
               onClick={() => onView(sale.id)}
               className="cursor-pointer transition hover:bg-slate-50"
             >
-              <TD>{sale.receiptNo}</TD>
+              <TD>
+                <div className="flex items-center gap-2">
+                  <span>{sale.receiptNo}</span>
+                  {/* Set by the offline checkout path (stores/data/slices/saleSlice.ts)
+                      until the outbox actually reconciles this sale with the server —
+                      see the Sync Conflicts page if it's stuck here. */}
+                  {sale.pendingSync && <Badge tone="amber">Pending sync</Badge>}
+                </div>
+              </TD>
               <TD>{formatDateTime(sale.createdAt)}</TD>
               <TD>{cashier?.name}</TD>
               <TD>{sale.paymentMethod}</TD>

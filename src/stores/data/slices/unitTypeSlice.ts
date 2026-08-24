@@ -1,7 +1,8 @@
 import type { StateCreator } from "zustand";
 import type { DataState, UnitTypeState } from "../types";
 import type { UnitType } from "../../../types";
-import { supabase, dbWrite } from "../../../lib/supabase";
+import { dbWrite } from "../../../lib/supabase";
+import { writeTableRow } from "../tableWrite";
 
 export const createUnitTypeSlice: StateCreator<DataState, [], [], UnitTypeState> = (set, get) => ({
   unitTypes: [],
@@ -9,15 +10,16 @@ export const createUnitTypeSlice: StateCreator<DataState, [], [], UnitTypeState>
   addUnitType: (unitType: UnitType) => {
     set((state) => ({ unitTypes: [...state.unitTypes, unitType] }));
     dbWrite(
-      supabase.from("unit_types").insert({
-        id: unitType.id,
-        name: unitType.name,
-        abbreviation: unitType.abbreviation ?? null,
-        description: unitType.description ?? null,
-        is_active: unitType.isActive,
-        sort_order: unitType.sortOrder,
-        created_at: unitType.createdAt,
-        updated_at: unitType.updatedAt,
+      writeTableRow({
+        table: "unit_types", op: "insert", id: unitType.id,
+        row: {
+          id: unitType.id, name: unitType.name,
+          abbreviation: unitType.abbreviation ?? null,
+          description: unitType.description ?? null,
+          is_active: unitType.isActive, sort_order: unitType.sortOrder,
+          created_at: unitType.createdAt, updated_at: unitType.updatedAt,
+        },
+        appRow: unitType,
       }),
       "addUnitType"
     );
@@ -28,16 +30,15 @@ export const createUnitTypeSlice: StateCreator<DataState, [], [], UnitTypeState>
       unitTypes: state.unitTypes.map((item) => (item.id === unitType.id ? unitType : item)),
     }));
     dbWrite(
-      supabase
-        .from("unit_types")
-        .update({
-          name: unitType.name,
-          abbreviation: unitType.abbreviation ?? null,
+      writeTableRow({
+        table: "unit_types", op: "update", id: unitType.id,
+        row: {
+          name: unitType.name, abbreviation: unitType.abbreviation ?? null,
           description: unitType.description ?? null,
-          is_active: unitType.isActive,
-          sort_order: unitType.sortOrder,
-        })
-        .eq("id", unitType.id),
+          is_active: unitType.isActive, sort_order: unitType.sortOrder,
+        },
+        appRow: unitType,
+      }),
       "updateUnitType"
     );
   },
@@ -53,7 +54,7 @@ export const createUnitTypeSlice: StateCreator<DataState, [], [], UnitTypeState>
       unitTypes: state.unitTypes.map((item) => (item.id === unitTypeId ? next : item)),
     }));
     dbWrite(
-      supabase.from("unit_types").update({ is_active: false }).eq("id", unitTypeId),
+      writeTableRow({ table: "unit_types", op: "update", id: unitTypeId, row: { is_active: false }, appRow: next }),
       "deactivateUnitType"
     );
   },

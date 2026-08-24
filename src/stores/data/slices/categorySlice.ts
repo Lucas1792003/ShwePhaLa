@@ -1,18 +1,23 @@
 import type { StateCreator } from "zustand";
 import type { DataState, CategoryState } from "../types";
 import type { Category } from "../../../types";
-import { supabase, dbWrite } from "../../../lib/supabase";
+import { dbWrite } from "../../../lib/supabase";
 import { getCategoryDeleteBlockMessage } from "../../../features/categories/categoryUsage";
+import { writeTableRow } from "../tableWrite";
 
 export const createCategorySlice: StateCreator<DataState, [], [], CategoryState> = (set, get) => ({
   categories: [],
 
   addCategory: (category: Category) => {
     set((state) => ({ categories: [...state.categories, category] }));
-    dbWrite(supabase.from("categories").insert({
-      id: category.id, name: category.name, color: category.color,
-      icon_key: category.iconKey ?? null,
-      is_active: category.isActive, created_at: category.createdAt,
+    dbWrite(writeTableRow({
+      table: "categories", op: "insert", id: category.id,
+      row: {
+        id: category.id, name: category.name, color: category.color,
+        icon_key: category.iconKey ?? null,
+        is_active: category.isActive, created_at: category.createdAt,
+      },
+      appRow: category,
     }), "addCategory");
   },
 
@@ -20,10 +25,14 @@ export const createCategorySlice: StateCreator<DataState, [], [], CategoryState>
     set((state) => ({
       categories: state.categories.map((item) => (item.id === category.id ? category : item)),
     }));
-    dbWrite(supabase.from("categories").update({
-      name: category.name, color: category.color, icon_key: category.iconKey ?? null,
-      is_active: category.isActive,
-    }).eq("id", category.id), "updateCategory");
+    dbWrite(writeTableRow({
+      table: "categories", op: "update", id: category.id,
+      row: {
+        name: category.name, color: category.color, icon_key: category.iconKey ?? null,
+        is_active: category.isActive,
+      },
+      appRow: category,
+    }), "updateCategory");
   },
 
   // Safe delete: a category is never removed while products still reference
@@ -39,11 +48,13 @@ export const createCategorySlice: StateCreator<DataState, [], [], CategoryState>
       throw new Error(blockMessage);
     }
 
+    const next = { ...category, isActive: false };
     set((s) => ({
-      categories: s.categories.map((item) =>
-        item.id === categoryId ? { ...item, isActive: false } : item
-      ),
+      categories: s.categories.map((item) => (item.id === categoryId ? next : item)),
     }));
-    dbWrite(supabase.from("categories").update({ is_active: false }).eq("id", categoryId), "deleteCategory");
+    dbWrite(writeTableRow({
+      table: "categories", op: "update", id: categoryId,
+      row: { is_active: false }, appRow: next,
+    }), "deleteCategory");
   },
 });

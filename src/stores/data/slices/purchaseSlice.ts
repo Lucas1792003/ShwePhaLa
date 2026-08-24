@@ -5,6 +5,12 @@ import type {
   Supplier, SupplierPayment,
 } from "../../../types";
 import { supabase, dbExec } from "../../../lib/supabase";
+import { isNetworkError } from "../../../lib/errors";
+import { newId } from "../../../lib/id";
+import { useAuthStore } from "../../authStore";
+import { enqueueOutbox } from "../outbox";
+import { deleteLocalRows, putLocalRows } from "../localWrites";
+import { writeTableRow } from "../tableWrite";
 
 // Shape returned by the receive_purchase_order RPC (camelCase keys).
 interface ReceivePurchaseOrderResult {
@@ -50,24 +56,239 @@ const supplierRow = (s: Supplier) => ({
   notes: s.notes ?? null, is_active: s.isActive, created_at: s.createdAt,
 });
 
-export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState> = (set) => ({
+export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState> = (set, get) => {
+  // Purchase receiving: a single atomic Supabase RPC. The database validates
+  // permission, shop scope and the PO status, then writes the PO status,
+  // received quantities (billed at received value), inventory, movements
+  // and audit row in one transaction.
+  const receivePurchaseOrderOnline = async (
+    purchaseOrderId: string,
+    receivedItems: { productId: string; receivedQty?: number; productUnitId?: string; receivedUnitQty?: number }[],
+  ): Promise<void> => {
+    const { data, error } = await supabase.rpc("receive_purchase_order", {
+      p_purchase_order_id: purchaseOrderId,
+      p_received_items: receivedItems.map((r) => ({
+        product_id: r.productId, received_qty: r.receivedQty ?? null,
+        product_unit_id: r.productUnitId ?? null, received_unit_qty: r.receivedUnitQty ?? null,
+      })),
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Receiving returned no data.");
+    const result = data as ReceivePurchaseOrderResult;
+
+    set((s) => ({
+      purchaseOrders: s.purchaseOrders.map((p) => (p.id === result.purchaseOrder.id ? result.purchaseOrder : p)),
+      purchaseOrderItems: s.purchaseOrderItems.map((i) => result.purchaseOrderItems.find((u) => u.id === i.id) ?? i),
+      inventory: mergeInventory(s.inventory, result.inventory),
+      movements: [...result.movements, ...s.movements],
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+    void putLocalRows({
+      purchaseOrders: [result.purchaseOrder], purchaseOrderItems: result.purchaseOrderItems,
+      inventory: result.inventory, movements: result.movements, auditLogs: result.auditLogs,
+    });
+  };
+
+  // No network: receive the PO against locally-known data, mirroring
+  // receive_purchase_order's own math (bill at received value: each line
+  // total and the PO subtotal/total reflect what actually arrived, not what
+  // was ordered) so supplier debt stays accurate even offline. The PO and
+  // transfer this references are assumed to already have real ids — PO
+  // creation/approval stays online-only, so there's nothing to wait on here.
+  const receivePurchaseOrderOffline = async (
+    purchaseOrderId: string, receiverId: string,
+    receivedItems: { productId: string; receivedQty?: number; productUnitId?: string; receivedUnitQty?: number }[],
+  ): Promise<void> => {
+    const po = get().purchaseOrders.find((p) => p.id === purchaseOrderId);
+    if (!po) throw new Error("Purchase order not found.");
+    if (po.status !== "APPROVED") throw new Error("Purchase order is not in a receivable (APPROVED) status.");
+
+    const now = new Date().toISOString();
+    const lines = get().purchaseOrderItems.filter((i) => i.purchaseOrderId === purchaseOrderId);
+    const inputByProduct = new Map(receivedItems.map((r) => [r.productId, r]));
+
+    const updatedItems: PurchaseOrderItem[] = [];
+    const movements: InventoryMovement[] = [];
+    const inventoryUpdates: Inventory[] = [];
+    let subtotalMmk = 0;
+
+    for (const item of lines) {
+      const input = inputByProduct.get(item.productId);
+      let receivedBase: number;
+      let unit: { id: string; name: string; baseQuantity: number; purchasePriceMmk?: number } | undefined;
+      let unitQty: number | undefined;
+
+      if (input?.productUnitId) {
+        unit = get().productUnits.find(
+          (u) => u.id === input.productUnitId && u.productId === item.productId && u.isActive,
+        );
+        if (!unit) throw new Error(`Sellable unit is not active for ${item.productId}.`);
+        unitQty = input.receivedUnitQty ?? 0;
+        if (unitQty < 0) throw new Error("Received unit qty must be zero or greater.");
+        receivedBase = unitQty * unit.baseQuantity;
+      } else if (input) {
+        receivedBase = input.receivedQty ?? item.orderedQty;
+      } else {
+        receivedBase = item.orderedQty;
+      }
+      if (receivedBase < 0 || receivedBase > item.orderedQty) {
+        throw new Error("Received quantity must be between 0 and the ordered quantity.");
+      }
+
+      const lineTotalMmk = receivedBase * item.unitCostMmk;
+      subtotalMmk += lineTotalMmk;
+      updatedItems.push({
+        ...item, receivedQty: receivedBase, lineTotalMmk,
+        productUnitId: unit?.id ?? item.productUnitId,
+        unitNameSnapshot: unit?.name ?? item.unitNameSnapshot,
+        unitBaseQuantitySnapshot: unit?.baseQuantity ?? item.unitBaseQuantitySnapshot,
+        selectedUnitQuantity: unitQty ?? item.selectedUnitQuantity,
+        unitPurchasePriceSnapshot: unit?.purchasePriceMmk ?? item.unitPurchasePriceSnapshot,
+      });
+
+      if (receivedBase === 0) continue;
+      const qtyBefore = get().getInventoryQty(po.shopId, item.productId);
+      const qtyAfter = qtyBefore + receivedBase;
+      inventoryUpdates.push({ shopId: po.shopId, productId: item.productId, qtyBaseUnits: qtyAfter });
+      movements.push({
+        id: newId("move"), shopId: po.shopId, productId: item.productId, type: "PURCHASE_IN",
+        qtyChange: receivedBase, qtyBefore, qtyAfter,
+        reason: `Purchase order ${po.orderNo} received (offline — pending sync)`,
+        referenceType: "purchase", referenceId: po.id, createdBy: receiverId, createdAt: now,
+        productUnitId: unit?.id, unitNameSnapshot: unit?.name, unitBaseQuantitySnapshot: unit?.baseQuantity,
+        selectedUnitQuantity: unitQty, pendingSync: true,
+      });
+    }
+
+    const updatedPo: PurchaseOrder = {
+      ...po, status: "RECEIVED", receivedBy: receiverId, receivedAt: now,
+      subtotalMmk, totalMmk: subtotalMmk + (po.taxMmk ?? 0), pendingSync: true,
+    };
+
+    set((s) => ({
+      purchaseOrders: s.purchaseOrders.map((p) => (p.id === po.id ? updatedPo : p)),
+      purchaseOrderItems: s.purchaseOrderItems.map((i) => updatedItems.find((u) => u.id === i.id) ?? i),
+      inventory: mergeInventory(s.inventory, inventoryUpdates),
+      movements: [...movements, ...s.movements],
+    }));
+    void putLocalRows({
+      purchaseOrders: [updatedPo], purchaseOrderItems: updatedItems,
+      inventory: inventoryUpdates, movements,
+    });
+
+    await enqueueOutbox({
+      kind: "rpc",
+      name: "receive_purchase_order",
+      args: {
+        p_purchase_order_id: purchaseOrderId,
+        p_received_items: receivedItems.map((r) => ({
+          product_id: r.productId, received_qty: r.receivedQty ?? null,
+          product_unit_id: r.productUnitId ?? null, received_unit_qty: r.receivedUnitQty ?? null,
+        })),
+      },
+      shopId: po.shopId,
+      provisional: [{ table: "movements", ids: movements.map((m) => m.id) }],
+    });
+  };
+
+  const recordSupplierPaymentOnline = async (input: {
+    purchaseOrderId: string; amountMmk: number; paymentMethod: string; referenceNo?: string; notes?: string;
+  }): Promise<void> => {
+    const { data, error } = await supabase.rpc("record_supplier_payment", {
+      p_purchase_order_id: input.purchaseOrderId,
+      p_amount_mmk: input.amountMmk,
+      p_payment_method: input.paymentMethod,
+      p_reference_no: input.referenceNo ?? null,
+      p_notes: input.notes ?? null,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Record supplier payment returned no data.");
+    const result = data as RecordSupplierPaymentResult;
+
+    set((s) => ({
+      purchaseOrders: s.purchaseOrders.map((p) => (p.id === result.purchaseOrder.id ? result.purchaseOrder : p)),
+      supplierPayments: [result.supplierPayment, ...s.supplierPayments],
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+    void putLocalRows({ purchaseOrders: [result.purchaseOrder], supplierPayments: [result.supplierPayment], auditLogs: result.auditLogs });
+  };
+
+  // No network: mirror record_supplier_payment's own balance/status math
+  // (paid so far + this payment, capped by outstanding balance) against the
+  // locally-known PO. The PO this references is assumed to already be
+  // RECEIVED with a real id — PO creation/approval/receiving-approval flows
+  // aside from receiving itself stay online-only.
+  const recordSupplierPaymentOffline = async (input: {
+    purchaseOrderId: string; amountMmk: number; paymentMethod: "CASH" | "BANK" | "MOBILE" | "OTHER";
+    referenceNo?: string; notes?: string;
+  }): Promise<void> => {
+    const po = get().purchaseOrders.find((p) => p.id === input.purchaseOrderId);
+    if (!po) throw new Error("Purchase order not found.");
+    if (po.status !== "RECEIVED") {
+      throw new Error("Supplier payments can only be recorded against received purchase orders.");
+    }
+    const outstanding = po.totalMmk - (po.paidMmk ?? 0);
+    if (outstanding <= 0) throw new Error("Purchase order is already paid.");
+    if (input.amountMmk > outstanding) throw new Error("Payment amount exceeds outstanding balance.");
+
+    const now = new Date().toISOString();
+    const newPaid = (po.paidMmk ?? 0) + input.amountMmk;
+    const updatedPo: PurchaseOrder = {
+      ...po, paidMmk: newPaid,
+      paymentStatus: newPaid >= po.totalMmk ? "PAID" : newPaid > 0 ? "PARTIAL" : "UNPAID",
+      pendingSync: true,
+    };
+    const payment: SupplierPayment = {
+      id: newId("suppay"), supplierId: po.supplierId, purchaseOrderId: po.id, shopId: po.shopId,
+      amountMmk: input.amountMmk, paymentMethod: input.paymentMethod, referenceNo: input.referenceNo,
+      notes: input.notes, paidAt: now, createdBy: useAuthStore.getState().currentUserId ?? "system",
+      createdAt: now, pendingSync: true,
+    };
+
+    set((s) => ({
+      purchaseOrders: s.purchaseOrders.map((p) => (p.id === po.id ? updatedPo : p)),
+      supplierPayments: [payment, ...s.supplierPayments],
+    }));
+    void putLocalRows({ purchaseOrders: [updatedPo], supplierPayments: [payment] });
+
+    await enqueueOutbox({
+      kind: "rpc",
+      name: "record_supplier_payment",
+      args: {
+        p_purchase_order_id: input.purchaseOrderId, p_amount_mmk: input.amountMmk,
+        p_payment_method: input.paymentMethod, p_reference_no: input.referenceNo ?? null,
+        p_notes: input.notes ?? null,
+      },
+      shopId: po.shopId,
+      provisional: [{ table: "supplierPayments", ids: [payment.id] }],
+    });
+  };
+
+  return {
   suppliers: [],
   purchaseOrders: [],
   purchaseOrderItems: [],
   supplierPayments: [],
 
   addSupplier: async (supplier: Supplier) => {
-    await dbExec(supabase.from("suppliers").insert(supplierRow(supplier)), "Add supplier");
+    await dbExec(
+      writeTableRow({ table: "suppliers", op: "insert", id: supplier.id, row: supplierRow(supplier), appRow: supplier }),
+      "Add supplier"
+    );
     set((state) => ({ suppliers: [...state.suppliers, supplier] }));
   },
 
   updateSupplier: async (supplier: Supplier) => {
     await dbExec(
-      supabase.from("suppliers").update({
-        code: supplier.code, name: supplier.name, contact_person: supplier.contactPerson ?? null,
-        phone: supplier.phone ?? null, email: supplier.email ?? null,
-        address: supplier.address ?? null, notes: supplier.notes ?? null, is_active: supplier.isActive,
-      }).eq("id", supplier.id),
+      writeTableRow({
+        table: "suppliers", op: "update", id: supplier.id,
+        row: {
+          code: supplier.code, name: supplier.name, contact_person: supplier.contactPerson ?? null,
+          phone: supplier.phone ?? null, email: supplier.email ?? null,
+          address: supplier.address ?? null, notes: supplier.notes ?? null, is_active: supplier.isActive,
+        },
+        appRow: supplier,
+      }),
       "Update supplier"
     );
     set((state) => ({
@@ -114,40 +335,36 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
     }));
   },
 
-  // Purchase receiving: a single atomic Supabase RPC. The database validates
-  // permission, shop scope and the PO status, then writes the PO status,
-  // received quantities, inventory, movements and audit row in one transaction.
-  receivePurchaseOrder: async ({ purchaseOrderId, receivedItems }) => {
-    const { data, error } = await supabase.rpc("receive_purchase_order", {
-      p_purchase_order_id: purchaseOrderId,
-      // Forward whichever shape the caller provided. The RPC accepts either
-      // `received_qty` (base) or `{product_unit_id, received_unit_qty}`
-      // (unit-aware path) per line; the server computes the base total when
-      // unit fields are present.
-      p_received_items: receivedItems.map((r) => ({
-        product_id: r.productId,
-        received_qty: r.receivedQty ?? null,
-        product_unit_id: r.productUnitId ?? null,
-        received_unit_qty: r.receivedUnitQty ?? null,
-      })),
-    });
-    if (error) throw new Error(error.message);
-    if (!data) throw new Error("Receiving returned no data.");
+  receivePurchaseOrder: async ({ purchaseOrderId, receiverId, receivedItems }) => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return receivePurchaseOrderOffline(purchaseOrderId, receiverId, receivedItems);
+    }
+    try {
+      return await receivePurchaseOrderOnline(purchaseOrderId, receivedItems);
+    } catch (err) {
+      if (isNetworkError(err)) return receivePurchaseOrderOffline(purchaseOrderId, receiverId, receivedItems);
+      throw err;
+    }
+  },
 
+  // Called by the outbox once a queued receive_purchase_order actually runs
+  // — swaps the provisional movements for the server's authoritative ones.
+  reconcileReceivePurchaseOrder: (data, provisional) => {
     const result = data as ReceivePurchaseOrderResult;
+    const provisionalMovementIds = new Set(provisional.find((p) => p.table === "movements")?.ids ?? []);
 
-    // Reconcile local state from the authoritative RPC result.
     set((s) => ({
-      purchaseOrders: s.purchaseOrders.map((p) =>
-        p.id === result.purchaseOrder.id ? result.purchaseOrder : p
-      ),
-      purchaseOrderItems: s.purchaseOrderItems.map(
-        (i) => result.purchaseOrderItems.find((u) => u.id === i.id) ?? i
-      ),
+      purchaseOrders: s.purchaseOrders.map((p) => (p.id === result.purchaseOrder.id ? result.purchaseOrder : p)),
+      purchaseOrderItems: s.purchaseOrderItems.map((i) => result.purchaseOrderItems.find((u) => u.id === i.id) ?? i),
       inventory: mergeInventory(s.inventory, result.inventory),
-      movements: [...result.movements, ...s.movements],
+      movements: [...result.movements, ...s.movements.filter((m) => !provisionalMovementIds.has(m.id))],
       auditLogs: [...result.auditLogs, ...s.auditLogs],
     }));
+    void deleteLocalRows(provisional);
+    void putLocalRows({
+      purchaseOrders: [result.purchaseOrder], purchaseOrderItems: result.purchaseOrderItems,
+      inventory: result.inventory, movements: result.movements, auditLogs: result.auditLogs,
+    });
   },
 
   cancelPurchaseOrder: async ({ purchaseOrderId }) => {
@@ -167,25 +384,35 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
     }));
   },
 
-  recordSupplierPayment: async ({ purchaseOrderId, amountMmk, paymentMethod, referenceNo, notes }) => {
-    const { data, error } = await supabase.rpc("record_supplier_payment", {
-      p_purchase_order_id: purchaseOrderId,
-      p_amount_mmk: amountMmk,
-      p_payment_method: paymentMethod,
-      p_reference_no: referenceNo ?? null,
-      p_notes: notes ?? null,
-    });
-    if (error) throw new Error(error.message);
-    if (!data) throw new Error("Record supplier payment returned no data.");
+  recordSupplierPayment: async (input) => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return recordSupplierPaymentOffline(input);
+    }
+    try {
+      return await recordSupplierPaymentOnline(input);
+    } catch (err) {
+      if (isNetworkError(err)) return recordSupplierPaymentOffline(input);
+      throw err;
+    }
+  },
+
+  // Called by the outbox once a queued record_supplier_payment actually
+  // runs — swaps the provisional payment for the server's authoritative one.
+  reconcileRecordSupplierPayment: (data, provisional) => {
     const result = data as RecordSupplierPaymentResult;
+    const provisionalIds = new Set(provisional.find((p) => p.table === "supplierPayments")?.ids ?? []);
 
     set((s) => ({
-      purchaseOrders: s.purchaseOrders.map((p) =>
-        p.id === result.purchaseOrder.id ? result.purchaseOrder : p
-      ),
-      supplierPayments: [result.supplierPayment, ...s.supplierPayments],
+      purchaseOrders: s.purchaseOrders.map((p) => (p.id === result.purchaseOrder.id ? result.purchaseOrder : p)),
+      supplierPayments: [
+        result.supplierPayment, ...s.supplierPayments.filter((p) => !provisionalIds.has(p.id)),
+      ],
       auditLogs: [...result.auditLogs, ...s.auditLogs],
     }));
+    void deleteLocalRows(provisional);
+    void putLocalRows({
+      purchaseOrders: [result.purchaseOrder], supplierPayments: [result.supplierPayment], auditLogs: result.auditLogs,
+    });
   },
 
   paySupplierLumpSum: async ({ supplierId, shopId, amountMmk, paymentMethod, referenceNo, notes }) => {
@@ -232,5 +459,6 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
       auditLogs: [...result.auditLogs, ...s.auditLogs],
     }));
   },
-});
+  };
+};
 

@@ -64,9 +64,12 @@ export const MovementsTable = ({ movements, products }: MovementsTableProps) => 
             <TR key={movement.id}>
               <TD>{product?.name}</TD>
               <TD>
-                <Badge color={movementTypeColors[movement.type] ?? "gray"}>
-                  {movementTypeLabels[movement.type] ?? movement.type}
-                </Badge>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge color={movementTypeColors[movement.type] ?? "gray"}>
+                    {movementTypeLabels[movement.type] ?? movement.type}
+                  </Badge>
+                  {movement.pendingSync && <Badge tone="amber">Pending sync</Badge>}
+                </div>
               </TD>
               <TD>
                 <div className={isPositive ? "text-green-600" : "text-red-600"}>
