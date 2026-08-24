@@ -8,6 +8,7 @@ import type { Permission, Role } from "../../types";
 import { hasPermission, ROUTE_PERMISSIONS } from "../../lib/permissions";
 import { ShopSwitcher } from "./ShopSwitcher";
 import { LanguageSwitcher } from "../../components/layout/LanguageSwitcher";
+import { DownloadAppModal } from "../../components/layout/DownloadAppModal";
 import { useTranslation } from "../../hooks/useTranslation";
 import { useViewportWidth } from "../../hooks/useViewportWidth";
 
@@ -90,6 +91,7 @@ export const Sidebar = () => {
   const brandMeta = businessProfile?.tagline?.trim() || "Multi-shop console";
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
   const { t } = useTranslation();
   const viewportWidth = useViewportWidth();
   const isTabletNav = viewportWidth < 1024;
@@ -217,6 +219,16 @@ export const Sidebar = () => {
         <button
           type="button"
           className="logout-btn"
+          onClick={() => setShowDownloadModal(true)}
+          title={effectiveCollapsed ? "Download desktop app" : undefined}
+          aria-label="Download desktop app"
+        >
+          <span className="material-symbols-rounded">download</span>
+          <span>Download App</span>
+        </button>
+        <button
+          type="button"
+          className="logout-btn"
           onClick={handleLogout}
           title={effectiveCollapsed ? t("common", "logout") : undefined}
           aria-label={t("common", "logout")}
@@ -225,6 +237,7 @@ export const Sidebar = () => {
           <span>{t("common", "logout")}</span>
         </button>
       </div>
+      <DownloadAppModal open={showDownloadModal} onClose={() => setShowDownloadModal(false)} />
     </aside>
   );
 };

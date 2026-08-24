@@ -12,8 +12,8 @@
     "test": "vitest run",
     "electron:dev": "concurrently -k -n VITE,ELECTRON -c blue,green \"vite\" \"wait-on tcp:5173 && electron .\"",
     "electron:build": "npm run build && electron-builder",
-    "electron:build:mac": "npm run build && electron-builder --mac",
-    "electron:build:win": "npm run build && electron-builder --win"
+    "electron:build:mac": "npm run build && electron-builder --mac --x64 --arm64",
+    "electron:build:win": "npm run build && electron-builder --win --x64"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
