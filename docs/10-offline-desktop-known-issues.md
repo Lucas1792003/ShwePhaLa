@@ -136,6 +136,39 @@ already established:
       installed via the in-app Download button (`DownloadAppModal.tsx`).
       `npm run electron:dev` (the live-reload dev flow) is still unverified,
       as is actually opening/using the packaged app post-install.
+- [x] **Fixed — Windows blank white screen after install.** `vite.config.ts`
+      had no `base` set, so `npm run build` emitted absolute asset paths
+      (`src="/assets/index-*.js"`). That's correct for the web deploy
+      (Vercel rewrites every route to `index.html`, so assets must resolve
+      from the domain root) but breaks Electron, which loads
+      `dist/index.html` via `file://` — an absolute path there resolves
+      against the filesystem root, not `dist/`, so the script/CSS silently
+      fail to load and the window renders blank. Fixed with a conditional
+      `base` (`process.env.ELECTRON_BUILD === 'true' ? './' : '/'`) and a
+      new `build:electron` script (`tsc -b && cross-env
+      ELECTRON_BUILD=true vite build`) that the `electron:build*` scripts
+      now use instead of the shared `build` script. Verified by grepping
+      `dist/index.html` after each build: `npm run build` still produces
+      `/assets/...`, `npm run build:electron` now produces `./assets/...`.
+      Shipped in v1.0.1.
+- [x] **Partial mitigation — macOS "app is damaged" Gatekeeper block.**
+      Root cause: the packaged `.app` was completely unsigned, and current
+      macOS Gatekeeper refuses to open an unsigned, quarantined app
+      downloaded from the internet with a hard "is damaged, move to Trash"
+      dialog rather than the older "unidentified developer, right-click to
+      Open" warning. Added `electron/afterPack.cjs`, an electron-builder
+      `afterPack` hook that ad-hoc code-signs the `.app` (`codesign
+      --force --deep --sign -`) after packaging — free, no Apple Developer
+      account needed. Confirmed applied via `codesign -dv` showing
+      `Signature=adhoc` on the rebuilt app. **This is not a guaranteed full
+      fix** — ad-hoc signing typically softens the block to the
+      bypassable "unidentified developer" warning, but the newest macOS
+      Gatekeeper policies may still show "damaged" for a downloaded,
+      non-notarized app. A user who still hits "damaged" after this can
+      manually clear the quarantine flag (`xattr -cr
+      "/Applications/Shwe Pha La POS.app"`). The only complete, guaranteed
+      fix is real Apple notarization, which needs a paid ($99/yr) Apple
+      Developer account — not set up. Shipped in v1.0.1.
 - [ ] **No cash-drawer support.** `electron/main.cjs` only wires silent
       receipt printing (`webContents.print()` to a system printer). Kicking
       a cash drawer needs either a drawer-kick ESC/POS command embedded in
@@ -171,6 +204,14 @@ already established:
       `mac.target` now includes `zip` alongside `dmg` — electron-updater's
       Mac update mechanism needs the zip artifact even though the dmg is
       what a fresh install uses.
+      **Gotcha hit while shipping v1.0.1**: `--publish always` reported
+      success but the GitHub Release ended up with only 1 of ~12 expected
+      assets — an interrupted/incomplete automated upload, not a build
+      problem (every file existed correctly locally). Always verify after
+      publishing: `gh release view v<version> --json assets --jq
+      '.assets[] | "\(.name) \(.size)"'` and compare against the local
+      `release/` folder; if assets are missing, finish the upload manually
+      with `gh release upload v<version> <missing files> --clobber`.
 - [ ] **Barcode label printing was deliberately left on `window.print()`**
       (`pages/BarcodeLabelsPage.tsx`) — per `06-ui-printing-hardware.md`,
       operators currently rely on the OS print dialog to pick matching
