@@ -17,4 +17,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
    * (from listPrinters()); omitted uses the OS default.
    */
   printReceipt: (options) => ipcRenderer.invoke("printers:print-receipt", options ?? {}),
+
+  appVersion: () => ipcRenderer.invoke("app:get-version"),
+
+  /** Manually triggers an update check — progress/result arrives via onUpdateStatus. */
+  checkForUpdates: () => ipcRenderer.invoke("updates:check"),
+
+  /** Quits and installs an already-downloaded update (only valid once onUpdateStatus reports "downloaded"). */
+  installUpdate: () => ipcRenderer.invoke("updates:install"),
+
+  /** Subscribes to update lifecycle events. Returns an unsubscribe function. */
+  onUpdateStatus: (callback) => {
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on("updates:status", listener);
+    return () => ipcRenderer.removeListener("updates:status", listener);
+  },
 });

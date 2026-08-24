@@ -9,6 +9,7 @@ import { hasPermission, ROUTE_PERMISSIONS } from "../../lib/permissions";
 import { ShopSwitcher } from "./ShopSwitcher";
 import { LanguageSwitcher } from "../../components/layout/LanguageSwitcher";
 import { DownloadAppModal } from "../../components/layout/DownloadAppModal";
+import { CheckForUpdatesButton } from "../../components/layout/CheckForUpdatesButton";
 import { useTranslation } from "../../hooks/useTranslation";
 import { useViewportWidth } from "../../hooks/useViewportWidth";
 
@@ -216,16 +217,19 @@ export const Sidebar = () => {
           <div className="user-name">{currentUser?.name ?? "User"}</div>
           <div className="user-role">{currentUser?.role ?? ""}</div>
         </div>
-        <button
-          type="button"
-          className="logout-btn"
-          onClick={() => setShowDownloadModal(true)}
-          title={effectiveCollapsed ? "Download desktop app" : undefined}
-          aria-label="Download desktop app"
-        >
-          <span className="material-symbols-rounded">download</span>
-          <span>Download App</span>
-        </button>
+        {!window.electronAPI && (
+          <button
+            type="button"
+            className="logout-btn"
+            onClick={() => setShowDownloadModal(true)}
+            title={effectiveCollapsed ? "Download desktop app" : undefined}
+            aria-label="Download desktop app"
+          >
+            <span className="material-symbols-rounded">download</span>
+            <span>Download App</span>
+          </button>
+        )}
+        <CheckForUpdatesButton />
         <button
           type="button"
           className="logout-btn"

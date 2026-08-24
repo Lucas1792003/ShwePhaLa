@@ -95,14 +95,31 @@ function checkForUpdates() {
   });
 }
 
+// Pushes live update status to the renderer (see preload.cjs's
+// onUpdateStatus) so the sidebar's "Check for Updates" button can show
+// checking/downloading/ready state without the user polling or restarting
+// the app to find out.
+function sendUpdateStatus(status) {
+  if (mainWindow) mainWindow.webContents.send("updates:status", status);
+}
+
 autoUpdater.autoDownload = true;
 autoUpdater.logger = console;
 
+autoUpdater.on("checking-for-update", () => sendUpdateStatus({ state: "checking" }));
+autoUpdater.on("update-available", (info) => sendUpdateStatus({ state: "available", version: info.version }));
+autoUpdater.on("update-not-available", (info) => sendUpdateStatus({ state: "not-available", version: info.version }));
+autoUpdater.on("download-progress", (progress) =>
+  sendUpdateStatus({ state: "downloading", percent: Math.round(progress.percent) }),
+);
+
 autoUpdater.on("error", (err) => {
   console.error("[update] error:", err);
+  sendUpdateStatus({ state: "error", message: err instanceof Error ? err.message : String(err) });
 });
 
 autoUpdater.on("update-downloaded", (info) => {
+  sendUpdateStatus({ state: "downloaded", version: info.version });
   if (!mainWindow) return;
   dialog
     .showMessageBox(mainWindow, {
@@ -118,6 +135,23 @@ autoUpdater.on("update-downloaded", (info) => {
       if (result.response === 0) autoUpdater.quitAndInstall();
     });
 });
+
+// Manual "Check for Updates" button in the sidebar — lets a user pull the
+// latest build without deleting and reinstalling. Status is reported back
+// via the "updates:status" events above, not this handler's return value,
+// since checkForUpdates() is async/event-driven under the hood.
+ipcMain.handle("updates:check", () => {
+  if (isDev) return { ok: false, error: "Update checks are unavailable in dev mode." };
+  checkForUpdates();
+  return { ok: true };
+});
+
+ipcMain.handle("updates:install", () => {
+  autoUpdater.quitAndInstall();
+  return { ok: true };
+});
+
+ipcMain.handle("app:get-version", () => app.getVersion());
 
 // ------------------------------------------------------------------
 // Receipt printing: silent-print to a system printer (no dialog, no
