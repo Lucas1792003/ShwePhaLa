@@ -1,5 +1,4 @@
 import { Modal } from "../ui/Modal";
-import { Badge } from "../ui/Badge";
 
 // GitHub Release asset URLs — the canonical /releases/download/<tag>/<file>
 // form, stable/public, no auth needed as long as the release is published
@@ -9,35 +8,29 @@ import { Badge } from "../ui/Badge";
 // version (it derives the tag from package.json's "version").
 const RELEASE_TAG = "v1.0.0";
 const RELEASE_BASE = `https://github.com/Lucas1792003/ShwePhaLa/releases/download/${RELEASE_TAG}`;
+// Intel Mac build (Shwe-Pha-La-POS-1.0.0.dmg) is still published in the
+// release for anyone who needs it directly, just not offered here — every
+// Mac sold since 2020 is Apple Silicon.
 const DOWNLOADS = {
   macArm: `${RELEASE_BASE}/Shwe-Pha-La-POS-1.0.0-arm64.dmg`,
   windows: `${RELEASE_BASE}/Shwe-Pha-La-POS-Setup-1.0.0.exe`,
 };
-// Intel Mac build (Shwe-Pha-La-POS-1.0.0.dmg) is still published in the
-// release for anyone who needs it directly, just not offered here — every
-// Mac sold since 2020 is Apple Silicon, and keeping the picker to 2 options
-// reads cleaner than 3.
 
-type OsOption = {
-  key: string;
-  label: string;
-  hint: string;
-  url: string;
-};
+const AppleIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-10 w-10 fill-current">
+    <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zm3.24-2.986c.837-1.012 1.402-2.42 1.245-3.816-1.207.052-2.662.805-3.523 1.817-.774.896-1.454 2.326-1.271 3.7 1.336.104 2.712-.679 3.549-1.701z" />
+  </svg>
+);
 
-// Best-effort guess at which download to highlight — cosmetic only, both
-// options are always shown regardless.
-function detectLikelyOs(): string | null {
-  if (typeof navigator === "undefined") return null;
-  const ua = navigator.userAgent;
-  if (/Windows/i.test(ua)) return "windows";
-  if (/Mac/i.test(ua)) return "mac-arm";
-  return null;
-}
+const WindowsIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-10 w-10 fill-current">
+    <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.351" />
+  </svg>
+);
 
-const OPTIONS: OsOption[] = [
-  { key: "mac-arm", label: "macOS", hint: "Apple Silicon Macs (M1 and later)", url: DOWNLOADS.macArm },
-  { key: "windows", label: "Windows", hint: "64-bit Windows 10 / 11", url: DOWNLOADS.windows },
+const OPTIONS = [
+  { key: "mac-arm", name: "macOS", Icon: AppleIcon, url: DOWNLOADS.macArm },
+  { key: "windows", name: "Windows", Icon: WindowsIcon, url: DOWNLOADS.windows },
 ];
 
 interface DownloadAppModalProps {
@@ -46,38 +39,20 @@ interface DownloadAppModalProps {
 }
 
 export const DownloadAppModal = ({ open, onClose }: DownloadAppModalProps) => {
-  const likely = detectLikelyOs();
-
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Download the desktop app"
-      description="Pick your operating system."
-      size="sm"
-    >
-      <div className="space-y-2">
-        {OPTIONS.map((option) => (
+    <Modal open={open} onClose={onClose} title="Download the desktop app" size="sm">
+      <div className="flex justify-center gap-4">
+        {OPTIONS.map(({ key, name, Icon, url }) => (
           <a
-            key={option.key}
-            href={option.url}
-            className="flex items-center justify-between rounded-xl border border-slate-200 p-3 transition-colors hover:border-emerald-300 hover:bg-emerald-50/60"
+            key={key}
+            href={url}
+            className="flex w-32 flex-col items-center gap-2 rounded-xl border border-slate-200 py-6 text-slate-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50/60 hover:text-emerald-700"
           >
-            <div>
-              <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                {option.label}
-                {option.key === likely && <Badge tone="green">Likely yours</Badge>}
-              </div>
-              <div className="mt-0.5 text-xs text-slate-500">{option.hint}</div>
-            </div>
-            <span className="material-symbols-rounded text-slate-400">download</span>
+            <Icon />
+            <span className="text-sm font-medium">{name}</span>
           </a>
         ))}
       </div>
-      <p className="mt-4 text-xs text-slate-400">
-        Unsigned builds: macOS will warn the app is from an unidentified developer — right-click the app →
-        Open, once. Windows SmartScreen may warn similarly — click "More info" → "Run anyway".
-      </p>
     </Modal>
   );
 };
