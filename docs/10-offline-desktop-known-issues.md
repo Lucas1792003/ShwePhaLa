@@ -197,6 +197,28 @@ already established:
       "/Applications/Shwe Pha La POS.app"`). The only complete, guaranteed
       fix is real Apple notarization, which needs a paid ($99/yr) Apple
       Developer account — not set up. Shipped in v1.0.1.
+- [x] **Fixed — v1.0.2 accidentally re-shipped the white-screen bug.**
+      `dist/` is shared between the web build and the desktop build, and
+      only differs in `vite.config.ts`'s `base` (see the v1.0.1 fix
+      above) depending on whether `ELECTRON_BUILD=true` was set for that
+      particular `vite build` run. v1.0.2 was published by running
+      `electron-builder` directly right after a plain `npm run build`
+      (done for web-deploy verification) without an intervening
+      `npm run build:electron` — electron-builder just packages whatever
+      is already sitting in `dist/`, it does not build anything itself,
+      so it silently packaged the web (absolute-path) build into both the
+      Mac and Windows installers. Confirmed on a real Mac install via
+      DevTools (Cmd+Option+I): `net::ERR_FILE_NOT_FOUND` on
+      `/assets/*.js`. **Rule going forward**: never run `electron-builder`
+      directly — always go through `npm run electron:build:mac` /
+      `:win` (which chain `build:electron` first), or if invoking
+      `electron-builder` directly for a combined `--mac --win --publish`
+      run, run `npm run build:electron` as the immediately preceding
+      command with nothing in between that could touch `dist/` again.
+      Worth double-checking before any publish: `grep -o 'src="[^"]*"'
+      dist/index.html` should show `./assets/...`, not `/assets/...`.
+      Fixed in v1.0.3 (v1.0.2's release was left in place but is broken
+      on both platforms — don't point anyone at it).
 - [ ] **No cash-drawer support.** `electron/main.cjs` only wires silent
       receipt printing (`webContents.print()` to a system printer). Kicking
       a cash drawer needs either a drawer-kick ESC/POS command embedded in
