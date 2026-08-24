@@ -8,12 +8,22 @@ import { Modal } from "../ui/Modal";
 // version (it derives the tag from package.json's "version").
 const RELEASE_TAG = "v1.0.4";
 const RELEASE_BASE = `https://github.com/Lucas1792003/ShwePhaLa/releases/download/${RELEASE_TAG}`;
-// Intel Mac build (Shwe.Pha.La.POS-1.0.4.dmg) is still published in the
+// electron-builder's own GitHub publish step sanitizes the space in
+// "Shwe Pha La POS" to a DASH for the primary installer files (dmg/exe) —
+// not the DOT that `gh release upload`'s manual fallback produces. This has
+// flip-flopped between releases before (v1.0.1-1.0.3 needed dots because
+// the primary assets were uploaded manually via `gh release upload` after
+// an incomplete auto-publish; v1.0.4's auto-publish actually completed, so
+// it's dashes). package.json's `build.artifactName` now pins this
+// explicitly going forward — verify with `gh release view v<version>
+// --json assets --jq '.assets[].name'` before updating this file, don't
+// assume the pattern from a prior version.
+// Intel Mac build (Shwe-Pha-La-POS-1.0.4.dmg) is still published in the
 // release for anyone who needs it directly, just not offered here — every
 // Mac sold since 2020 is Apple Silicon.
 const DOWNLOADS = {
-  macArm: `${RELEASE_BASE}/Shwe.Pha.La.POS-1.0.4-arm64.dmg`,
-  windows: `${RELEASE_BASE}/Shwe.Pha.La.POS.Setup.1.0.4.exe`,
+  macArm: `${RELEASE_BASE}/Shwe-Pha-La-POS-1.0.4-arm64.dmg`,
+  windows: `${RELEASE_BASE}/Shwe-Pha-La-POS-Setup-1.0.4.exe`,
 };
 
 const AppleIcon = () => (

@@ -71,10 +71,12 @@
         "dmg",
         "zip"
       ],
-      "category": "public.app-category.business"
+      "category": "public.app-category.business",
+      "artifactName": "Shwe-Pha-La-POS-${version}-${arch}.${ext}"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "artifactName": "Shwe-Pha-La-POS-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
