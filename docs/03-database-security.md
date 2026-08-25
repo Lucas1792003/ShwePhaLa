@@ -69,6 +69,7 @@ Apply in numeric order. The current ordered list:
 | `041_complete_sale_cost_snapshot.sql` | Adds `sale_items.unit_cost_mmk_snapshot`; `complete_sale` captures product cost at sale time so profit/COGS use historical cost, not drifting current cost. |
 | `042_admin_login_codes.sql` | `admin_login_codes` table (auth_id, code_hash, expires_at, consumed_at, attempts) for the admin email-code 2FA step. **Service-role only**: RLS on, no policies, privileges revoked from anon/authenticated. |
 | `043_business_profile.sql` | `business_profile` singleton (business_name, logo_url, address, phone, email, tagline) for the app-wide brand. Read = any authenticated; UPDATE = ADMIN only; INSERT/DELETE revoked (seeded single row). |
+| `048_supplier_rpcs.sql` | `create_supplier`/`update_supplier`: permission check + write + a `SUPPLIER_CREATED`/`SUPPLIER_UPDATED` audit row (with a per-field change list) in one transaction. Global entity, `audit_logs.shop_id` is `NULL`. Replaces the previous direct `suppliers` table writes from `purchaseSlice.ts` (the `suppliers_ins`/`suppliers_upd` RLS policies from migration `010` are unchanged — kept as a fallback, not revoked). |
 
 > **Migration order warning.** Some later migrations depend on identity
 > helpers from `003` and the audit-write lockdown from `013`. Always apply
@@ -128,6 +129,7 @@ the audit row — all in one transaction.
 | `log_receipt_reprint(p_sale_id)` | Reprint log + audit row |
 | `log_audit_event(...)` | Generic audit writer for admin/reference events; forces `actor_id` to `current_app_user()` |
 | `create_product_image_upload_session(...)` + family | QR-based phone product image uploads (see migration 019) |
+| `create_supplier(...)`, `update_supplier(...)` | Supplier create/update; permission-gated, writes a per-field-change audit row. Global entity, no shop scope. Migration `048` |
 
 ## RLS Model
 

@@ -10,7 +10,11 @@ import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { SearchInput } from "../components/forms/SearchInput";
 import { SupplierFormModal } from "../components/suppliers/SupplierFormModal";
-import { buildSupplierFinancialSummary } from "../features/suppliers/debt";
+import {
+  buildSupplierFinancialSummary,
+  getPurchaseOrderBalanceMmk,
+  getSupplierPurchaseOrders,
+} from "../features/suppliers/debt";
 import { getDebtStatus } from "../features/suppliers/uiConstants";
 import { nextSupplierCode } from "../lib/supplierValidation";
 import { formatMmk, getEffectiveShopId } from "../lib/utils";
@@ -81,6 +85,24 @@ export const SuppliersPage = () => {
   };
 
   const toggleActive = async (supplier: Supplier) => {
+    // Only warn on the way to deactivating — reactivating never needs a
+    // confirm. Outstanding balance is checked across all shops, since
+    // deactivation is a global action on the supplier record.
+    if (supplier.isActive) {
+      const outstandingPos = getSupplierPurchaseOrders(supplier.id, purchaseOrders)
+        .filter((po) => getPurchaseOrderBalanceMmk(po) > 0);
+      if (outstandingPos.length > 0) {
+        const totalOutstanding = outstandingPos.reduce(
+          (sum, po) => sum + getPurchaseOrderBalanceMmk(po), 0,
+        );
+        if (!confirm(
+          t("suppliers", "confirmDeactivateWithDebt", {
+            n: outstandingPos.length,
+            amount: formatMmk(totalOutstanding),
+          })
+        )) return;
+      }
+    }
     try {
       await updateSupplier({ ...supplier, isActive: !supplier.isActive });
       addToast({

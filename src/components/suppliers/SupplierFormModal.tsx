@@ -5,7 +5,6 @@ import { useToast } from "../ui/Toast";
 import { useDataStore } from "../../stores/dataStore";
 import { mapSupplierFormError, validateSupplierInput } from "../../lib/supplierValidation";
 import { useTranslation } from "../../hooks/useTranslation";
-import { newId } from "../../lib/id";
 import type { Supplier } from "../../types";
 
 interface SupplierFormModalProps {
@@ -103,7 +102,6 @@ export const SupplierFormModal = ({
         toast({ variant: "success", title: t("suppliers", "updated") });
       } else {
         await addSupplier({
-          id: newId("supplier"),
           code: form.code,
           name: form.name,
           contactPerson: form.contactPerson || undefined,
@@ -111,8 +109,6 @@ export const SupplierFormModal = ({
           email: form.email || undefined,
           address: form.address || undefined,
           notes: form.notes || undefined,
-          isActive: true,
-          createdAt: new Date().toISOString(),
         });
         toast({ variant: "success", title: t("suppliers", "added") });
       }

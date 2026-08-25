@@ -72,6 +72,16 @@ export interface CreatePurchaseOrderInput {
   createdBy: string;
 }
 
+export interface CreateSupplierInput {
+  code: string;
+  name: string;
+  contactPerson?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
+}
+
 export interface AdjustStockInput {
   shopId: string;
   productId: string;
@@ -266,7 +276,7 @@ export interface PurchaseState {
   purchaseOrders: PurchaseOrder[];
   purchaseOrderItems: PurchaseOrderItem[];
   supplierPayments: SupplierPayment[];
-  addSupplier: (supplier: Supplier) => Promise<void>;
+  addSupplier: (input: CreateSupplierInput) => Promise<Supplier>;
   updateSupplier: (supplier: Supplier) => Promise<void>;
   createPurchaseOrder: (input: CreatePurchaseOrderInput) => Promise<string>;
   approvePurchaseOrder: (input: { purchaseOrderId: string; approverId: string }) => Promise<void>;

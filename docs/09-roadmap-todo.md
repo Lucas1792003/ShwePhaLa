@@ -57,16 +57,44 @@ Open work, grouped by area.
       [`archive/30-rls-permission-gating-checklist.md`](./archive/30-rls-permission-gating-checklist.md)
       to confirm migration `015` + `018`'s SELECT policies block
       cross-shop and cross-permission reads.
-- [ ] **System-wide error-handling polish.** Central utility is in place
-      (`src/lib/errors.ts`, `useAsyncAction`, ErrorBoundary, loadData
-      Retry). Remaining: migrate the rest of the modals to
-      `useAsyncAction`; surface per-detail-page error states (sale detail
-      drawer, supplier detail page) when a single fetch fails after
-      bootstrap.
-- [ ] **Supplier workflow polish.** Move supplier `INSERT`/`UPDATE` to a
-      dedicated RPC for audit-row consistency (today they're direct
-      `dbExec` writes with friendly toasts). Add a confirmation step
-      before deactivating a supplier with outstanding RECEIVED POs.
+- [x] **System-wide error-handling polish.** Central utility is in place
+      (`src/lib/errors.ts`, ErrorBoundary, `loadData` Retry). **Note:**
+      `useAsyncAction` never actually existed as a hook — it was only
+      mentioned in two code comments as an aspirational pattern. The real
+      remaining gap was blocking `alert()` popups for async-action errors
+      in `InventoryPage.tsx`, `TransfersPage.tsx` (5 sites),
+      `PricingPage.tsx` (2 sites), and `ProductsManagePage.tsx` (3 sites) —
+      all now route through the same `useToast()` + `getErrorMessage()`
+      pattern already used in `SupplierDetailPage.tsx`/`ProductFormPage.tsx`.
+      Also fixed a genuine leftover raw-error leak the earlier security
+      pass missed: `ProductsManagePage.tsx`'s delete-category handler was
+      showing `e.message` directly instead of routing through
+      `getErrorMessage()`. Synchronous validation `alert()`s (duplicate
+      name, no-stock, delete-blocked, etc.) were left as-is — not part of
+      this item. Checked the two named detail-page fetch-error gaps and
+      neither exists today: `SaleDetailPage.tsx` has no separate fetch (all
+      data comes from the bootstrap-loaded store), and
+      `SupplierDetailPage.tsx`'s action handlers already used
+      `toast()`/`getErrorMessage()`, not `alert()`.
+- [x] **Supplier workflow polish.** `create_supplier`/`update_supplier`
+      (migration `048`, applied to production) are now `SECURITY DEFINER`
+      RPCs — permission check, the write, and a `SUPPLIER_CREATED`/
+      `SUPPLIER_UPDATED` audit row (with a per-field change list, e.g.
+      "Changed: name, notes, deactivated") all in one transaction, global
+      entity so `shop_id` is `NULL`. `purchaseSlice.ts`/
+      `SupplierFormModal.tsx` call the RPCs directly (server now mints the
+      id). Verified end-to-end against a rolled-back production
+      transaction before applying — caught and fixed two real bugs in the
+      process: a `text[] || 'literal'` operator-ambiguity crash in the
+      change-tracking logic (fixed with `array_append`), and a reference to
+      `suppliers.updated_at`, a column migration `044` was supposed to add
+      but was never actually applied to this production project (the
+      column doesn't exist yet — flagged separately, not fixed here to
+      keep this migration scoped). `SuppliersPage.tsx`'s deactivate flow
+      now warns with the outstanding balance/PO count
+      (`getSupplierPurchaseOrders`/`getPurchaseOrderBalanceMmk` from
+      `debt.ts`) before deactivating a supplier with unpaid RECEIVED POs;
+      reactivating never prompts.
 - [ ] **User-management RPCs (`create_app_user` / `update_app_user` /
       `deactivate_app_user`).** Migration `020` enforces the
       assignment rules at the DB level, but creates/updates are still
@@ -351,13 +379,19 @@ These were the headline backend hardening milestones; details are in
       labels/grids. System is the persisted default and follows live OS
       changes; `index.html` resolves it before first paint. Receipts, barcode
       labels, and QR paper surfaces remain print-safe on white.
-- [x] **Windows updater shutdown hardening (v1.0.9).** The v1.0.7 in-process
-      exit timer was confirmed insufficient during the v1.0.7 → v1.0.8 test.
-      The v1.0.9 NSIS installer now force-closes the exact product executable
-      regardless of its previous/custom install path, while the app starts an
-      independent delayed cleanup helper before `quitAndInstall()`. The
-      single-instance lock remains in place. Real-hardware confirmation of the
-      v1.0.8 → v1.0.9 handoff remains in document 10's testing gaps.
+- [x] **Windows updater "cannot be closed" — real root cause found and
+      fixed (v1.0.10).** v1.0.7 and v1.0.9 both hardened the app-running
+      pre-check (single-instance lock, hard-exit timer, external
+      `taskkill` watchdog) and a real v1.0.7 → v1.0.9 test still
+      reproduced the exact same dialog — both were fixing the wrong NSIS
+      code path. The actual failure is a separate, non-customizable
+      5-second file-copy retry loop in electron-builder's own
+      `extractAppPackage.nsh`. v1.0.10's `build/installer.nsh` now
+      loop-verifies the old process is gone (via `tasklist`) instead of a
+      flat sleep, giving that retry window far more real margin. See
+      document 10 for the full diagnosis. Real-hardware confirmation of
+      an older-version → v1.0.10 update remains in document 10's testing
+      gaps.
 - [x] **Sidebar footer action layout (v1.0.8).** Update and logout controls now
       use full-width stacked rows so labels and dynamic updater states cannot
       overlap in the expanded desktop sidebar.

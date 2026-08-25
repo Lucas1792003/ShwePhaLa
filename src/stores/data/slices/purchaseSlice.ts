@@ -1,16 +1,15 @@
 import type { StateCreator } from "zustand";
-import type { DataState, PurchaseState, CreatePurchaseOrderInput } from "../types";
+import type { DataState, PurchaseState, CreatePurchaseOrderInput, CreateSupplierInput } from "../types";
 import type {
   AuditLog, Inventory, InventoryMovement, PurchaseOrder, PurchaseOrderItem,
   Supplier, SupplierPayment,
 } from "../../../types";
-import { supabase, dbExec } from "../../../lib/supabase";
+import { supabase } from "../../../lib/supabase";
 import { isNetworkError } from "../../../lib/errors";
 import { newId } from "../../../lib/id";
 import { useAuthStore } from "../../authStore";
 import { enqueueOutbox } from "../outbox";
 import { deleteLocalRows, putLocalRows } from "../localWrites";
-import { writeTableRow } from "../tableWrite";
 
 // Shape returned by the receive_purchase_order RPC (camelCase keys).
 interface ReceivePurchaseOrderResult {
@@ -38,6 +37,11 @@ interface RecordSupplierPaymentResult {
   auditLogs: AuditLog[];
 }
 
+interface SupplierResult {
+  supplier: Supplier;
+  auditLogs: AuditLog[];
+}
+
 // Merge RPC-returned inventory rows into the current store array.
 const mergeInventory = (current: Inventory[], updates: Inventory[]): Inventory[] => {
   const result = [...current];
@@ -48,13 +52,6 @@ const mergeInventory = (current: Inventory[], updates: Inventory[]): Inventory[]
   }
   return result;
 };
-
-// snake_case row mappers for purchasing tables
-const supplierRow = (s: Supplier) => ({
-  id: s.id, code: s.code, name: s.name, contact_person: s.contactPerson ?? null,
-  phone: s.phone ?? null, email: s.email ?? null, address: s.address ?? null,
-  notes: s.notes ?? null, is_active: s.isActive, created_at: s.createdAt,
-});
 
 export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState> = (set, get) => {
   // Purchase receiving: a single atomic Supabase RPC. The database validates
@@ -273,29 +270,46 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
   purchaseOrderItems: [],
   supplierPayments: [],
 
-  addSupplier: async (supplier: Supplier) => {
-    await dbExec(
-      writeTableRow({ table: "suppliers", op: "insert", id: supplier.id, row: supplierRow(supplier), appRow: supplier }),
-      "Add supplier"
-    );
-    set((state) => ({ suppliers: [...state.suppliers, supplier] }));
+  addSupplier: async (input: CreateSupplierInput) => {
+    const { data, error } = await supabase.rpc("create_supplier", {
+      p_code: input.code,
+      p_name: input.name,
+      p_contact_person: input.contactPerson ?? null,
+      p_phone: input.phone ?? null,
+      p_email: input.email ?? null,
+      p_address: input.address ?? null,
+      p_notes: input.notes ?? null,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Create supplier returned no data.");
+    const result = data as SupplierResult;
+
+    set((s) => ({
+      suppliers: [...s.suppliers, result.supplier],
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
+    }));
+    return result.supplier;
   },
 
   updateSupplier: async (supplier: Supplier) => {
-    await dbExec(
-      writeTableRow({
-        table: "suppliers", op: "update", id: supplier.id,
-        row: {
-          code: supplier.code, name: supplier.name, contact_person: supplier.contactPerson ?? null,
-          phone: supplier.phone ?? null, email: supplier.email ?? null,
-          address: supplier.address ?? null, notes: supplier.notes ?? null, is_active: supplier.isActive,
-        },
-        appRow: supplier,
-      }),
-      "Update supplier"
-    );
-    set((state) => ({
-      suppliers: state.suppliers.map((s) => (s.id === supplier.id ? supplier : s)),
+    const { data, error } = await supabase.rpc("update_supplier", {
+      p_id: supplier.id,
+      p_code: supplier.code,
+      p_name: supplier.name,
+      p_contact_person: supplier.contactPerson ?? null,
+      p_phone: supplier.phone ?? null,
+      p_email: supplier.email ?? null,
+      p_address: supplier.address ?? null,
+      p_notes: supplier.notes ?? null,
+      p_is_active: supplier.isActive,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Update supplier returned no data.");
+    const result = data as SupplierResult;
+
+    set((s) => ({
+      suppliers: s.suppliers.map((sup) => (sup.id === result.supplier.id ? result.supplier : sup)),
+      auditLogs: [...result.auditLogs, ...s.auditLogs],
     }));
   },
 
