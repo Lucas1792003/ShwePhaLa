@@ -49,14 +49,29 @@ Open work, grouped by area.
       and `<PROJECT_REF>` placeholders never filled in, so every 5-minute
       run had been failing silently since it was first scheduled. Fixed
       and confirmed succeeding on its next real run.
-- [ ] **Live Supabase RLS/RPC verification.** Run the full
+- [x] **Live Supabase RLS/RPC verification — done 2026-08-25, found and
+      fixed a critical bug.** Ran the full
       [`archive/29-live-supabase-rls-rpc-verification.md`](./archive/29-live-supabase-rls-rpc-verification.md)
-      checklist against the production project. Required after every
-      migration that touches RLS or RPCs.
-- [ ] **Permission-gated SELECT verification.** Run
+      checklist against the live production project (throwaway QA
+      fixtures for scenarios real data couldn't cover, deleted after —
+      see that doc's Manual Result Log for the full method). **Found: 20
+      tables (`sales`, `shifts`, `purchase_orders`, `supplier_payments`,
+      `audit_logs`, `inventory_movements`, `users`, `suppliers`,
+      `stock_transfers`, `refund_void_requests`, `reprint_logs`, and 9
+      more) still had a leftover `authenticated_all USING (true)` policy
+      alongside the real permission/shop-scoped policy, silently
+      defeating it for reads — confirmed live, a plain CASHIER test
+      account could read the entire `supplier_payments` table.** Fixed by
+      migration `050` (applied to production, re-confirmed closed
+      live). Also found (not a bug, flagged to confirm intent): MANAGER
+      lacks `purchase:approve`/`transfer:cancel` by default, only ADMIN
+      has them, making the single ADMIN account a bottleneck for both.
+- [x] **Permission-gated SELECT verification — done 2026-08-25, same
+      pass as above.** Ran
       [`archive/30-rls-permission-gating-checklist.md`](./archive/30-rls-permission-gating-checklist.md)
-      to confirm migration `015` + `018`'s SELECT policies block
-      cross-shop and cross-permission reads.
+      against production; this is the checklist that specifically caught
+      the finding above (the CASHIER/`supplier_payments` check). See that
+      doc for the per-role checklist results.
 - [x] **System-wide error-handling polish.** Central utility is in place
       (`src/lib/errors.ts`, ErrorBoundary, `loadData` Retry). **Note:**
       `useAsyncAction` never actually existed as a hook — it was only
@@ -155,6 +170,38 @@ app. Ordered by severity; each was independently verified with a concrete
 exploit/failure path, not speculative. See the audit conversation for full
 per-area detail if more context is needed before fixing.
 
+- [x] **Fixed — read-scoping silently defeated on 20 tables via a
+      leftover permissive RLS policy.** Found during the 2026-08-25 live
+      RLS/RPC verification pass (not the 2026-08-24 audit that seeded the
+      rest of this list — added here since it belongs with the other
+      RLS findings). `sales`, `shifts`, `purchase_orders`,
+      `supplier_payments`, `audit_logs`, `inventory_movements`, `users`,
+      `suppliers`, `stock_transfers`, `refund_void_requests`,
+      `reprint_logs`, `sale_items`, `stock_transfer_items`,
+      `purchase_order_items`, `categories`, `products`, `inventory`,
+      `price_tiers`, `product_barcodes`, `shops` each still carried a
+      leftover `authenticated_all FOR ALL TO authenticated USING (true)`
+      policy alongside the real permission/shop-scoped policy —
+      PostgreSQL ORs multiple permissive policies together, so the
+      unconditional one silently made the real one a no-op for every
+      read. Confirmed live: a test CASHIER account with no
+      `purchase:view`/`supplier:debt_view` could read the full
+      `supplier_payments` table (real debt/payment amounts); a test
+      MANAGER could read another shop's `audit_logs`/
+      `inventory_movements`. Writes were unaffected (already blocked by
+      table-level `REVOKE`, confirmed separately). Root cause: migration
+      `010` already contains the correct `DROP POLICY IF EXISTS
+      "authenticated_all"` cleanup for a few tables, but that cleanup
+      evidently never fully landed on this production project for the
+      other 20 — same class of gap as the `suppliers.updated_at`/
+      migration `044` discrepancy found while building migration `048`.
+      Fixed by migration `050` — drops the stale policy on all 20
+      tables, verified against a rolled-back production transaction
+      before applying (confirmed the leak closes while every role's
+      legitimate access is unchanged), applied to production, and
+      re-confirmed closed live. See
+      [`archive/29-live-supabase-rls-rpc-verification.md`](./archive/29-live-supabase-rls-rpc-verification.md)'s
+      Manual Result Log for the full writeup.
 - [ ] **Deactivated/revoked staff can keep completing real offline sales for
       up to 24h.** `authStore.ts`'s offline session-trust window (built for
       the offline-login fix) isn't just a stale-read risk — `saleSlice.ts`'s

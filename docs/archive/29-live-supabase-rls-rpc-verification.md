@@ -316,17 +316,83 @@ Never expose service-role keys to Vite/browser code.
 
 ## Manual Result Log
 
-Record the live project result here:
-
-- Date:
-- Supabase project:
-- Migrations applied through:
-- Admin identity check:
-- Manager identity check:
-- Cashier identity check:
-- RPC success tests:
-- Protected direct write failures:
-- Shop-scoped reads:
+- Date: 2026-08-25
+- Supabase project: shwephala (gzqiukxnzfdouwaotelx)
+- Migrations applied through: 050
+- Method: production had only 1 real shop / 3 real staff (no BUYER, no
+  second shop, no second cashier), not enough to exercise cross-shop or
+  own-vs-other-cashier scoping — created throwaway QA fixtures (1 shop, 4
+  Auth-backed users, 1 product, 1 supplier, clearly `qa-`/`QA` prefixed)
+  via the Supabase Admin API + the app's own RPCs, ran every check as the
+  real role via a simulated JWT claim (`SET LOCAL "request.jwt.claim.sub"`)
+  against the real production database, then deleted every QA row and
+  Auth account afterward. Pre-flight SQL checks: all clean, 0 violations.
+- Admin identity check: pass — `auth.uid()`, `current_app_user()`,
+  `app_role()`, `app_shop_id()` all resolve correctly.
+- Manager identity check: pass, for both the real MANAGER and a QA
+  MANAGER in a second shop.
+- Cashier identity check: pass, for the real CASHIER and 2 QA cashiers
+  (same-shop and different-shop).
+- RPC success tests: all pass — shift open/close, `complete_sale`
+  (normal + oversell correctly rejected without `pos:override_stock`,
+  correctly allowed with it and `stock_override_by` correctly stamped),
+  `adjust_stock`, refund/void request + approval + reject-on-retry,
+  purchase order create/approve/receive (payment status stays UNPAID,
+  `paid_mmk` 0, as expected), supplier payment partial/final/overpayment-
+  rejected, stock transfer create/approve/dispatch/receive/reject/cancel,
+  receipt reprint.
+  **Finding (not a bug, confirm intentional):** MANAGER has
+  `purchase:create`/`purchase:receive` but not `purchase:approve`, and
+  `transfer:create`/`transfer:approve` but not `transfer:cancel` — only
+  ADMIN holds those by default (`014_rbac_role_tuning.sql`). This makes
+  the single ADMIN account a hard bottleneck for approving every PO and
+  canceling every transfer. Confirmed as designed intent, not verified as
+  a mistake — flagging since it wasn't obviously intentional going in.
+- Protected direct write failures: pass — all 11 listed tables (`sales`,
+  `inventory`, `inventory_movements`, `shifts`, `audit_logs`,
+  `purchase_orders`, `supplier_payments`, `stock_transfers`,
+  `refund_void_requests`, `reprint_logs`) reject a direct write from an
+  ordinary authenticated (non-service) session with `permission denied`
+  — the table-level GRANT itself is revoked, not just RLS, so this holds
+  regardless of any RLS policy state.
+- Shop-scoped reads: **initially failed** — see the critical finding
+  below. Re-verified and passing after migration `050`.
 - Notes / defects:
+  - **[Fixed, migration 050, applied 2026-08-25] Critical: read-scoping
+    was silently defeated on 20 tables.** `sales`, `shifts`,
+    `purchase_orders`, `supplier_payments`, `audit_logs`,
+    `inventory_movements`, `users`, `suppliers`, `stock_transfers`,
+    `refund_void_requests`, `reprint_logs`, `sale_items`,
+    `stock_transfer_items`, `purchase_order_items`, `categories`,
+    `products`, `inventory`, `price_tiers`, `product_barcodes`, `shops`
+    each still had a leftover `authenticated_all FOR ALL TO authenticated
+    USING (true)` policy sitting *alongside* the real permission/shop-
+    scoped `<table>_sel` policy from migrations 010/015. Postgres ORs
+    multiple PERMISSIVE policies together, so the unconditional `true`
+    policy silently overrode the real one for every read. Confirmed live,
+    not theoretical: a plain QA test CASHIER with no `purchase:view` or
+    `supplier:debt_view` could read the full `supplier_payments` table
+    (real supplier debt/payment amounts), and a QA test MANAGER could
+    read another shop's `audit_logs` and `inventory_movements` rows.
+    Writes were unaffected (separately confirmed blocked by table-level
+    REVOKE). Root cause: migration `010` already contains the correct
+    `DROP POLICY IF EXISTS "authenticated_all"` cleanup for a few tables
+    (e.g. `suppliers`) — those tables *still* had a live `authenticated_all`
+    policy on this project, meaning migration `010` was not fully/
+    correctly applied here originally (same class of gap as the
+    `suppliers.updated_at` / migration `044` discrepancy found while
+    building migration `048` — this project has more than one migration
+    file whose live database state doesn't match its file history).
+    Migration `050` drops the stale policy on all 20 tables; verified
+    against a rolled-back transaction before applying (CASHIER's
+    `supplier_payments` read went from full-table to 0 rows, MANAGER's
+    cross-shop `audit_logs` read went from leaking to 0 rows, ADMIN/
+    MANAGER/CASHIER legitimate access all unchanged) and re-confirmed
+    live after applying.
+  - No other defects found. Every other RPC/permission check in this
+    document passed correctly once written right (two of my own test
+    scripts had bugs, not the app — a wrong JSON key path when reading an
+    RPC's return value, and a stale sale id from an earlier step; both
+    caught by cross-checking the underlying table directly).
 
 

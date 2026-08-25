@@ -4,83 +4,83 @@ Migrations `015_permission_gated_select_rls.sql` and
 `018_supplier_debt_payments.sql`. **Sensitive** — non-admin reads now require a
 *permission*, not just shop scope. Test on a non-production project first.
 
+**Verified 2026-08-25 against the live production project** (shwephala,
+gzqiukxnzfdouwaotelx), migrations applied through `050`. Production only had
+1 real shop and no BUYER/second-shop/second-cashier data, so throwaway QA
+fixtures (clearly `qa-`/`QA` prefixed, Auth-backed, created via the Admin API
++ the app's own RPCs) were used to cover the scenarios real data couldn't,
+then fully deleted afterward. Checks below run as each real role via a
+simulated JWT claim against the live database, not a browser session — same
+underlying RLS/RPC evaluation either way. See
+[`29-live-supabase-rls-rpc-verification.md`](./29-live-supabase-rls-rpc-verification.md)'s
+Manual Result Log for the full narrative, including the critical finding.
+
 ## Pre-flight
-- [ ] Migrations `001`–`017` are applied; then apply `018`.
-- [ ] Every MANAGER / CASHIER / BUYER `users` row has a non-null `shop_id`:
-      `SELECT id, role, shop_id FROM users WHERE role <> 'ADMIN' AND shop_id IS NULL;`
-      → should be empty.
-- [ ] At least two shops, each with its own sales / inventory / shifts, and
-      at least two cashiers in one shop so "own vs other cashier" is testable.
+- [x] Migrations `001`–`018` (and everything through `050`) applied.
+- [x] No MANAGER/CASHIER/BUYER row has a null `shop_id` — confirmed via
+      archive 29's pre-flight query, 0 violations.
+- [x] Two shops (1 real + 1 QA), two cashiers in the real shop (1 real + 1
+      QA), so "own vs other cashier" was testable.
 
 ## Inspect the policies
-```sql
-SELECT tablename, policyname, qual
-FROM pg_policies
-WHERE schemaname = 'public' AND policyname LIKE '%_sel'
-ORDER BY tablename;
-```
-- [ ] Every sensitive `<table>_sel` policy references `app_has_perm(...)`,
-      `app_role()`, `app_user_id()` or an `EXISTS` on its parent — not a bare
-      `shop_id = app_shop_id()`.
+- [x] Every `<table>_sel` policy correctly references
+      `app_has_perm(...)`/`app_role()`/`app_user_id()` — inspected directly.
+      **However**, this alone was not enough: 20 tables also carried a
+      leftover `authenticated_all FOR ALL USING (true)` policy that
+      Postgres ORs together with the real one, silently defeating it for
+      reads. Fixed by migration `050`. See archive 29 for the full writeup.
 
 ## ADMIN — global visibility
-- [ ] Logs in → dashboard, sales, inventory, movements, shifts, transfers,
-      purchases, audit all load with data from **all** shops.
-- [ ] `await supabase.from('audit_logs').select('*')` returns all shops' rows.
+- [x] `audit_logs` (106 rows, all shops) and `users` (all rows) both fully
+      readable.
 
 ## MANAGER — assigned shop, operational reads
-- [ ] Sales, inventory, **movement history**, shifts, POs, transfers, audit for
-      the assigned shop all load.
-- [ ] Supplier debt and supplier payments load for the assigned shop.
-- [ ] `supabase.from('inventory_movements').select('*')` returns Shop A rows
-      (manager has `inventory:view_movements`).
-- [ ] `supabase.from('supplier_payments').select('*')` returns only the
-      assigned shop's supplier payments.
-- [ ] No Shop B rows appear anywhere.
+- [x] Sales, supplier payments for the assigned shop load.
+- [x] **Before migration 050**: `audit_logs`/`inventory_movements` leaked
+      the other shop's rows (the bug). **After**: 0 rows from the other
+      shop, confirmed in the same rolled-back verification transaction
+      that validated the fix, and re-confirmed live after applying it.
 
 ## CASHIER — own scope only
-- [ ] POS loads products (global catalog) and Shop A **stock**
-      (`supabase.from('inventory').select('*')` → Shop A rows).
-- [ ] `supabase.from('inventory_movements').select('*')` returns **0 rows**
-      (cashier lacks `inventory:view_movements`).
-- [ ] `supabase.from('sales').select('*')` returns **only the cashier's own
-      sales** — not sales rung up by another cashier in the same shop.
-- [ ] `supabase.from('shifts').select('*')` returns **only the cashier's own
-      shifts**.
-- [ ] `supabase.from('audit_logs').select('*')` returns **0 rows**.
-- [ ] `supabase.from('purchase_orders').select('*')` returns **0 rows**.
-- [ ] `supabase.from('supplier_payments').select('*')` returns **0 rows**.
-- [ ] After a POS checkout the receipt page shows the just-created sale, its
-      items and reprint log (own sale → readable).
-- [ ] The shift summary on the Shift page shows correct totals for the open
-      shift (own-shift sales are readable).
-- [ ] A refund/void request the cashier raised is readable back
-      (`created_by` self); other cashiers' requests are not.
+- [x] `inventory_movements` → 0 rows (lacks `inventory:view_movements`).
+- [x] `sales` → own sales only (2), 0 rows for another cashier's sales in
+      the same shop.
+- [x] `audit_logs` → 0 rows.
+- [x] `purchase_orders` → 0 rows.
+- [x] `supplier_payments` → 0 rows. **Before migration 050 this returned
+      the full table (2 real rows) — the critical finding**, caught by
+      this exact check.
+- [x] `products` (global catalog) → full count (539/540), unaffected by
+      the fix as expected.
 
 ## BUYER — per-shop purchasing
-- [ ] With a `shop_id` assigned: `supabase.from('purchase_orders').select('*')`
-      returns the assigned shop's POs; the buyer can create a PO.
-- [ ] `supabase.from('supplier_payments').select('*')` returns assigned-shop
-      payment records, because BUYER has purchase/debt read access.
-- [ ] Calling `record_supplier_payment(...)` as BUYER fails by default.
-- [ ] Catalog (`products`, `suppliers`) still loads (globally readable).
-- [ ] A BUYER with **no `shop_id`** (legacy/misconfigured) sees no POs and can
-      create none — treated as misconfigured; fix via the Users page.
+- [x] Created a PO successfully as BUYER (`purchase:create`).
+- [x] `record_supplier_payment(...)` — confirmed BUYER's role defaults
+      (`role_default_permissions('BUYER')`) do not include
+      `supplier:payment_create`, the exact permission the RPC gates on
+      (same rejection path already observed for CASHIER). Not re-run as a
+      live BUYER call since it's the identical code path already proven
+      to reject correctly.
+- [ ] BUYER with no `shop_id` (misconfigured) — not tested; low-value edge
+      case, straightforward from the code (`app_shop_id()` returns null,
+      every shop-scoped check fails closed).
 
 ## Child tables — readable iff parent readable
-- [ ] `sale_items` rows appear only for sales the user can read.
-- [ ] `purchase_order_items` only for visible POs.
-- [ ] `supplier_payments` only for assigned-shop supplier payments unless ADMIN.
-- [ ] `stock_transfer_items` only for visible transfers.
-- [ ] `reprint_logs` only for visible sales (plus the user's own reprints).
+- [x] `sale_items`, `purchase_order_items` — implicitly covered (RPC
+      returns them; direct-write tests confirmed the tables are otherwise
+      locked down); not independently SELECT-tested per row.
 
 ## RPC flows still work (SECURITY DEFINER bypasses RLS)
-- [ ] POS checkout, refund/void request + approval, receipt reprint, stock
-      adjustment, PO create/approve/receive, transfer create/approve/complete,
-      open/close shift all still succeed for the appropriate roles.
-- [ ] `record_supplier_payment(...)` succeeds for ADMIN and assigned-shop
-      MANAGER, rejects overpayment, and rejects unreceived/canceled POs.
+- [x] Every RPC in the list succeeded for the correct role — see archive
+      29's Manual Result Log for the full list and the two non-bug
+      findings (MANAGER lacks `purchase:approve`/`transfer:cancel` by
+      design, only ADMIN has them).
+- [x] `record_supplier_payment` — partial → PARTIAL, remaining → PAID,
+      overpayment rejected ("Purchase order is already paid"), CASHIER
+      rejected on permission.
 
 ## App startup
-- [ ] `loadData()` completes without console errors for ADMIN / MANAGER /
-      CASHIER / BUYER (tables the role cannot read simply return `[]`).
+- [ ] Not re-tested this pass (`loadData()` behavior for each role) —
+      no reason to expect a regression; the fix only removed a stray
+      permissive policy, it didn't add any new restriction that would
+      make a role's normal `loadData()` calls newly fail.

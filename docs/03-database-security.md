@@ -183,6 +183,22 @@ RLS is enabled on all listed tables.
 | `reprint_logs` | iff parent sale is readable, or `printed_by` self |
 | `audit_logs` | ADMIN; `audit:view_global`; or `audit:view_shop` + shop |
 
+**Verified live against production 2026-08-25** (see
+[`09-roadmap-todo.md`](./09-roadmap-todo.md) and
+[`archive/29-live-supabase-rls-rpc-verification.md`](./archive/29-live-supabase-rls-rpc-verification.md)).
+Found and fixed a real gap: 20 tables (including every one in the table
+above) still carried a leftover `authenticated_all FOR ALL TO
+authenticated USING (true)` policy left over from before migrations
+`010`/`015` locked things down — PostgreSQL ORs multiple permissive
+policies together, so that unconditional policy silently made the real
+rule above a no-op for reads on those tables. Migration `050` dropped it;
+the rules in the table above are now actually enforced, confirmed live.
+**When adding a new table's SELECT policy, check `pg_policies` for that
+table afterward** (`SELECT policyname, qual FROM pg_policies WHERE
+tablename = '<table>'`) — a correct new policy sitting next to a stale
+`USING (true)` one from an earlier lockdown pass is exactly this bug
+again, and it fails silently (no error, just an unintended wide-open read).
+
 Reference / catalog tables (`shops`, `users`, `categories`, `products`,
 `product_barcodes`, `price_tiers`, `suppliers`) stay globally readable —
 the POS and shared UI need them.
