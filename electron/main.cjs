@@ -3,6 +3,7 @@
 // process is simplest as a small, unbundled .cjs entry point; no build step
 // needed for it.
 const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
+const { spawn } = require("node:child_process");
 const path = require("node:path");
 const { autoUpdater } = require("electron-updater");
 
@@ -111,7 +112,6 @@ app.on("window-all-closed", () => {
 // possible SmartScreen prompt on the downloaded update itself.
 // ------------------------------------------------------------------
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
-const WINDOWS_UPDATE_EXIT_TIMEOUT_MS = 1_500;
 let updateCheckInFlight = false;
 let updateInstallStarted = false;
 
@@ -133,25 +133,48 @@ function sendUpdateStatus(status) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("updates:status", status);
 }
 
+// Run independently of Electron so it survives the normal app.quit() started
+// by electron-updater. The new NSIS installer also closes the app by exact
+// executable name, but this watchdog ensures renderer/GPU processes from the
+// requesting version cannot outlive its browser process long enough to keep
+// the installation directory locked.
+function scheduleWindowsUpdateCleanup() {
+  const executableName = path.basename(app.getPath("exe"));
+  if (!/^[a-z0-9 ._()-]+\.exe$/i.test(executableName)) {
+    console.error(`[update] refusing unsafe executable name: ${executableName}`);
+    return;
+  }
+
+  const systemRoot = process.env.SystemRoot || "C:\\Windows";
+  const commandInterpreter = process.env.ComSpec || path.join(systemRoot, "System32", "cmd.exe");
+  const ping = path.join(systemRoot, "System32", "ping.exe");
+  const taskkill = path.join(systemRoot, "System32", "taskkill.exe");
+  const command = `"${ping}" 127.0.0.1 -n 3 >NUL & "${taskkill}" /F /T /IM "${executableName}" >NUL 2>&1`;
+
+  try {
+    const cleanup = spawn(commandInterpreter, ["/d", "/s", "/c", command], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    cleanup.on("error", (err) => console.error("[update] cleanup helper failed:", err));
+    cleanup.unref();
+  } catch (err) {
+    console.error("[update] could not start cleanup helper:", err);
+  }
+}
+
 function installDownloadedUpdate() {
   if (updateInstallStarted) return false;
   updateInstallStarted = true;
   sendUpdateStatus({ state: "installing" });
 
-  // electron-updater launches the detached installer first, then calls
-  // app.quit(). On some Windows machines an Electron renderer/GPU process or
-  // another app instance can remain alive long enough for NSIS to give up.
-  // The single-instance lock prevents the latter; this bounded fallback makes
-  // sure the requesting process tree releases the installation directory.
+  // Start the independent cleanup before electron-updater launches its
+  // detached installer and calls app.quit(). It waits roughly two seconds, so
+  // graceful shutdown remains the normal path and force-close is only a
+  // fallback for an Electron process that survives it.
+  if (process.platform === "win32") scheduleWindowsUpdateCleanup();
   autoUpdater.quitAndInstall(false, true);
-
-  if (process.platform === "win32") {
-    const hardExit = setTimeout(() => {
-      for (const window of BrowserWindow.getAllWindows()) window.destroy();
-      app.exit(0);
-    }, WINDOWS_UPDATE_EXIT_TIMEOUT_MS);
-    hardExit.unref();
-  }
 
   return true;
 }

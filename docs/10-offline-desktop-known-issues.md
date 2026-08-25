@@ -239,24 +239,31 @@ already established:
       dist/index.html` should show `./assets/...`, not `/assets/...`.
       Fixed in v1.0.3 (v1.0.2's release was left in place but is broken
       on both platforms — don't point anyone at it).
-- [x] **Fixed — Windows updater could leave NSIS waiting for the app to
-      close.** After choosing **Restart now**, the v1.0.6 updater could reach
+- [x] **Superseded mitigation — Windows updater could leave NSIS waiting for
+      the app to close.** After choosing **Restart now**, the v1.0.6 updater
+      could reach
       the installer and then show "Shwe Pha La POS cannot be closed" because
       Windows still saw an app process holding the installation directory.
       There were two gaps: the desktop app did not hold Electron's
       single-instance lock (so a second/background instance could survive the
       requesting instance), and `quitAndInstall()` relied entirely on the
-      normal asynchronous `app.quit()` handoff. v1.0.7 calls
+      normal asynchronous `app.quit()` handoff. v1.0.7 added
       `app.requestSingleInstanceLock()` before ready, focuses the primary
       window on a second launch, and adds a Windows-only 1.5-second hard-exit
-      fallback after the detached NSIS installer has been started. The normal
-      graceful quit still gets the first opportunity; the fallback only runs
-      if the Electron process is still alive. Recovery for an already-stuck
-      v1.0.6 installer: end every `Shwe Pha La POS.exe` in Task Manager, then
-      click **Retry** — do not uninstall or clear AppData.
-      **Important rollout detail:** the 1.0.6 → 1.0.7 handoff still executes
-      v1.0.6's old updater code, so that transition may need the recovery once.
-      The new protection is active only after v1.0.7 is installed.
+      fallback after the detached NSIS installer was started. A real
+      v1.0.7 → v1.0.8 test confirmed that timer did not prevent the failure.
+- [x] **Installer-level Windows updater cleanup (v1.0.9).** electron-builder
+      26.15.x checks only the new `$INSTDIR` for running processes. Because
+      this app's assisted installer allows a custom directory, it can miss the
+      running prior installation; the old uninstaller then fails on locked
+      files and reuses the misleading "app cannot be closed" dialog. The
+      v1.0.9 installer overrides that check and force-closes the exact
+      `Shwe Pha La POS.exe` process tree regardless of its path. The app also
+      launches an independent delayed `taskkill` helper before
+      `quitAndInstall()`, so it survives Electron's own quit lifecycle.
+      Recovery for any already-stuck installer: end every
+      `Shwe Pha La POS.exe` in Task Manager and click **Retry** — do not
+      uninstall or clear AppData.
 - [x] **Fixed — sidebar update and logout buttons overlapped.** In the expanded
       270px desktop sidebar, both text-heavy actions were forced into equal
       columns. v1.0.8 stacks them as full-width rows, which also keeps longer
@@ -312,13 +319,13 @@ already established:
 
 ## Testing gaps
 
-- **The v1.0.7 Windows updater shutdown fix is not yet confirmed on real
-  Windows hardware.** Packaging, updater metadata, the 12-asset public release,
-  Electron-relative asset paths, and main-process syntax were verified. The
-  decisive remaining test is the v1.0.7 → v1.0.8 update: confirm **Restart
-  now** closes every app process, NSIS completes with no manual Retry dialog,
-  and the updated app relaunches once. Testing the 1.0.6 → 1.0.7 transition
-  alone does not exercise the new shutdown code.
+- **The v1.0.9 installer-level Windows updater fix needs real-hardware
+  confirmation.** The v1.0.7 → v1.0.8 update reproduced the same NSIS error,
+  proving the earlier in-process timer insufficient. The v1.0.9 NSIS override
+  compiles successfully and is present in the new installer. The decisive test
+  is the v1.0.8 → v1.0.9 update: confirm **Restart now** closes every app
+  process, NSIS completes with no manual Retry dialog, and the updated app
+  relaunches once.
 - **No real Supabase project was ever exercised.** This repo has no
   `.env.local` configured, so nothing above has been clicked through in an
   actual browser or Electron window against live data — only via `npm run

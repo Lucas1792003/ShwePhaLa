@@ -351,12 +351,13 @@ These were the headline backend hardening milestones; details are in
       labels/grids. System is the persisted default and follows live OS
       changes; `index.html` resolves it before first paint. Receipts, barcode
       labels, and QR paper surfaces remain print-safe on white.
-- [x] **Windows updater shutdown hardening (v1.0.7).** Electron now holds a
-      single-instance lock, focuses the primary window on a second launch,
-      and uses a bounded Windows hard-exit fallback after starting NSIS so a
-      lingering app process cannot indefinitely block file replacement.
-      Real-hardware confirmation of the v1.0.7 → next-version handoff remains
-      in document 10's testing gaps.
+- [x] **Windows updater shutdown hardening (v1.0.9).** The v1.0.7 in-process
+      exit timer was confirmed insufficient during the v1.0.7 → v1.0.8 test.
+      The v1.0.9 NSIS installer now force-closes the exact product executable
+      regardless of its previous/custom install path, while the app starts an
+      independent delayed cleanup helper before `quitAndInstall()`. The
+      single-instance lock remains in place. Real-hardware confirmation of the
+      v1.0.8 → v1.0.9 handoff remains in document 10's testing gaps.
 - [x] **Sidebar footer action layout (v1.0.8).** Update and logout controls now
       use full-width stacked rows so labels and dynamic updater states cannot
       overlap in the expanded desktop sidebar.

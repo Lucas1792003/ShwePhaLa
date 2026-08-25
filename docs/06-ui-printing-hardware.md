@@ -269,11 +269,12 @@ What it adds over the browser version:
   Electron-specific.
 - **Auto-update** — the desktop app checks this repo's GitHub Releases on
   launch and periodically, downloading and prompting to install updates.
-  Release v1.0.7 enforces a single app instance and, on Windows, uses a
-  1.5-second hard-exit fallback after NSIS starts if graceful `app.quit()`
-  has not released the installation files. This protects updates *after*
-  v1.0.7 is installed; see document 10 for the one-time recovery path from a
-  stuck v1.0.6 installer and the remaining real-Windows verification item.
+  Release v1.0.9 keeps the single-instance lock and adds two Windows-specific
+  safeguards: the NSIS installer force-closes the exact product executable
+  regardless of its previous/custom install directory, and the requesting app
+  starts an independent cleanup helper before `quitAndInstall()`. The earlier
+  v1.0.7 in-process timer was confirmed insufficient. See document 10 for the
+  recovery path and remaining real-Windows verification item.
 
 Still not implemented: talking to OPOS/JavaPOS cash drawers or barcode
 scanners with native drivers (scanners still work today via HID keyboard
