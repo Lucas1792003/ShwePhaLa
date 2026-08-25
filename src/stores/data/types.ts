@@ -6,6 +6,7 @@ import type {
   Category,
   Inventory,
   InventoryMovement,
+  Permission,
   Product,
   ProductBarcode,
   ProductUnit,
@@ -13,6 +14,7 @@ import type {
   PurchaseOrder,
   PurchaseOrderItem,
   Refund,
+  Role,
   Sale,
   SaleItem,
   Shift,
@@ -105,6 +107,17 @@ export interface AdjustStockInput {
 // State Slices
 // ============================================
 
+export interface CreateUserInput {
+  id: string;
+  name: string;
+  email?: string;
+  role: Role;
+  shopId?: string;
+  authId?: string;
+  grantedPermissions?: Permission[];
+  revokedPermissions?: Permission[];
+}
+
 export interface ShopState {
   shops: Shop[];
   users: User[];
@@ -114,8 +127,10 @@ export interface ShopState {
   addShop: (shop: Shop) => Promise<void>;
   updateShop: (shop: Shop) => Promise<void>;
   deleteShop: (shopId: string) => Promise<void>;
-  addUser: (user: User) => Promise<void>;
+  addUser: (input: CreateUserInput) => Promise<User>;
   updateUser: (user: User) => Promise<void>;
+  deactivateUser: (userId: string, isActive: boolean) => Promise<void>;
+  replaceManager: (shopId: string, newManagerId: string) => Promise<void>;
   updateBusinessProfile: (profile: BusinessProfile) => Promise<void>;
 }
 

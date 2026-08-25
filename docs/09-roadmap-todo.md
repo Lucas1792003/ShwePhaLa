@@ -95,20 +95,57 @@ Open work, grouped by area.
       (`getSupplierPurchaseOrders`/`getPurchaseOrderBalanceMmk` from
       `debt.ts`) before deactivating a supplier with unpaid RECEIVED POs;
       reactivating never prompts.
-- [ ] **User-management RPCs (`create_app_user` / `update_app_user` /
-      `deactivate_app_user`).** Migration `020` enforces the
-      assignment rules at the DB level, but creates/updates are still
-      direct table writes. Wrapping them in `SECURITY DEFINER` RPCs would
-      give us atomic validation + per-call audit rows + a place to plug in
-      a `replace_manager(shop_id, new_user_id)` flow that swaps managers
-      atomically (today the operator has to deactivate cashiers first if
-      the shop already has cashiers — see `05-roles-permissions.md`).
-- [ ] **Seed tooling cleanup.** Move `src/data/seedSupabase.ts` out of
-      `src/` so it cannot accidentally ship in the browser bundle. Keep a
-      service-role / SQL-seed variant for local dev.
-- [ ] **Code splitting.** Production bundle is ~1.3 MB (gzip ~365 KB).
-      Add Vite `manualChunks` or convert heavier routes (admin, reports)
-      to `React.lazy` + dynamic imports.
+- [x] **User-management RPCs + atomic manager replacement.** Migration
+      `049` (applied to production) adds `create_app_user`/
+      `update_app_user`/`deactivate_app_user` as `SECURITY DEFINER` RPCs
+      — permission check, the write, and a `USER_CREATED`/`USER_UPDATED`
+      (with a per-field change list)/`USER_ACTIVATED`/`USER_DEACTIVATED`
+      audit row, mirroring migration `048`'s supplier RPCs. These do
+      **not** touch Supabase Auth signup (`supabase.auth.signUp` stays
+      client-side in `UsersPage.tsx` — a SQL function can't call the
+      GoTrue API); `create_app_user` is called after signup succeeds,
+      same as the old `addUser()` was.
+      Also ships `replace_manager(shop_id, new_manager_id)`, closing the
+      gap `05-roles-permissions.md` flagged. The real blocker turned out
+      deeper than expected — verified empirically against a rolled-back
+      production transaction before writing the migration: (1)
+      `users_one_active_manager_per_shop` was a **partial** unique index,
+      which Postgres won't let you convert straight to a deferrable
+      constraint (`ADD CONSTRAINT ... USING INDEX` rejects partial
+      indexes) — fixed by replacing it with an equivalent `DEFERRABLE
+      INITIALLY DEFERRED` `EXCLUDE` constraint instead, which does support
+      a `WHERE` predicate; (2) a single multi-row `UPDATE` that swaps both
+      the old and new manager in one statement does **not** work, because
+      migration `020`'s safety trigger does a live `EXISTS` check that
+      can't see another row's change from later in the *same* statement —
+      `replace_manager()` does it as two separate statements instead (new
+      manager first, old manager second), which a real test confirmed
+      works correctly. The pre-existing protection (blocking a *plain*
+      deactivate of a shop's sole manager while active cashiers remain,
+      outside of `replace_manager`) was re-verified unchanged.
+      `users_one_active_manager_per_shop`'s violation code changed from
+      `23505` to `23P01` (unique → exclusion constraint) —
+      `userFormErrors.ts` updated to still map it.
+      `UsersPage.tsx` gained a "Replace manager" button, shown when
+      editing an existing user into MANAGER for a shop that already has a
+      different active manager.
+- [x] **Seed tooling cleanup.** `src/data/seed.ts`/`seedSupabase.ts` (both
+      previously unreferenced anywhere in the app) moved to `scripts/seed/`
+      — outside `tsconfig.app.json`'s `src` include, so they can never be
+      pulled into the browser bundle even by an accidental future import.
+      Split into `seedData.ts` (data), `seedRun.ts` (shared insert
+      sequence, parameterized on the Supabase client), `seedBrowser.ts`
+      (the original guarded anon-key variant), and a new
+      `seedServiceRole.ts` (`npm run seed:service-role`) that seeds via a
+      service-role key from the environment — no dev server or browser
+      opt-in flag needed. Added `tsx` as a devDependency to run it.
+- [x] **Code splitting.** `src/app/routes/AppRouter.tsx`'s admin pages
+      (Shops, Users, Products, UnitTypes, Barcodes, Suppliers, Pricing,
+      AuditLog, SyncConflicts), reports (Shop/Global/Profit), and the
+      Product Form page now load via `React.lazy` + a single `<Suspense>`
+      wrapper around the route tree. Main entry chunk dropped from
+      1,768 KB to ~1,566 KB (gzip ~432 KB), with 12 routes split into
+      their own on-demand chunks. POS, Dashboard, and Login stay eager.
 
 ## Security (from 2026-08-24 full-codebase audit)
 

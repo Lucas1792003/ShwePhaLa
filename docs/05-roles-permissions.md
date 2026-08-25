@@ -40,19 +40,22 @@ plus the two unique-index violations to the canonical UI messages.
 
 ### Manager replacement
 
-The unique index forbids two active managers in one shop at the same time,
-so manager replacement is a two-step operator flow:
+Migration `049` added `replace_manager(p_shop_id, p_new_manager_id)` — a
+`SECURITY DEFINER` RPC that swaps a shop's manager atomically, including
+when the shop has active cashiers. It activates the new manager, then
+deactivates the old one, as two separate statements inside one
+transaction; `users_one_active_manager_per_shop` was converted from a
+plain unique index to a `DEFERRABLE INITIALLY DEFERRED` `EXCLUDE`
+constraint specifically so this works (see `09-roadmap-todo.md` and
+`03-database-security.md` for the full mechanics). In the app, this is
+the "Replace manager" button on the Users page — it appears when editing
+an existing user into MANAGER for a shop that already has a different
+active manager.
 
-1. If the shop has **no active cashiers**: deactivate or demote the old
-   manager, then create / assign the new one.
-2. If the shop has **active cashiers**: the only manager cannot be
-   deactivated. Add a temporary second manager? Not allowed. Operators
-   must either (a) temporarily deactivate the cashiers, swap the manager,
-   re-enable the cashiers, or (b) deactivate the old manager only after
-   another manager has been added for the shop via the brief window
-   created by deactivating one and activating another in the same
-   session. A dedicated `replace_manager(shop_id, new_user_id)` RPC is on
-   the roadmap (see `09-roadmap-todo.md`) if this becomes a bottleneck.
+The old manual two-step dance (deactivate cashiers, swap, re-enable; or
+briefly running two managers) is no longer necessary, but still works as
+a fallback via direct create/update/deactivate if `replace_manager` isn't
+used.
 
 ### Preflight diagnostic view
 

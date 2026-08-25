@@ -14,6 +14,7 @@ export const UsersPage = () => {
   const shops = useDataStore((state) => state.shops);
   const addUser = useDataStore((state) => state.addUser);
   const updateUser = useDataStore((state) => state.updateUser);
+  const deactivateUser = useDataStore((state) => state.deactivateUser);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -189,8 +190,6 @@ export const UsersPage = () => {
         role,
         shopId: requiresShop ? shopId : undefined,
         authId: newAuthId,
-        isActive: true,
-        createdAt: new Date().toISOString(),
       });
     } catch (error) {
       setIsSubmitting(false);
@@ -217,11 +216,37 @@ export const UsersPage = () => {
     setFeedback(null);
   };
 
+  // Editing an existing user into MANAGER for a shop that already has a
+  // different active manager — normal submit blocks this (secondManager
+  // validation) since two active managers can't coexist. This is the
+  // atomic swap escape hatch instead of the old manual two-step dance
+  // (see 05-roles-permissions.md "Manager replacement").
+  const replaceManager = useDataStore((state) => state.replaceManager);
+  const currentShopManager = shopId ? managerByShop[shopId] : undefined;
+  const canReplaceManager =
+    Boolean(editingId) && role === "MANAGER" && Boolean(shopId) &&
+    Boolean(currentShopManager) && currentShopManager?.id !== editingId;
+
+  const handleReplaceManager = async () => {
+    if (!editingId || !shopId) return;
+    setIsSubmitting(true);
+    setFeedback(null);
+    try {
+      await replaceManager(shopId, editingId);
+      setFeedback({ type: "success", message: `${name || "User"} is now the manager of this shop.` });
+      resetForm();
+    } catch (error) {
+      setFeedback({ type: "error", message: mapUserFormError(error) });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleToggleActive = async (id: string) => {
     const user = users.find((u) => u.id === id);
     if (!user) return;
     try {
-      await updateUser({ ...user, isActive: !user.isActive });
+      await deactivateUser(user.id, !user.isActive);
     } catch (error) {
       setFeedback({ type: "error", message: mapUserFormError(error) });
     }
@@ -312,10 +337,23 @@ export const UsersPage = () => {
             </div>
           )}
 
+          {canReplaceManager && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {currentShopManager?.name} is already the manager of this shop. Use
+              "Replace manager" below to swap them out atomically instead of
+              deactivating them first.
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2">
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
+            <Button onClick={handleSubmit} disabled={isSubmitting || canReplaceManager}>
               {isSubmitting ? "Creating…" : editingId ? "Update" : "Create account"}
             </Button>
+            {canReplaceManager && (
+              <Button variant="secondary" onClick={handleReplaceManager} disabled={isSubmitting}>
+                Replace manager
+              </Button>
+            )}
             {editingId && (
               <Button variant="secondary" onClick={resetForm}>Cancel</Button>
             )}

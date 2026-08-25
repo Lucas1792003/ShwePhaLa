@@ -43,8 +43,13 @@ export const mapUserFormError = (error: AnyError): string => {
   const text = blob(error);
   const errCode = code(error);
 
-  // Unique-index violations from migration 020.
-  if (errCode === "23505") {
+  // Unique-index violation from migration 020 (users_only_one_admin), and
+  // the one-active-manager-per-shop rule — a plain unique index (23505)
+  // until migration 049 converted it to a deferrable EXCLUDE constraint
+  // (23P01) so replace_manager() can swap managers atomically; both codes
+  // are checked since either could still be live depending on what's
+  // applied.
+  if (errCode === "23505" || errCode === "23P01") {
     if (text.includes("users_only_one_admin")) return USER_FORM_MESSAGES.secondAdmin;
     if (text.includes("users_one_active_manager_per_shop")) return USER_FORM_MESSAGES.secondManager;
   }

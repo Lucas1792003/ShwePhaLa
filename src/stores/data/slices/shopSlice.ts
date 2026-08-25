@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
-import type { DataState, ShopState } from "../types";
+import type { CreateUserInput, DataState, ShopState } from "../types";
 import type { BusinessProfile, Shop, User } from "../../../types";
-import { supabase, dbExec } from "../../../lib/supabase";
+import { supabase } from "../../../lib/supabase";
 import { mapShopFormError, normalizeShopInput } from "../../../lib/shopValidation";
 import {
   SHOP_DELETE_MESSAGES,
@@ -120,39 +120,80 @@ export const createShopSlice: StateCreator<DataState, [], [], ShopState> = (set,
     if (currentShopId === shopId) setShopId(null);
   },
 
-  addUser: async (user: User) => {
-    // Persist first so a failed insert never leaves a phantom user in the UI.
-    // auth_id is stored at creation so the new user is RLS-identifiable from
-    // their first login (no reliance on the email self-heal).
-    await dbExec(writeTableRow({
-      table: "users", op: "insert", id: user.id,
-      row: {
-        id: user.id, name: user.name, email: user.email, role: user.role,
-        shop_id: user.shopId ?? null, auth_id: user.authId ?? null,
-        permissions: user.permissions ?? null,
-        granted_permissions: user.grantedPermissions ?? null,
-        revoked_permissions: user.revokedPermissions ?? null,
-        is_active: user.isActive, created_at: user.createdAt,
-      },
-      appRow: user,
-    }), "Add user");
+  addUser: async (input: CreateUserInput) => {
+    // auth_id is stored at creation so the new user is RLS-identifiable
+    // from their first login (no reliance on the email self-heal).
+    const { data, error } = await supabase.rpc("create_app_user", {
+      p_id: input.id,
+      p_name: input.name,
+      p_email: input.email ?? null,
+      p_role: input.role,
+      p_shop_id: input.shopId ?? null,
+      p_auth_id: input.authId ?? null,
+      p_granted_permissions: input.grantedPermissions ?? null,
+      p_revoked_permissions: input.revokedPermissions ?? null,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Create user returned no data.");
+    const user = data as User;
     set((state) => ({ users: [...state.users, user] }));
+    return user;
   },
 
   updateUser: async (user: User) => {
-    await dbExec(writeTableRow({
-      table: "users", op: "update", id: user.id,
-      row: {
-        name: user.name, email: user.email, role: user.role,
-        shop_id: user.shopId ?? null, permissions: user.permissions ?? null,
-        granted_permissions: user.grantedPermissions ?? null,
-        revoked_permissions: user.revokedPermissions ?? null,
-        is_active: user.isActive,
-      },
-      appRow: user,
-    }), "Update user");
+    const { data, error } = await supabase.rpc("update_app_user", {
+      p_id: user.id,
+      p_name: user.name,
+      p_role: user.role,
+      p_shop_id: user.shopId ?? null,
+      p_granted_permissions: user.grantedPermissions ?? null,
+      p_revoked_permissions: user.revokedPermissions ?? null,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Update user returned no data.");
+    const updated = data as User;
     set((state) => ({
-      users: state.users.map((item) => (item.id === user.id ? user : item)),
+      users: state.users.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+    }));
+  },
+
+  deactivateUser: async (userId: string, isActive: boolean) => {
+    const { data, error } = await supabase.rpc("deactivate_app_user", {
+      p_id: userId,
+      p_is_active: isActive,
+    });
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("Update user status returned no data.");
+    const result = data as { id: string; isActive: boolean };
+    set((state) => ({
+      users: state.users.map((item) => (item.id === result.id ? { ...item, isActive: result.isActive } : item)),
+    }));
+  },
+
+  replaceManager: async (shopId: string, newManagerId: string) => {
+    const { error } = await supabase.rpc("replace_manager", {
+      p_shop_id: shopId,
+      p_new_manager_id: newManagerId,
+    });
+    if (error) throw new Error(error.message);
+    // The RPC flips two rows server-side (old manager deactivated, new one
+    // activated) — simplest correct way to reflect that locally is to pull
+    // the affected rows back rather than reconstruct the swap by hand.
+    const { data: refreshed, error: refreshError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("shop_id", shopId);
+    if (refreshError || !refreshed) return;
+    const byId = new Map(refreshed.map((row) => [row.id as string, row]));
+    set((state) => ({
+      users: state.users.map((item) => {
+        const row = byId.get(item.id);
+        if (!row) return item;
+        return {
+          ...item,
+          role: row.role, shopId: row.shop_id ?? undefined, isActive: row.is_active,
+        };
+      }),
     }));
   },
 });
