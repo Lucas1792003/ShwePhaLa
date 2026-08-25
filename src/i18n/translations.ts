@@ -643,7 +643,9 @@ export const translations: Record<Language, Record<string, Record<string, string
     productForm: {
       // Validation
       skuRequired: "SKU is required",
+      skuMax: "SKU must be 64 characters or fewer",
       nameMin: "Name must be at least 2 characters",
+      nameMax: "Name must be 200 characters or fewer",
       categoryRequired: "Category is required",
       unitTypeRequired: "Unit type is required",
       priceMin: "Price must be 0 or greater",
@@ -1549,7 +1551,9 @@ export const translations: Record<Language, Record<string, Record<string, string
     // Product create/edit form
     productForm: {
       skuRequired: "SKU လိုအပ်သည်",
+      skuMax: "SKU သည် အများဆုံး စာလုံး ၆၄ လုံး ရှိနိုင်သည်",
       nameMin: "အမည်သည် အနည်းဆုံး စာလုံး ၂ လုံး ရှိရမည်",
+      nameMax: "အမည်သည် အများဆုံး စာလုံး ၂၀၀ ရှိနိုင်သည်",
       categoryRequired: "အမျိုးအစား လိုအပ်သည်",
       unitTypeRequired: "ယူနစ်အမျိုးအစား လိုအပ်သည်",
       priceMin: "ဈေးနှုန်းသည် 0 သို့မဟုတ် ထို့ထက်ကြီးရမည်",

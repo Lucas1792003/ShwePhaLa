@@ -2,12 +2,17 @@ import "fake-indexeddb/auto";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const rpc = vi.fn();
+const TEST_AUTH_ID = "auth-test-user";
 vi.mock("../../../lib/supabase", () => ({
-  supabase: { rpc: (...args: unknown[]) => rpc(...args) },
+  supabase: {
+    rpc: (...args: unknown[]) => rpc(...args),
+    auth: { getSession: () => Promise.resolve({ data: { session: { user: { id: TEST_AUTH_ID } } } }) },
+  },
   dbExec: vi.fn(),
 }));
 vi.mock("../../authStore", () => ({
   useAuthStore: { getState: () => ({ currentUserId: "user-1" }) },
+  assertOfflineWriteEligible: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { createPurchaseSlice } from "./purchaseSlice";
@@ -50,6 +55,10 @@ function makeStore(seed: Record<string, any> = {}) {
 beforeEach(async () => {
   rpc.mockReset();
   await Promise.all(localDb.tables.map((t) => t.clear()));
+  await localDb.authCache.put({
+    authId: TEST_AUTH_ID, userId: "user-1", role: "CASHIER", shopId: "shop-1",
+    isActive: true, hasTotp: false, cachedAt: new Date().toISOString(),
+  });
   vi.stubGlobal("navigator", { onLine: false });
 });
 afterEach(() => vi.unstubAllGlobals());

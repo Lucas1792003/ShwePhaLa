@@ -7,7 +7,7 @@ import type {
 import { supabase } from "../../../lib/supabase";
 import { isNetworkError } from "../../../lib/errors";
 import { newId } from "../../../lib/id";
-import { useAuthStore } from "../../authStore";
+import { useAuthStore, assertOfflineWriteEligible } from "../../authStore";
 import { enqueueOutbox } from "../outbox";
 import { deleteLocalRows, putLocalRows } from "../localWrites";
 
@@ -97,6 +97,7 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
     purchaseOrderId: string, receiverId: string,
     receivedItems: { productId: string; receivedQty?: number; productUnitId?: string; receivedUnitQty?: number }[],
   ): Promise<void> => {
+    await assertOfflineWriteEligible();
     const po = get().purchaseOrders.find((p) => p.id === purchaseOrderId);
     if (!po) throw new Error("Purchase order not found.");
     if (po.status !== "APPROVED") throw new Error("Purchase order is not in a receivable (APPROVED) status.");
@@ -222,6 +223,7 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
     purchaseOrderId: string; amountMmk: number; paymentMethod: "CASH" | "BANK" | "MOBILE" | "OTHER";
     referenceNo?: string; notes?: string;
   }): Promise<void> => {
+    await assertOfflineWriteEligible();
     const po = get().purchaseOrders.find((p) => p.id === input.purchaseOrderId);
     if (!po) throw new Error("Purchase order not found.");
     if (po.status !== "RECEIVED") {

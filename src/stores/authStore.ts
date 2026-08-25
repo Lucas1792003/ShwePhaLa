@@ -233,6 +233,43 @@ async function getCachedAppUser(authId: string): Promise<CachedAuthUser | undefi
   }
 }
 
+// Much shorter than OFFLINE_SESSION_TRUST_MS above, and governs a
+// different thing: OFFLINE_SESSION_TRUST_MS decides whether a device stays
+// logged in to browse cached data offline (fine to be generous — a
+// connectivity blip shouldn't log anyone out mid-shift). This window
+// decides whether it may keep performing *new* writes offline (stock
+// adjustments, sales, shift open/close, transfers, refund/void requests,
+// supplier payments) — a deactivated/revoked account should stop being
+// able to do that well before the read-only session itself expires,
+// since each of those is a real-world action (cash taken, stock moved)
+// that only the eventual outbox sync would otherwise catch, up to 24h
+// later. See docs/09-roadmap-todo.md.
+const OFFLINE_WRITE_TRUST_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Guard called as the first line of every offline-write function (the
+ * *Offline variants in src/stores/data/slices/*.ts, before any local
+ * optimistic write happens) — throws if this device hasn't confirmed its
+ * identity against the live server within OFFLINE_WRITE_TRUST_MS. Reads the
+ * same authCache row cacheAppUser() populates on every successful online
+ * resolution (restoreSession, login), so a deactivated/revoked account
+ * stops being able to queue new offline activity well before the longer
+ * read-only session window lapses. Read-only browsing of already-cached
+ * data is unaffected — this only gates new writes.
+ */
+export async function assertOfflineWriteEligible(): Promise<void> {
+  const { data } = await supabase.auth.getSession();
+  const authId = data.session?.user.id;
+  if (!authId) throw new Error("Not authenticated.");
+  const cached = await localDb.authCache.get(authId);
+  const age = cached ? Date.now() - Date.parse(cached.cachedAt) : Infinity;
+  if (age > OFFLINE_WRITE_TRUST_MS) {
+    throw new Error(
+      "Reconnect to the internet to verify your session before recording new offline activity.",
+    );
+  }
+}
+
 export const useAuthStore = create<AuthState>()((set) => ({
   currentUserId: null,
   currentRole: null,
@@ -392,6 +429,16 @@ export const useAuthStore = create<AuthState>()((set) => ({
     clearVerified();
     if (authId) void localDb.authCache.delete(authId);
     set({ currentUserId: null, currentRole: null, adminVerified: false, hasTotp: false });
+    // Clear the shared data mirror immediately so a different user logging
+    // in right after (no connectivity gap in between, so no offline→online
+    // trigger fires) can't briefly render the previous user's cached
+    // cross-shop data. AppLayout's loadData effect re-fires on the next
+    // render since it depends on `isLoaded`. Dynamic import: purchaseSlice.ts
+    // already imports authStore, so a static import here would create a
+    // module cycle (authStore -> dataStore -> data/index -> purchaseSlice
+    // -> authStore).
+    const { useDataStore } = await import("./dataStore");
+    useDataStore.setState({ isLoaded: false, isLoading: false, loadError: null });
   },
 
   requestAdminCode: async () => {

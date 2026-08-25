@@ -87,7 +87,7 @@ describe("dependent entries (refs)", () => {
     await drainOutbox();
 
     expect(rpc).toHaveBeenCalledTimes(1);
-    expect(rpc).toHaveBeenCalledWith("adjust_stock", { n: 1 });
+    expect(rpc).toHaveBeenCalledWith("adjust_stock", { n: 1, p_expected_actor_id: null });
     const remaining = await localDb.syncOutbox.toArray();
     expect(remaining).toHaveLength(1);
     expect(remaining[0].name).toBe("complete_sale");

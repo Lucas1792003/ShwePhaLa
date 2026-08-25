@@ -223,9 +223,9 @@ export const ProductFormPage = () => {
 
   const schema = useMemo(() => {
     return z.object({
-      sku: z.string().min(1, t("productForm", "skuRequired")),
+      sku: z.string().min(1, t("productForm", "skuRequired")).max(64, t("productForm", "skuMax")),
       aliasCode: z.string().optional(),
-      name: z.string().min(2, t("productForm", "nameMin")),
+      name: z.string().min(2, t("productForm", "nameMin")).max(200, t("productForm", "nameMax")),
       shortName: z.string().optional(),
       category: z.string().min(1, t("productForm", "categoryRequired")),
       brandId: z.string().optional(),
@@ -859,7 +859,11 @@ export const ProductFormPage = () => {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "nameLabel")}</label>
-                  <Input placeholder={t("productForm", "namePlaceholder")} {...form.register("name")} />
+                  <Input
+                    placeholder={t("productForm", "namePlaceholder")}
+                    maxLength={200}
+                    {...form.register("name")}
+                  />
                   {form.formState.errors.name && (
                     <p className="mt-1 text-xs text-red-500">{form.formState.errors.name.message}</p>
                   )}

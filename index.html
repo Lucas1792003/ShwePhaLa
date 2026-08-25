@@ -4,25 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
-    <!-- Resolve the saved/system theme before CSS and React paint, avoiding a
-         light flash when the OS or saved preference is dark. Zustand stores
-         the preference inside this small JSON envelope. -->
-    <script>
-      (() => {
-        let preference = "system";
-        try {
-          const saved = JSON.parse(localStorage.getItem("pos-theme") || "null");
-          preference = saved?.state?.theme || "system";
-        } catch {
-          // A blocked/corrupt localStorage entry should fall back to the OS.
-        }
-        const dark =
-          preference === "dark" ||
-          (preference === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        document.documentElement.classList.toggle("dark", dark);
-        document.documentElement.style.colorScheme = dark ? "dark" : "light";
-      })();
-    </script>
+    <!-- Defense-in-depth for the Electron-loaded content and the web build
+         alike (same index.html serves both) — contextIsolation + a narrow
+         preload bridge already limit Electron's blast radius, but a CSP
+         blocks arbitrary inline/remote script execution outright. No
+         'unsafe-inline' on script-src, so the theme-resolution script below
+         is an external file (see public/theme-init.js), not inline. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; object-src 'none'; base-uri 'self'; form-action 'self';"
+    />
+    <script src="/theme-init.js"></script>
     <link rel="icon" type="image/png" href="/logo1.png" />
     <link rel="apple-touch-icon" href="/logo1.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />

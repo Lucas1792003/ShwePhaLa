@@ -6,6 +6,7 @@ import { isNetworkError } from "../../../lib/errors";
 import { newId } from "../../../lib/id";
 import { enqueueOutbox, recordIdMapping } from "../outbox";
 import { deleteLocalRows, putLocalRows } from "../localWrites";
+import { assertOfflineWriteEligible } from "../../authStore";
 
 interface ShiftRpcResult {
   shift: Shift;
@@ -41,6 +42,7 @@ export const createShiftSlice: StateCreator<DataState, [], [], ShiftState> = (se
   // sale rung up against this provisional shift (see saleSlice.ts) carries a
   // `refs` entry so it waits for THIS entry's real shift id before sending.
   const startShiftOffline = async (shopId: string, cashierId: string, openingCashMmk: number): Promise<string> => {
+    await assertOfflineWriteEligible();
     const now = new Date().toISOString();
     const shift: Shift = {
       id: newId("shift"), shopId, cashierId,
@@ -88,6 +90,7 @@ export const createShiftSlice: StateCreator<DataState, [], [], ShiftState> = (se
   const endShiftOffline = async (
     shiftId: string, closingCashMmk: number, varianceReason: string | undefined,
   ): Promise<void> => {
+    await assertOfflineWriteEligible();
     const shift = get().shifts.find((s) => s.id === shiftId);
     if (!shift) throw new Error("Shift not found.");
 

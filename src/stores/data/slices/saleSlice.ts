@@ -7,6 +7,7 @@ import { newId } from "../../../lib/id";
 import { calculateCartTotals } from "../../../features/pos/service";
 import { enqueueOutbox, recordIdMapping } from "../outbox";
 import { deleteLocalRows, putLocalRows } from "../localWrites";
+import { assertOfflineWriteEligible } from "../../authStore";
 
 // Shape returned by the complete_sale RPC (keys are already camelCase).
 interface CompleteSaleResult {
@@ -143,6 +144,7 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
   // reconcileCompleteSale() below replaces this provisional record with
   // whatever the server actually accepts.
   const createSaleOffline = async (input: CreateSaleInput): Promise<string> => {
+    await assertOfflineWriteEligible();
     const { shopId, shiftId, cashierId, cartItems, cartDiscountPct, paymentMethod, paidMmk } = input;
     const now = new Date().toISOString();
     const saleId = newId("sale");
@@ -271,6 +273,7 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
     saleId: string, type: "VOID" | "PARTIAL", reason: string,
     items: { productId: string; qtyUnits: number; amountMmk: number }[] | undefined, actorId: string,
   ): Promise<void> => {
+    await assertOfflineWriteEligible();
     const sale = get().sales.find((s) => s.id === saleId);
     if (!sale) throw new Error("Sale not found.");
 

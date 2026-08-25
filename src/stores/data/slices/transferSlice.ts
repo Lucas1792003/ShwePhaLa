@@ -8,6 +8,7 @@ import { isNetworkError } from "../../../lib/errors";
 import { newId } from "../../../lib/id";
 import { enqueueOutbox } from "../outbox";
 import { deleteLocalRows, putLocalRows } from "../localWrites";
+import { assertOfflineWriteEligible } from "../../authStore";
 
 // ---- RPC result shapes (camelCase, ready for the store) ----
 interface CreateTransferResult {
@@ -68,6 +69,7 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
   // references is assumed to already have a real id (creation/approval stay
   // online-only).
   const dispatchTransferOffline = async (transferId: string, actorId: string): Promise<void> => {
+    await assertOfflineWriteEligible();
     const transfer = get().stockTransfers.find((t) => t.id === transferId);
     if (!transfer) throw new Error("Stock transfer not found.");
     if (transfer.status !== "APPROVED") {
@@ -122,6 +124,7 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
   const receiveTransferOffline = async (
     transferId: string, actorId: string, receivedItems: { productId: string; receivedQty: number }[] | undefined,
   ): Promise<void> => {
+    await assertOfflineWriteEligible();
     const transfer = get().stockTransfers.find((t) => t.id === transferId);
     if (!transfer) throw new Error("Stock transfer not found.");
     if (transfer.status !== "IN_TRANSIT") {

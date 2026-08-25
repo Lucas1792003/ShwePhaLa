@@ -6,6 +6,7 @@ import { isNetworkError } from "../../../lib/errors";
 import { newId } from "../../../lib/id";
 import { enqueueOutbox } from "../outbox";
 import { deleteLocalRows, putLocalRows } from "../localWrites";
+import { assertOfflineWriteEligible } from "../../authStore";
 
 // Shape returned by the adjust_stock RPC (camelCase keys).
 interface AdjustStockResult {
@@ -72,6 +73,7 @@ export const createInventorySlice: StateCreator<DataState, [], [], InventoryStat
   // The server is still the final say: reconcileAdjustStock() below replaces
   // this provisional movement with whatever the server actually accepts.
   const adjustStockOffline = async (input: AdjustStockInput): Promise<void> => {
+    await assertOfflineWriteEligible();
     const { shopId, productId, type, qtyChange, reason, actorId, referenceType, referenceId, productUnitId, unitQty } = input;
     const now = new Date().toISOString();
     const qtyBefore = get().getInventoryQty(shopId, productId);

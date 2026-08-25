@@ -2,12 +2,35 @@ import { supabase } from "../../lib/supabase";
 import { localDb, type SyncOutboxEntry } from "../../lib/localDb";
 import { newId } from "../../lib/id";
 import { replayTableWrite } from "./tableWrite";
+import { useAuthStore } from "../authStore";
 
 type EnqueueInput = Pick<SyncOutboxEntry, "kind" | "name" | "args" | "shopId" | "provisional" | "refs" | "table" | "op" | "row" | "id">;
 
+// RPCs that accept p_expected_actor_id (see migration 055) — the queuing
+// user's app id is stamped on at enqueue time and checked again at replay,
+// so a queued action can't silently execute under whoever happens to be
+// logged in when the device reconnects (a shared till, another cashier).
+// complete_sale is deliberately excluded — it already checks shift
+// ownership independently, and doesn't declare this param.
+const ACTOR_STAMPED_RPCS = new Set([
+  "adjust_stock",
+  "receive_purchase_order",
+  "record_supplier_payment",
+  "open_shift",
+  "close_shift",
+  "create_refund_void_request",
+  "dispatch_stock_transfer",
+  "receive_stock_transfer",
+]);
+
 export async function enqueueOutbox(entry: EnqueueInput): Promise<void> {
+  const args =
+    entry.kind === "rpc" && entry.args && ACTOR_STAMPED_RPCS.has(entry.name)
+      ? { ...entry.args, p_expected_actor_id: useAuthStore.getState().currentUserId ?? null }
+      : entry.args;
   await localDb.syncOutbox.put({
     ...entry,
+    args,
     localId: newId("outbox"),
     createdAt: new Date().toISOString(),
     status: "pending",

@@ -170,6 +170,14 @@ app. Ordered by severity; each was independently verified with a concrete
 exploit/failure path, not speculative. See the audit conversation for full
 per-area detail if more context is needed before fixing.
 
+**2026-08-25 status:** every item below except the last (the `users` table
+read-scoping question, which needs a product decision, not a fix) is now
+implemented and locally verified — but not yet live. Code changes are
+uncommitted; five new migrations (`051`–`055`) are written and dry-run
+verified against production in a rolled-back transaction, but not yet
+applied. Pending: `git push`, then `supabase db push` (or equivalent) for
+migrations 051–055.
+
 - [x] **Fixed — read-scoping silently defeated on 20 tables via a
       leftover permissive RLS policy.** Found during the 2026-08-25 live
       RLS/RPC verification pass (not the 2026-08-24 audit that seeded the
@@ -202,18 +210,37 @@ per-area detail if more context is needed before fixing.
       re-confirmed closed live. See
       [`archive/29-live-supabase-rls-rpc-verification.md`](./archive/29-live-supabase-rls-rpc-verification.md)'s
       Manual Result Log for the full writeup.
-- [ ] **Deactivated/revoked staff can keep completing real offline sales for
-      up to 24h.** `authStore.ts`'s offline session-trust window (built for
-      the offline-login fix) isn't just a stale-read risk — `saleSlice.ts`'s
-      `createSaleOffline()` runs full checkout (stock validation, totals,
-      receipt print) locally with no live permission check; only the
-      eventual outbox sync re-validates server-side. A cashier deactivated
-      mid-shift on an offline till can keep ringing up sales and taking cash
-      for up to 24h before the sync finally rejects — by which point goods/
-      cash are already gone. Consider shortening the trust window for
-      write-eligible offline sessions specifically, or requiring a
-      reconnect-and-revalidate before allowing further offline checkouts
-      past some threshold.
+- [x] **Implemented (2026-08-25) — deactivated/revoked staff could keep
+      completing real offline sales for up to 24h.** `authStore.ts`'s
+      24h `OFFLINE_SESSION_TRUST_MS` (read-only session continuity) is now
+      split from a much shorter `OFFLINE_WRITE_TRUST_MS` (2h) that
+      specifically gates *new* offline writes. A new
+      `assertOfflineWriteEligible()` throws "Reconnect to the internet..."
+      if the device hasn't confirmed its identity against the live server
+      within that 2h window; it's called as the very first line — before
+      any local optimistic write — in all 9 offline-write functions
+      (`createSaleOffline`, `createRefundVoidRequestOffline`,
+      `adjustStockOffline`, `startShiftOffline`, `endShiftOffline`,
+      `dispatchTransferOffline`, `receiveTransferOffline`,
+      `receivePurchaseOrderOffline`, `recordSupplierPaymentOffline`).
+      Read-only cached-data browsing is unaffected — only new writes are
+      gated. Purely client-side, no migration. Full test suite (652)
+      updated and passing. **Not yet pushed/released.**
+- [x] **Implemented (2026-08-25) — offline outbox could misattribute
+      actions on a shared till.** `stores/data/outbox.ts`'s
+      `enqueueOutbox()` now automatically stamps the queuing user's app id
+      onto every outbox entry for the 8 affected RPCs (`adjust_stock`,
+      `receive_purchase_order`, `record_supplier_payment`, `open_shift`,
+      `close_shift`, `create_refund_void_request`,
+      `dispatch_stock_transfer`, `receive_stock_transfer` —
+      `complete_sale` excluded, already safe via its own shift-ownership
+      check). Migration `055` adds a `p_expected_actor_id text DEFAULT
+      NULL` param to each; a mismatch at replay time raises, and the entry
+      lands on the existing Sync Conflicts page instead of silently
+      executing under whoever is now logged in. Dry-run verified against
+      a rolled-back production transaction (all 5 new migrations applied
+      cleanly together). **Migration written, not yet applied to
+      production.**
 - [x] **Fixed — `users_upd`/`users_ins` privilege-escalation gap.**
       Migration `047` adds a `BEFORE INSERT OR UPDATE ON users` trigger
       (`guard_user_privilege_columns()`) that rejects any change to
@@ -243,17 +270,26 @@ per-area detail if more context is needed before fixing.
       ownership.) Consider stamping the queued actor id at enqueue time and
       having the RPCs verify it matches, or blocking outbox drain across a
       user switch until the previous user's queue is empty.
-- [ ] **`log_audit_event` RPC lets any authenticated user forge audit
-      entries for any shop** (`supabase/migrations/012_operational_status_rpcs.sql:586-611`).
-      No permission check, no verification that `p_shop_id` matches the
-      caller's shop. Gate on a real permission and cross-check the shop, or
-      restrict to a fixed allow-list of legitimate action types.
-- [ ] **`logout()` doesn't clear the shared Zustand/Dexie data mirror.** On
-      a shared till, a user logging in right after another logs out (no
-      connectivity gap in between) can briefly render the previous user's
-      cached cross-shop data until the next background refresh. Force a
-      `loadData({force:true})` (or at least a store reset) on every login,
-      not just on offline→online transitions.
+- [x] **Implemented (2026-08-25) — `log_audit_event` RPC let any
+      authenticated user forge audit entries for any shop**
+      (`supabase/migrations/012_operational_status_rpcs.sql:586-611`).
+      Migration `051` allow-lists the 7 legitimate action types (the
+      global product/category/unit-type catalog actions — the only real
+      callers, in `auditSlice.ts`), maps each to the same permission that
+      already gates the corresponding UI action, and ignores any
+      caller-supplied `p_shop_id` (forces `NULL`, since every legitimate
+      use is global/unscoped anyway). Dry-run verified against production.
+      **Migration written, not yet applied to production.**
+- [x] **Implemented (2026-08-25) — `logout()` didn't clear the shared
+      Zustand/Dexie data mirror.** `authStore.ts`'s `logout()` now resets
+      the data store (`isLoaded: false, isLoading: false, loadError:
+      null`) via a dynamic import of `dataStore` (static import would
+      create a module cycle — `purchaseSlice.ts` already imports
+      `authStore.ts`). `AppLayout.tsx`'s existing `loadData` effect
+      re-fires automatically on the next render since it depends on
+      `isLoaded`, so a different user logging in right after gets a fresh
+      fetch instead of a stale render. Purely client-side, no migration.
+      **Not yet pushed/released.**
 - [x] **Fixed — raw Postgres/Supabase error text shown to cashier-level
       users.** `PosPage.tsx` checkout, `InventoryPage.tsx` stock
       adjustment, `TransfersPage.tsx` (create/approve/reject/dispatch/
@@ -277,28 +313,52 @@ per-area detail if more context is needed before fixing.
       to treat it as text instead of a formula. Scoped to `typeof value
       === "string"` specifically so real negative numbers (prices,
       quantity deltas) are never touched. Tests: `src/lib/csv.test.ts`.
-- [ ] **No max-length on product name/SKU** (`ProductFormPage.tsx:173`) —
-      low severity, but unbounded storage/CSV export. Add a reasonable
-      client + DB constraint.
-- [ ] **`printers:print-receipt`'s `deviceName` isn't validated against the
-      real printer list** before being passed to `webContents.print()`
-      (`electron/main.cjs:179`) — low risk (print() doesn't touch the
-      filesystem), but should check against `getPrintersAsync()` output
-      first.
-- [ ] **No Content-Security-Policy for the Electron-loaded content.**
-      Defense-in-depth gap only (contextIsolation + narrow preload bridge
-      already limit the blast radius), but worth adding a meta-tag CSP.
-- [ ] **Legacy `complete_stock_transfer` RPC still executable**, bypassing
-      the newer two-step `dispatch_stock_transfer` →
-      `receive_stock_transfer` maker-checker flow it was meant to replace
-      (migration `038`). `REVOKE EXECUTE ... FROM authenticated` on the old
-      function.
-- [ ] **A manager can approve their own refund/void request** — no
-      independent second-approver check in `approve_refund_request` /
-      `approve_void_request` (`supabase/migrations/005_refund_void_rpc.sql`).
-      Within their existing authority either way, but undermines the
-      maker-checker UI framing; consider requiring a different approver id
-      than the requester for MANAGER-level approvals.
+- [x] **Implemented (2026-08-25) — no max-length on product name/SKU**
+      (`ProductFormPage.tsx:173`). Client-side: zod schema caps `name` at
+      200 chars / `sku` at 64 chars (with matching English/Burmese error
+      strings), plus a `maxLength={200}` on the name input. Migration
+      `054` adds matching DB `CHECK` constraints (`products_name_max_length`,
+      `products_sku_max_length`) — confirmed no existing row would violate
+      them (`max(length(name))=21`, `max(length(sku))=7` in production
+      today) before writing the migration. **Migration written, not yet
+      applied to production.**
+- [x] **Implemented (2026-08-25) — `printers:print-receipt`'s `deviceName`
+      wasn't validated against the real printer list** before being passed
+      to `webContents.print()` (`electron/main.cjs`). Now cross-checked
+      against `getPrintersAsync()` output first; an unknown/disconnected
+      printer name returns a clean error instead of being passed through.
+      **Not yet pushed/released.**
+- [x] **Implemented (2026-08-25) — no Content-Security-Policy for the
+      Electron-loaded content.** Added a meta-tag CSP to `index.html`
+      (`script-src 'self'` — no `unsafe-inline`; `style-src` keeps
+      `unsafe-inline` since Tailwind/inline styles need it, much lower risk
+      than script injection; `connect-src 'self' https: wss:` since the
+      Supabase project URL is deployment-specific and can't be hardcoded).
+      Required moving the theme-resolution inline `<script>` to an external
+      `public/theme-init.js`, since an inline script can't run under
+      `script-src 'self'`. Verified in a real headless-browser pass (both
+      light and dark `prefers-color-scheme`) against a production build —
+      zero console errors, zero CSP violations, fonts/JS/dark-mode all
+      render correctly. Same `index.html` serves both the web build and
+      the Electron-loaded content, so one change covers both. **Not yet
+      pushed/released.**
+- [x] **Implemented (2026-08-25) — legacy `complete_stock_transfer` RPC
+      was still executable**, bypassing the newer two-step
+      `dispatch_stock_transfer` → `receive_stock_transfer` maker-checker
+      flow it was meant to replace (migration `038`). Migration `052`
+      revokes `EXECUTE` from `authenticated`. **Migration written, not yet
+      applied to production.**
+- [x] **Implemented (2026-08-25) — a manager could approve their own
+      refund/void request** — no independent second-approver check in
+      `approve_refund_request` / `approve_void_request`
+      (`supabase/migrations/005_refund_void_rpc.sql`). Migration `053`
+      adds `IF v_request.created_by = v_user.id THEN RAISE EXCEPTION...`
+      to both (applied uniformly, including ADMIN — no role is exempted).
+      Full function bodies re-created byte-for-byte from migration 005
+      with just the one guard added, following the same
+      DROP-then-CREATE-OR-REPLACE pattern established migrations already
+      use for signature-compatible redefinitions. **Migration written, not
+      yet applied to production.**
 - [ ] **Confirm intentional: full `users` table (roles, shop, active flag,
       permission overrides) is readable by any authenticated user**, not
       just via the admin-gated UI — `users_sel USING (true)` per
