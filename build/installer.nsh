@@ -265,3 +265,52 @@
     !insertmacro diagLog "[diag] *** MISMATCH: $$OUTDIR does not equal $$INSTDIR ***"
   ${endIf}
 !macroend
+
+# ============================================================
+# Closes the one remaining blind spot: uninstallOldVersion (installSection.nsh)
+# silently runs the OLD version's own already-compiled uninstaller.exe to
+# remove the previous install, then calls handleUninstallResult to check
+# whether that succeeded. That check is what customUnInstallCheck /
+# customUnInstallCheckCurrentUser below replace — so this tells us, for the
+# very first time, whether the "old uninstall" step or the "extraction" step
+# is the one actually failing, without needing to touch or rebuild the old
+# (undiagnosed) uninstaller.exe itself.
+#
+# Unlike everything above, this one is NOT purely additive: electron-builder
+# only calls a hook here AT ALL if we define one, and if we do, we own the
+# ENTIRE result-check — there's no "run theirs, then also run mine". So the
+# logic below is copied verbatim from handleUninstallResult's Function body
+# (installUtil.nsh) — same IfErrors check, same MessageBox/DetailPrint text,
+# same SetErrorLevel 2 + Quit on real failure — with diagLog calls added
+# around it and named labels used instead of their relative "+3"-style jumps
+# (safer to hand-maintain; a relative offset silently breaks if anyone ever
+# adds a line above it, a named label can't).
+# ============================================================
+!macro diagHandleUninstallResult CONTEXT
+  !insertmacro diagLog "[diag] Old-version uninstall (${CONTEXT}) step reached. Raw ExecWait exit code in $$R0 = $R0"
+  IfErrors diagUninstallLaunchFailed_${CONTEXT} diagUninstallLaunchOk_${CONTEXT}
+
+  diagUninstallLaunchFailed_${CONTEXT}:
+    !insertmacro diagLog "[diag] Old-version uninstall (${CONTEXT}): the OLD uninstaller.exe could NOT be launched at all (IfErrors was set before/instead of a real exit code)."
+    DetailPrint `Uninstall was not successful. Not able to launch uninstaller!`
+    Return
+
+  diagUninstallLaunchOk_${CONTEXT}:
+  ${if} $R0 != 0
+    !insertmacro diagLog "[diag] Old-version uninstall (${CONTEXT}) FAILED -- non-zero exit code $R0 from the OLD uninstaller.exe."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(uninstallFailed): $R0"
+    DetailPrint `Uninstall was not successful. Uninstaller error code: $R0.`
+    SetErrorLevel 2
+    Quit
+  ${else}
+    !insertmacro diagLog "[diag] Old-version uninstall (${CONTEXT}) succeeded (exit code 0). If the dialog still appears after this line, extraction is the confirmed failure point."
+  ${endIf}
+!macroend
+
+!macro customUnInstallCheck
+  !insertmacro diagHandleUninstallResult "SHELL_CONTEXT"
+!macroend
+
+!macro customUnInstallCheckCurrentUser
+  !insertmacro diagHandleUninstallResult "HKEY_CURRENT_USER"
+!macroend

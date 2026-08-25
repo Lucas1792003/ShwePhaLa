@@ -129,11 +129,57 @@ committing to a fix:
   reconfirmed clean on the second. 652 automated tests and lint
   unaffected (only `build/installer.nsh` and logging lines in
   `electron/main.cjs` changed; no `src/` behavior touched).
-- **Not yet pushed/released.** Waiting on a real reproduction with the
-  two log files (`installer-diagnostics.log` + `updater.log`) copied in
-  full before deciding the actual fix (most likely: extend
-  `waitForWritableFile`'s coverage from 2 files to the full set, once the
-  exact failing file is confirmed rather than assumed).
+### v1.0.12 real reproduction results — extraction-file-lock theory disproven
+
+Published as `v1.0.12` and reproduced on a real Windows machine updating
+from `v1.0.10`. `installer-diagnostics.log` came back clean across three
+separate full update attempts: `$INSTDIR` matched the registered
+`InstallLocation` exactly, and **every single file was `writable OK`** —
+the named list, the generic top-level sweep (which even caught two files
+not on the named list, `dxcompiler.dll`/`dxil.dll`), all clean. The log
+then stops exactly at "Probe complete. Proceeding to uninstall the old
+version, then extract the new one." — the dialog fires somewhere after
+that point, in one of the two remaining un-instrumented steps.
+
+This **disproves the leading theory** (an untested Chromium runtime file
+being transiently locked) — literally everything we can check was fine.
+Also confirmed: fails **deterministically**, all 3 separate full update
+attempts, not intermittently (rules out a one-off AV-scan timing fluke);
+clicking Cancel quits cleanly with the old v1.0.10 install fully intact
+and working (whatever's failing, it's failing *before* any old files
+actually get touched).
+
+**Key realization:** `uninstallOldVersion` (part of the *new* installer)
+silently runs the *old* version's own already-compiled
+`Uninstall Shwe Pha La POS.exe` to remove the previous install. That
+binary predates all of this diagnostic logging — even though its
+`un.checkAppRunning` does route through the same `customCheckAppRunning`
+macro we've customized since v1.0.10, it's running v1.0.10's *original*
+version of it, with zero ability to write to
+`installer-diagnostics.log`. So the old-uninstall step has been
+completely invisible to us this whole time — not uncovered by choice,
+but literally running different, older compiled code than what we've
+been instrumenting.
+
+**Added (still diagnostic-only): `customUnInstallCheck` /
+`customUnInstallCheckCurrentUser`.** These hooks fire in the *new*
+installer right after the old-uninstall step returns, so — unlike
+everything above — closes the blind spot from *this* side. Unlike the
+purely-additive diagnostics so far, this one required replacing
+electron-builder's own `handleUninstallResult` logic entirely (that's
+how the hook works — once defined, it owns the whole result-check, no
+"run theirs then also run mine"), so the exact original checks
+(`IfErrors`, `$R0 != 0`, the `uninstallFailed` MessageBox,
+`SetErrorLevel 2` + `Quit`) were copied verbatim from
+`installUtil.nsh`'s `handleUninstallResult` Function, with `diagLog`
+calls added around them and named labels used instead of their
+relative `+3`-style jumps (a relative offset silently breaks if a line
+is ever added above it; a named label can't). Compile-verified clean on
+the first attempt via the same real `electron-builder --win --x64`
+cross-build. Once reproduced again, the log will say definitively
+whether the old-uninstall step succeeded (pointing squarely at
+extraction instead) or failed with a real exit code (pointing at the old
+uninstaller itself). **Not yet pushed/released as of this addition.**
 
 ## ✅ Fixed — offline login (was: 🔴 critical bug)
 
