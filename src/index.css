@@ -467,7 +467,19 @@ body {
 
 .sidebar-footer-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  /* Always exactly two actions in practice — Logout plus either Download
+     App (web) or CheckForUpdatesButton (Electron; Download App hides
+     itself there). minmax(0, 1fr) on BOTH columns — not 1fr alone — is
+     what actually lets a column shrink below its content's natural width;
+     without the 0 floor, a long dynamic label (e.g. "Downloading 100%")
+     pushed its column wider than its share and overlapped the sibling
+     button instead of truncating (the real bug behind the v1.0.7 "Check
+     for Upd[ate]"/Logout overlap — reverted to a stacked layout in v1.0.8
+     rather than fixed at the time). Deliberately not
+     repeat(auto-fit, minmax(0, 1fr)): auto-fit's column count is
+     undefined/unreliable once the minimum is 0, since track count is
+     normally derived from container-width ÷ minimum. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
   width: 100%;
 }
@@ -478,10 +490,25 @@ body {
   width: 100%;
 }
 
+/* .update-checker's own default (align-items: center) lets its inner
+   button size to its natural content width instead of filling the grid
+   cell — the actual mechanism behind the overlap. Force it to stretch so
+   the button inside inherits the wrapper's (already grid-constrained)
+   width, and give the button itself the same min-width:0 floor. */
+.sidebar-footer-actions .update-checker {
+  align-items: stretch;
+}
+
+.sidebar-footer-actions .update-checker .logout-btn {
+  min-width: 0;
+  width: 100%;
+}
+
 .sidebar-footer-actions .logout-btn span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .sidebar-user {
@@ -616,6 +643,12 @@ body {
 
 .sidebar-collapsed .sidebar-footer-top {
   justify-content: center;
+}
+
+.sidebar-collapsed .sidebar-footer-actions {
+  /* The collapsed rail is 76-84px wide — two 44px icon buttons side by
+     side don't fit. Force back to one column (icon-only rows, stacked). */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .main {

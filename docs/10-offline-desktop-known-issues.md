@@ -5,6 +5,63 @@ mirror, write outbox, RPC + table-write reconciliation) and the Electron
 desktop wrapper. Read this before touching any of `stores/data/outbox.ts`,
 `stores/data/tableWrite.ts`, `lib/localDb.ts`, or `electron/`.
 
+## Current Windows release and recovery
+
+- **Current public desktop release:** `v1.0.10`
+- **Windows installer:**
+  [Shwe-Pha-La-POS-Setup-1.0.10.exe](https://github.com/Lucas1792003/ShwePhaLa/releases/download/v1.0.10/Shwe-Pha-La-POS-Setup-1.0.10.exe)
+- **Full release:**
+  [Shwe Pha La POS v1.0.10](https://github.com/Lucas1792003/ShwePhaLa/releases/tag/v1.0.10)
+
+If an older installer is showing **"Shwe Pha La POS cannot be closed"**,
+cancel it. Do not uninstall the existing app and do not clear AppData. Run
+the v1.0.10 installer normally. If recovery is still needed, end every
+`Shwe Pha La POS.exe` entry in Task Manager and retry.
+
+### v1.0.7–v1.0.9's actual root cause, found and fixed in v1.0.10
+
+Three rounds of fixes (v1.0.7, v1.0.8, v1.0.9 — single-instance lock, a
+hard-exit timeout, an external `taskkill` watchdog spawned from
+`electron/main.cjs`) all targeted the same thing: making sure the old app
+process was really dead before the installer ran. **All three were fixing
+the wrong code path.** Confirmed by reading electron-builder's own NSIS
+templates directly (`node_modules/app-builder-lib/templates/nsis/`) and by
+instrumenting its source to verify `build/installer.nsh` actually gets
+included (it does, correctly, in the right order):
+
+- `customCheckAppRunning` (what `build/installer.nsh` overrides) only
+  replaces the **pre-flight** "is the app already running" check in
+  `allowOnlyOneInstallerInstance.nsh`. Once that macro is defined, this
+  check is bypassed entirely — it was never the source of the dialog.
+- The exact "`${PRODUCT_NAME}` cannot be closed" message box actually
+  being shown comes from a **separate, non-customizable** retry loop in
+  `extractAppPackage.nsh`'s `extractUsing7za`: it attempts
+  `CopyFiles /SILENT` into `$OUTDIR`, and if a target file is still
+  locked, retries only **5 times with a 1-second gap (~5 seconds total)**
+  before giving up and showing that dialog — regardless of anything
+  `customCheckAppRunning` does.
+- The old macro's flat `taskkill` + `Sleep 1500` wasn't giving Windows
+  enough real time to release the file lock (most likely antivirus
+  real-time scanning re-locking the freshly-terminated 100MB+ exe) before
+  that 5-second extraction-retry window ran out.
+
+**Fix (v1.0.10)**: `build/installer.nsh`'s `customCheckAppRunning` now
+loop-verifies via `tasklist`/`findstr` that the process is actually gone
+(up to ~7.5s) instead of trusting a fixed sleep, then adds a further 2s
+settle buffer — giving the extraction step's 5-second retry window much
+more real time margin before it ever starts, rather than racing it.
+Verified the macro compiles correctly via a real local Windows
+cross-build (`electron-builder --win`) before publishing — **still needs
+real-Windows-hardware confirmation of an actual v1.0.9 → v1.0.10 (or any
+older version → v1.0.10) in-app update**, since NSIS runtime behavior
+under real antivirus/disk conditions can't be verified from this
+environment.
+
+Release verification completed before publication: 12/12 artifacts were
+present with matching local/remote sizes, `latest.yml` points to the
+v1.0.10 Windows installer, 652 automated tests passed, and the Electron
+production build passed.
+
 ## ✅ Fixed — offline login (was: 🔴 critical bug)
 
 **`src/stores/authStore.ts`'s `restoreSession()`** used to always require the
@@ -252,18 +309,19 @@ already established:
       window on a second launch, and adds a Windows-only 1.5-second hard-exit
       fallback after the detached NSIS installer was started. A real
       v1.0.7 → v1.0.8 test confirmed that timer did not prevent the failure.
-- [x] **Installer-level Windows updater cleanup (v1.0.9).** electron-builder
-      26.15.x checks only the new `$INSTDIR` for running processes. Because
-      this app's assisted installer allows a custom directory, it can miss the
-      running prior installation; the old uninstaller then fails on locked
-      files and reuses the misleading "app cannot be closed" dialog. The
-      v1.0.9 installer overrides that check and force-closes the exact
-      `Shwe Pha La POS.exe` process tree regardless of its path. The app also
+- [x] **Superseded — installer-level Windows updater cleanup (v1.0.9).**
+      electron-builder 26.15.x checks only the new `$INSTDIR` for running
+      processes; this app's assisted installer allows a custom directory,
+      so it can miss a running prior installation. v1.0.9's
+      `customCheckAppRunning` override force-closes the exact
+      `Shwe Pha La POS.exe` process tree regardless of path, and the app
       launches an independent delayed `taskkill` helper before
-      `quitAndInstall()`, so it survives Electron's own quit lifecycle.
-      Recovery for any already-stuck installer: end every
-      `Shwe Pha La POS.exe` in Task Manager and click **Retry** — do not
-      uninstall or clear AppData.
+      `quitAndInstall()`. **A real v1.0.7 → v1.0.9 test still reproduced
+      the exact same "cannot be closed" dialog** — this fix (like v1.0.7's)
+      targeted the wrong code path. See "v1.0.7–v1.0.9's actual root
+      cause, found and fixed in v1.0.10" above for what was actually
+      wrong and the real fix. This entry is kept for history/context, not
+      because it worked.
 - [x] **Fixed — sidebar update and logout buttons overlapped.** In the expanded
       270px desktop sidebar, both text-heavy actions were forced into equal
       columns. v1.0.8 stacks them as full-width rows, which also keeps longer
@@ -303,10 +361,10 @@ already established:
       `mac.target` now includes `zip` alongside `dmg` — electron-updater's
       Mac update mechanism needs the zip artifact even though the dmg is
       what a fresh install uses.
-      **Recurring publish gotcha (confirmed again for v1.0.6 and v1.0.7):**
+      **Recurring publish gotcha (confirmed again through v1.0.10):**
       `--publish always` can report success while the GitHub Release ends up
-      with only 1 of the 12 expected assets — an interrupted/incomplete
-      automated upload, not a build problem (every file existed correctly
+      incomplete — v1.0.9 initially had 11 of the 12 expected assets. This is
+      an upload problem, not a build problem (every file existed correctly
       locally). Always verify after publishing:
       `gh release view v<version> --json assets --jq
       '.assets[] | "\(.name) \(.size)"'` and compare against the local
@@ -319,13 +377,19 @@ already established:
 
 ## Testing gaps
 
-- **The v1.0.9 installer-level Windows updater fix needs real-hardware
-  confirmation.** The v1.0.7 → v1.0.8 update reproduced the same NSIS error,
-  proving the earlier in-process timer insufficient. The v1.0.9 NSIS override
-  compiles successfully and is present in the new installer. The decisive test
-  is the v1.0.8 → v1.0.9 update: confirm **Restart now** closes every app
-  process, NSIS completes with no manual Retry dialog, and the updated app
-  relaunches once.
+- **The v1.0.10 Windows updater fix needs real-hardware confirmation.**
+  v1.0.7 and v1.0.9 both reproduced the exact same "cannot be closed"
+  dialog on real hardware despite targeting the app-running pre-check —
+  the actual failing check turned out to be a separate, non-customizable
+  5-second file-copy retry loop in electron-builder's own
+  `extractAppPackage.nsh` (see "v1.0.7–v1.0.9's actual root cause" above).
+  v1.0.10 gives that retry window much more real time margin by
+  loop-verifying the old process is gone instead of trusting a fixed
+  sleep. Confirmed compiling correctly via a real local Windows
+  cross-build; **not yet confirmed on real Windows hardware** — the
+  decisive test is any older version → v1.0.10: confirm the installer
+  closes every app process, completes with no manual Retry dialog, and
+  relaunches the updated app once.
 - **No real Supabase project was ever exercised.** This repo has no
   `.env.local` configured, so nothing above has been clicked through in an
   actual browser or Electron window against live data — only via `npm run

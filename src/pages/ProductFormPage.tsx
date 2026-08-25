@@ -43,6 +43,61 @@ import { newId } from "../lib/id";
 
 const PRODUCTS_ROUTE = "/app/admin/products";
 
+// Collapsible card used for every section on this page. Mirrors the
+// sidebar's own collapsible-group pattern (chevron rotates -90deg when
+// closed) so the interaction feels consistent app-wide. Defaults open so
+// nothing is hidden — and no validation error can go unnoticed — on load;
+// collapsing is purely a "I'm done with this" convenience.
+const FormSection = ({
+  icon,
+  title,
+  description,
+  complete,
+  headerExtra,
+  children,
+}: {
+  icon: string;
+  title: string;
+  description?: React.ReactNode;
+  complete?: boolean;
+  headerExtra?: React.ReactNode;
+  children: React.ReactNode;
+}) => {
+  const [isOpen, setIsOpen] = useState(true);
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            <button
+              type="button"
+              onClick={() => setIsOpen((v) => !v)}
+              aria-expanded={isOpen}
+              className="flex w-full items-center gap-1.5 text-left"
+            >
+              <span className="material-symbols-rounded text-base text-emerald-600">{icon}</span>
+              <span>{title}</span>
+              {complete && (
+                <span className="material-symbols-rounded text-base text-emerald-500" title="Complete">
+                  check_circle
+                </span>
+              )}
+              <span
+                className={`material-symbols-rounded ml-auto text-xl text-slate-400 transition-transform duration-200 ${isOpen ? "" : "-rotate-90"}`}
+              >
+                expand_more
+              </span>
+            </button>
+          </h3>
+          {description}
+        </div>
+        {headerExtra}
+      </div>
+      {isOpen && <div className="mt-4">{children}</div>}
+    </div>
+  );
+};
+
 export const ProductFormPage = () => {
   const navigate = useNavigate();
   const { productId: routeProductId } = useParams<{ productId?: string }>();
@@ -482,6 +537,8 @@ export const ProductFormPage = () => {
   const watchedCategory = form.watch("category");
   const watchedUnitType = form.watch("unitType");
   const watchedBrandId = form.watch("brandId");
+  const watchedName = form.watch("name");
+  const identityComplete = watchedName.trim().length >= 2;
 
   useEffect(() => {
     if (isEditing) return;
@@ -505,6 +562,9 @@ export const ProductFormPage = () => {
     if (!cat) return [] as Brand[];
     return brandsByCategory.get(cat.id) ?? [];
   }, [activeCategories, brandsByCategory, watchedCategory]);
+  const classificationComplete = Boolean(
+    watchedCategory && (brandsForFormCategory.length === 0 || watchedBrandId),
+  );
 
   // Active suppliers, plus any already-linked inactive ones (so an existing
   // link stays visible/removable on edit). Sorted by name.
@@ -769,12 +829,8 @@ export const ProductFormPage = () => {
       <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         {/* Left column — Identity & stock */}
         <div className="space-y-5">
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              {t("productForm", "identity")}
-            </h3>
-
-            <div className="mt-4 space-y-4">
+          <FormSection icon="badge" title={t("productForm", "identity")} complete={identityComplete}>
+            <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "sku")}</label>
@@ -831,14 +887,10 @@ export const ProductFormPage = () => {
                 />
               </div>
             </div>
-          </div>
+          </FormSection>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              {t("productForm", "classification")}
-            </h3>
-
-            <div className="mt-4 space-y-4">
+          <FormSection icon="category" title={t("productForm", "classification")} complete={classificationComplete}>
+            <div className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "categoryLabel")}</label>
                 <Select {...form.register("category")}>
@@ -949,14 +1001,10 @@ export const ProductFormPage = () => {
                 </p>
               </div>
             </div>
-          </div>
+          </FormSection>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              {t("productForm", "stockStatus")}
-            </h3>
-
-            <div className="mt-4 space-y-4">
+          <FormSection icon="inventory_2" title={t("productForm", "stockStatus")}>
+            <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">{t("productForm", "lowStockThreshold")}</label>
@@ -1056,16 +1104,17 @@ export const ProductFormPage = () => {
                 </div>
               )}
             </div>
-          </div>
+          </FormSection>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              {t("productForm", "suppliers")}
-            </h3>
-            <p className="mt-2 text-xs text-slate-500">
-              {t("productForm", "suppliersHint")}
-            </p>
-
+          <FormSection
+            icon="local_shipping"
+            title={t("productForm", "suppliers")}
+            description={
+              <p className="mt-2 text-xs text-slate-500">
+                {t("productForm", "suppliersHint")}
+              </p>
+            }
+          >
             {selectableSuppliers.length === 0 ? (
               <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-3 py-3 text-xs text-slate-500">
                 {t("productForm", "noSuppliersPrefix")}
@@ -1103,17 +1152,16 @@ export const ProductFormPage = () => {
                 {t("productForm", "suppliersSelected", { n: selectedSupplierIds.length })}
               </p>
             )}
-          </div>
+          </FormSection>
         </div>
 
         {/* Right column — Units & Prices */}
         <div className="space-y-5">
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                  {t("productForm", "unitsPrices")}
-                </h3>
+          <FormSection
+            icon="sell"
+            title={t("productForm", "unitsPrices")}
+            description={
+              <>
                 <p className="mt-2 text-xs text-slate-500">
                   {t("productForm", "unitsHint")}
                 </p>
@@ -1123,14 +1171,16 @@ export const ProductFormPage = () => {
                     base2: form.watch("unitType") || t("productForm", "baseUnitFallback"),
                   })}
                 </p>
-              </div>
-              <Button type="button" variant="secondary" onClick={addSellableUnit} className="min-h-10">
+              </>
+            }
+            headerExtra={
+              <Button type="button" onClick={addSellableUnit} className="min-h-10">
                 <span className="material-symbols-rounded mr-1 text-sm">add</span>
                 {t("productForm", "addUnit")}
               </Button>
-            </div>
-
-            <div className="mt-4 space-y-3">
+            }
+          >
+            <div className="space-y-3">
               {formUnits.map((unit, index) => {
                 const baseUnitName = form.watch("unitType") || t("productForm", "baseUnitFallback");
                 const unitName = unit.name.trim() || t("productForm", "newUnit");
@@ -1315,7 +1365,7 @@ export const ProductFormPage = () => {
                 );
               })}
             </div>
-          </div>
+          </FormSection>
         </div>
 
         {/* Footer spans both columns */}

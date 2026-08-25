@@ -294,10 +294,11 @@ RPC-only operational writes:
 
 Current expected exception:
 
-- `src/data/seedSupabase.ts` contains direct seed writes for development
+- `scripts/seed/seedBrowser.ts` contains direct seed writes for development
   reference only. It is guarded and must not be run from the browser after RLS
-  lockdown. Use SQL editor, `supabase db reset`, or private service-role tooling
-  for full seed data.
+  lockdown. Use SQL editor, `supabase db reset`, or
+  `scripts/seed/seedServiceRole.ts` (`npm run seed:service-role`) for full
+  seed data.
 
 There should be no runtime direct writes to protected operational/audit tables.
 

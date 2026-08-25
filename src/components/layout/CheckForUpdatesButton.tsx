@@ -78,7 +78,11 @@ export const CheckForUpdatesButton = () => {
     });
   };
 
-  const label =
+  // Short visible labels — this button sits side-by-side with Logout in a
+  // compact sidebar footer column, so the full-length phrases used to
+  // truncate ("Check for Upd…") instead of fitting. `fullLabel` keeps the
+  // descriptive phrase for the hover tooltip.
+  const fullLabel =
     phase === "checking"
       ? "Checking…"
       : phase === "downloading"
@@ -90,6 +94,18 @@ export const CheckForUpdatesButton = () => {
             : phase === "error"
               ? "Check failed"
               : "Check for Updates";
+  const label =
+    phase === "checking"
+      ? "Checking…"
+      : phase === "downloading"
+        ? `${percent}%`
+        : phase === "downloaded"
+          ? "Restart"
+          : phase === "not-available"
+            ? "Updated"
+            : phase === "error"
+              ? "Failed"
+              : "Update";
 
   return (
     <div className="update-checker">
@@ -98,7 +114,7 @@ export const CheckForUpdatesButton = () => {
         className="logout-btn"
         onClick={handleClick}
         disabled={busy}
-        title={message ?? label}
+        title={message ?? fullLabel}
       >
         <span className="material-symbols-rounded">{ICONS[phase]}</span>
         <span>{label}</span>

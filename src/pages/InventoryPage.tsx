@@ -12,6 +12,7 @@ import { InventoryTable } from "../components/inventory/InventoryTable";
 import { MovementsTable } from "../components/inventory/MovementsTable";
 import { AdjustStockModal } from "../components/inventory/AdjustStockModal";
 import { Button } from "../components/ui/Button";
+import { useToast } from "../components/ui/Toast";
 import { downloadCsv } from "../lib/csv";
 import { hasPermission } from "../lib/permissions";
 import { reportError } from "../lib/errors";
@@ -23,6 +24,7 @@ const PAGE_SIZE = 10;
 
 export const InventoryPage = () => {
   const { t } = useTranslation();
+  const toast = useToast();
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) => state.users.find((user) => user.id === currentUserId));
   const { currentShopId, setShopId } = useAppStore();
@@ -232,7 +234,11 @@ export const InventoryPage = () => {
             });
             setAdjustProductId(null);
           } catch (error) {
-            alert(reportError("InventoryPage.adjustStock", error, t("inventory", "adjustFailed")));
+            toast({
+              variant: "error",
+              title: t("inventory", "adjustFailed"),
+              description: reportError("InventoryPage.adjustStock", error, t("inventory", "adjustFailed")),
+            });
           }
         }}
       />

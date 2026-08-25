@@ -16,6 +16,8 @@ import { Select } from "../components/ui/Select";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Modal } from "../components/ui/Modal";
+import { Tabs } from "../components/ui/Tabs";
+import { useToast } from "../components/ui/Toast";
 import { Table, THead, TBody, TR, TH, TD } from "../components/ui/Table";
 import { SearchInput } from "../components/forms/SearchInput";
 import { Pagination } from "../components/ui/Pagination";
@@ -40,6 +42,7 @@ const PAGE_SIZE = 10;
 export const ProductsManagePage = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const toast = useToast();
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentShopId = useAppStore((state) => state.currentShopId);
   const currentUser = useDataStore((state) => state.users.find((u) => u.id === currentUserId));
@@ -70,6 +73,10 @@ export const ProductsManagePage = () => {
   const updateBrand = useDataStore((state) => state.updateBrand);
   const deactivateBrand = useDataStore((state) => state.deactivateBrand);
   const addAuditLog = useDataStore((state) => state.addAuditLog);
+
+  // Products / Categories are shown as separate tabs (each was previously a
+  // stacked section on the same page).
+  const [activeTab, setActiveTab] = useState<"products" | "categories">("products");
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -235,7 +242,11 @@ export const ProductsManagePage = () => {
     try {
       await deleteProduct(product.id);
     } catch (error) {
-      alert(getErrorMessage(error) || t("products", "couldNotDeleteProduct"));
+      toast({
+        variant: "error",
+        title: t("products", "couldNotDeleteProduct"),
+        description: getErrorMessage(error, t("products", "couldNotDeleteProduct")),
+      });
       return;
     }
 
@@ -424,8 +435,12 @@ export const ProductsManagePage = () => {
     try {
       // deleteCategory re-checks usage in the data layer and throws if unsafe.
       deleteCategory(category.id);
-    } catch (e) {
-      alert(e instanceof Error ? e.message : t("products", "couldNotDeleteCategory"));
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: t("products", "couldNotDeleteCategory"),
+        description: getErrorMessage(error, t("products", "couldNotDeleteCategory")),
+      });
       return;
     }
 
@@ -533,7 +548,11 @@ export const ProductsManagePage = () => {
     try {
       await deactivateBrand(brand.id);
     } catch (error) {
-      alert(getErrorMessage(error) || t("products", "couldNotDeactivateBrand"));
+      toast({
+        variant: "error",
+        title: t("products", "couldNotDeactivateBrand"),
+        description: getErrorMessage(error, t("products", "couldNotDeactivateBrand")),
+      });
     }
   };
 
@@ -550,30 +569,45 @@ export const ProductsManagePage = () => {
         title={t("products", "title")}
         subtitle={t("products", "subtitle")}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" onClick={handleExportProducts}>
-              <span className="material-symbols-rounded mr-1 text-sm">download</span>
-              {t("products", "exportCsv")}
-            </Button>
-            {canCreateProducts && (
-              <Button
-                variant="secondary"
-                onClick={() => importFileInputRef.current?.click()}
-              >
-                <span className="material-symbols-rounded mr-1 text-sm">upload</span>
-                {t("products", "importCsv")}
+          activeTab === "products" ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="secondary" onClick={handleExportProducts}>
+                <span className="material-symbols-rounded mr-1 text-sm">download</span>
+                {t("products", "exportCsv")}
               </Button>
-            )}
-            {canCreateProducts && (
-              <Button onClick={handleAddProduct}>
-                <span className="material-symbols-rounded mr-1 text-sm">add</span>
-                {t("products", "addProduct")}
-              </Button>
-            )}
-          </div>
+              {canCreateProducts && (
+                <Button
+                  variant="secondary"
+                  onClick={() => importFileInputRef.current?.click()}
+                >
+                  <span className="material-symbols-rounded mr-1 text-sm">upload</span>
+                  {t("products", "importCsv")}
+                </Button>
+              )}
+              {canCreateProducts && (
+                <Button onClick={handleAddProduct}>
+                  <span className="material-symbols-rounded mr-1 text-sm">add</span>
+                  {t("products", "addProduct")}
+                </Button>
+              )}
+            </div>
+          ) : undefined
         }
       />
 
+      <div className="mt-5">
+        <Tabs
+          tabs={[
+            { id: "products", label: t("products", "tabProducts") },
+            { id: "categories", label: t("products", "tabCategories") },
+          ]}
+          active={activeTab}
+          onChange={(id) => setActiveTab(id as "products" | "categories")}
+        />
+      </div>
+
+      {activeTab === "products" && (
+      <>
       {/* Filters */}
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <SearchInput
@@ -786,9 +820,12 @@ export const ProductsManagePage = () => {
         </span>
         <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </div>
+      </>
+      )}
 
-      {/* Category Management Section */}
-      <div className="mt-8 border-t border-slate-200 pt-6">
+      {/* Category Management */}
+      {activeTab === "categories" && (
+      <div className="mt-6">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-slate-800">{t("products", "categories")}</h3>
@@ -874,7 +911,7 @@ export const ProductsManagePage = () => {
           })}
         </div>
       </div>
-
+      )}
 
       {/* Product CSV Import Modal */}
       <Modal

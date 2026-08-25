@@ -11,6 +11,7 @@ import { Modal } from "../components/ui/Modal";
 import { Select } from "../components/ui/Select";
 import { SearchInput } from "../components/forms/SearchInput";
 import { TransferReceiveModal } from "../components/transfers/TransferReceiveModal";
+import { useToast } from "../components/ui/Toast";
 import { useTranslation } from "../hooks/useTranslation";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
 import { reportError } from "../lib/errors";
@@ -90,6 +91,7 @@ export const TransfersPage = () => {
   const isAdmin = currentUser?.role === "ADMIN";
   const isManager = currentUser?.role === "MANAGER" || isAdmin;
   const { t } = useTranslation();
+  const toast = useToast();
   const statusLabels: Record<TransferStatus, string> = {
     PENDING: t("transfers", "pending"),
     APPROVED: t("transfers", "approved"),
@@ -181,7 +183,11 @@ export const TransfersPage = () => {
       setShowCreateModal(false);
       setNewTransfer({ toShopId: "", items: [], notes: "" });
     } catch (error) {
-      alert(reportError("TransfersPage.create", error, t("transfers", "failCreate")));
+      toast({
+        variant: "error",
+        title: t("transfers", "failCreate"),
+        description: reportError("TransfersPage.create", error, t("transfers", "failCreate")),
+      });
     }
   };
 
@@ -190,7 +196,11 @@ export const TransfersPage = () => {
     try {
       await approveTransfer({ transferId, approverId: currentUserId });
     } catch (error) {
-      alert(reportError("TransfersPage.approve", error, t("transfers", "failApprove")));
+      toast({
+        variant: "error",
+        title: t("transfers", "failApprove"),
+        description: reportError("TransfersPage.approve", error, t("transfers", "failApprove")),
+      });
     }
   };
 
@@ -201,7 +211,11 @@ export const TransfersPage = () => {
     try {
       await rejectTransfer({ transferId, actorId: currentUserId, reason });
     } catch (error) {
-      alert(reportError("TransfersPage.reject", error, t("transfers", "failReject")));
+      toast({
+        variant: "error",
+        title: t("transfers", "failReject"),
+        description: reportError("TransfersPage.reject", error, t("transfers", "failReject")),
+      });
     }
   };
 
@@ -210,7 +224,11 @@ export const TransfersPage = () => {
     try {
       await dispatchTransfer({ transferId, actorId: currentUserId });
     } catch (error) {
-      alert(reportError("TransfersPage.dispatch", error, t("transfers", "failDispatch")));
+      toast({
+        variant: "error",
+        title: t("transfers", "failDispatch"),
+        description: reportError("TransfersPage.dispatch", error, t("transfers", "failDispatch")),
+      });
     }
   };
 
@@ -221,7 +239,11 @@ export const TransfersPage = () => {
     try {
       await cancelTransfer({ transferId, actorId: currentUserId, reason });
     } catch (error) {
-      alert(reportError("TransfersPage.cancel", error, t("transfers", "failCancel")));
+      toast({
+        variant: "error",
+        title: t("transfers", "failCancel"),
+        description: reportError("TransfersPage.cancel", error, t("transfers", "failCancel")),
+      });
     }
   };
 

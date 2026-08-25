@@ -51,11 +51,12 @@ the Supabase Auth session.
 - ✅ Full-app Light / Dark / System themes across POS, dashboards, tables,
   forms, and modals. System is the default; OS changes are followed live and
   the theme is resolved before first paint to prevent a light flash.
-- ✅ Electron desktop release **v1.0.9** is public. It retains the v1.0.8
-  sidebar layout fix and adds installer-level exact-process cleanup plus an
-  independent app-side Windows cleanup helper. This replaces the incomplete
-  v1.0.7 updater mitigation; the v1.0.8 → v1.0.9 handoff still needs
-  confirmation on real Windows hardware.
+- ✅ Electron desktop release **v1.0.10** is public. v1.0.7 and v1.0.9 both
+  targeted the wrong NSIS check for the Windows "cannot be closed" updater
+  error — a real v1.0.7 → v1.0.9 test still reproduced it. v1.0.10 fixes the
+  actual root cause (a separate, non-customizable 5-second file-copy retry
+  loop — see `10-offline-desktop-known-issues.md`); still needs real-Windows
+  confirmation.
 - ✅ Central error utility (`src/lib/errors.ts`) maps Postgres / network /
   storage / domain errors to friendly user-facing strings; bootstrap has a
   retry surface; top-level `ErrorBoundary` is in place.

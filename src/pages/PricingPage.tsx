@@ -10,6 +10,7 @@ import { Modal } from "../components/ui/Modal";
 import { Select } from "../components/ui/Select";
 import { SearchInput } from "../components/forms/SearchInput";
 import { ProductPicker } from "../components/products/ProductPicker";
+import { useToast } from "../components/ui/Toast";
 import { getPriceTierProductError } from "../features/pricing/priceTierForm";
 import { formatMmk, getEffectiveShopId } from "../lib/utils";
 import { newId } from "../lib/id";
@@ -17,6 +18,7 @@ import { reportError } from "../lib/errors";
 import type { PriceTier } from "../types";
 
 export const PricingPage = () => {
+  const toast = useToast();
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) => state.users.find((u) => u.id === currentUserId));
   const { currentShopId } = useAppStore();
@@ -169,7 +171,11 @@ export const PricingPage = () => {
     try {
       await deletePriceTier(tierId);
     } catch (error) {
-      alert(reportError("PricingPage.delete", error, "Failed to delete price tier"));
+      toast({
+        variant: "error",
+        title: "Failed to delete price tier",
+        description: reportError("PricingPage.delete", error, "Failed to delete price tier"),
+      });
     }
   };
 
@@ -177,7 +183,11 @@ export const PricingPage = () => {
     try {
       await updatePriceTier({ ...tier, isActive: !tier.isActive });
     } catch (error) {
-      alert(reportError("PricingPage.toggleActive", error, "Failed to update price tier"));
+      toast({
+        variant: "error",
+        title: "Failed to update price tier",
+        description: reportError("PricingPage.toggleActive", error, "Failed to update price tier"),
+      });
     }
   };
 

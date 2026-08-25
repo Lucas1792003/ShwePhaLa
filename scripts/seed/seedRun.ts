@@ -1,13 +1,4 @@
-// WARNING:
-// This script must not be run from the browser/authenticated Supabase client
-// after RLS lockdown. Protected operational tables are RPC-only and normal
-// authenticated clients are intentionally blocked from direct seed writes.
-//
-// Use Supabase SQL editor, `supabase db reset`, or a private server-side
-// service-role script for full database seeding. This file is retained only as
-// a dev reference and requires an explicit local opt-in.
-
-import { supabase } from "../lib/supabase";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   seedShops,
   seedUsers,
@@ -27,15 +18,13 @@ import {
   seedSales,
   seedSaleItems,
   seedAuditLogs,
-} from "./seed";
+} from "./seedData";
 
-export async function seedSupabase() {
-  if (!import.meta.env.DEV || import.meta.env.VITE_ALLOW_BROWSER_SUPABASE_SEED !== "true") {
-    throw new Error(
-      "seedSupabase is disabled. Use SQL/service-role seeding, or set VITE_ALLOW_BROWSER_SUPABASE_SEED=true in local development only."
-    );
-  }
-
+// Shared insert sequence, parameterized on the client so both the guarded
+// browser variant (anon key, RLS-gated, dev-only opt-in) and the
+// service-role variant (Node, bypasses RLS) can reuse it.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function runSeed(supabase: SupabaseClient<any>) {
   const { error: shopsError } = await supabase.from("shops").insert(
     seedShops.map((s) => ({
       id: s.id, code: s.code, name: s.name, address: s.address,

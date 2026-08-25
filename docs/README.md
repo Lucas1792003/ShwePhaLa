@@ -7,9 +7,11 @@ business data lives in Supabase, not localStorage. Admin sign-in adds a
 second factor (authenticator app or emailed code), the UI is fully
 English/Myanmar, the business brand (name + logo) is admin-editable, and
 the complete app supports System / Light / Dark themes. The current desktop
-release is **v1.0.9**; it includes the sidebar footer fix from v1.0.8 and a
-new installer-level Windows process cleanup for the recurring updater failure.
-See document 10 for the remaining real-hardware verification item.
+release is **v1.0.10**; it fixes the real root cause of the recurring
+Windows updater "cannot be closed" failure (v1.0.7/v1.0.9 targeted the
+wrong NSIS check — see document 10 for the full diagnosis). See document 10
+for the direct Windows download, stuck-installer recovery steps, and
+remaining real-hardware verification item.
 
 ## Quick Start
 

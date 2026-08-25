@@ -19,7 +19,7 @@ import type {
   Supplier,
   SupplierPayment,
   User,
-} from "../types";
+} from "../../src/types";
 
 const dayAgo = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
 

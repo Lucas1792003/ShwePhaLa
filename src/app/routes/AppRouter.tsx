@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "../layout/AppLayout";
 import { RequireAuth } from "./guards/RequireAuth";
@@ -14,21 +15,8 @@ import { ShiftDetailPage } from "../../features/shifts/pages/ShiftDetailPage";
 import { InventoryPage } from "../../features/inventory/pages/InventoryPage";
 import { TransfersPage } from "../../features/transfers/pages/TransfersPage";
 import { PurchasesPage } from "../../features/purchases/pages/PurchasesPage";
-import { ShopReportsPage } from "../../features/reports/pages/ShopReportsPage";
-import { GlobalReportsPage } from "../../features/reports/pages/GlobalReportsPage";
-import { ProfitReportsPage } from "../../features/reports/pages/ProfitReportsPage";
 import { ApprovalsPage } from "../../features/approvals/pages/ApprovalsPage";
-import { ShopsAdminPage } from "../../features/admin/pages/ShopsAdminPage";
-import { UsersAdminPage } from "../../features/admin/pages/UsersAdminPage";
-import { ProductsAdminPage } from "../../features/admin/pages/ProductsAdminPage";
-import { ProductFormPage } from "../../pages/ProductFormPage";
-import { UnitTypesAdminPage } from "../../features/admin/pages/UnitTypesAdminPage";
-import { BarcodesAdminPage } from "../../features/admin/pages/BarcodesAdminPage";
-import { SuppliersPage } from "../../features/admin/pages/SuppliersPage";
 import { SupplierDetailPage } from "../../pages/SupplierDetailPage";
-import { PricingPage } from "../../features/admin/pages/PricingPage";
-import { AuditLogPage } from "../../features/admin/pages/AuditLogPage";
-import { SyncConflictsPage } from "../../pages/SyncConflictsPage";
 import { CatalogPage } from "../../features/catalog/pages/CatalogPage";
 import { DashboardPage } from "../../pages/DashboardPage";
 import { BarcodeLabelsPage } from "../../pages/BarcodeLabelsPage";
@@ -38,6 +26,49 @@ import { useAuthStore } from "../../stores/authStore";
 import { useDataStore } from "../../stores/dataStore";
 import { ROUTE_PERMISSIONS } from "../../lib/permissions";
 
+// Lazy-loaded: admin pages, reports, and the product form. These are the
+// least-frequently-visited routes, so they shouldn't add to the first-paint
+// bundle for POS/dashboard/login, which stay eager below.
+const ShopReportsPage = lazy(() =>
+  import("../../features/reports/pages/ShopReportsPage").then((m) => ({ default: m.ShopReportsPage })),
+);
+const GlobalReportsPage = lazy(() =>
+  import("../../features/reports/pages/GlobalReportsPage").then((m) => ({ default: m.GlobalReportsPage })),
+);
+const ProfitReportsPage = lazy(() =>
+  import("../../features/reports/pages/ProfitReportsPage").then((m) => ({ default: m.ProfitReportsPage })),
+);
+const ShopsAdminPage = lazy(() =>
+  import("../../features/admin/pages/ShopsAdminPage").then((m) => ({ default: m.ShopsAdminPage })),
+);
+const UsersAdminPage = lazy(() =>
+  import("../../features/admin/pages/UsersAdminPage").then((m) => ({ default: m.UsersAdminPage })),
+);
+const ProductsAdminPage = lazy(() =>
+  import("../../features/admin/pages/ProductsAdminPage").then((m) => ({ default: m.ProductsAdminPage })),
+);
+const ProductFormPage = lazy(() =>
+  import("../../pages/ProductFormPage").then((m) => ({ default: m.ProductFormPage })),
+);
+const UnitTypesAdminPage = lazy(() =>
+  import("../../features/admin/pages/UnitTypesAdminPage").then((m) => ({ default: m.UnitTypesAdminPage })),
+);
+const BarcodesAdminPage = lazy(() =>
+  import("../../features/admin/pages/BarcodesAdminPage").then((m) => ({ default: m.BarcodesAdminPage })),
+);
+const SuppliersPage = lazy(() =>
+  import("../../features/admin/pages/SuppliersPage").then((m) => ({ default: m.SuppliersPage })),
+);
+const PricingPage = lazy(() =>
+  import("../../features/admin/pages/PricingPage").then((m) => ({ default: m.PricingPage })),
+);
+const AuditLogPage = lazy(() =>
+  import("../../features/admin/pages/AuditLogPage").then((m) => ({ default: m.AuditLogPage })),
+);
+const SyncConflictsPage = lazy(() =>
+  import("../../pages/SyncConflictsPage").then((m) => ({ default: m.SyncConflictsPage })),
+);
+
 const DefaultAppRoute = () => {
   const currentUserId = useAuthStore((state) => state.currentUserId);
   const currentUser = useDataStore((state) => state.users.find((user) => user.id === currentUserId));
@@ -46,264 +77,274 @@ const DefaultAppRoute = () => {
   return <Navigate to="/app/pos" replace />;
 };
 
+// Matches AppLayout's existing plain-text bootstrap loading style — no new
+// spinner component for a chunk fetch that's typically well under a second.
+const RouteFallback = () => (
+  <div className="flex h-full items-center justify-center p-8 text-sm text-slate-500">
+    Loading…
+  </div>
+);
+
 export const AppRouter = () => (
-  <Routes>
-    <Route path="/phone-upload/product-image/:token" element={<PhoneProductImageUploadPage />} />
-    <Route path="/login" element={<LoginPage />} />
-    <Route path="/verify" element={<AdminVerifyPage />} />
-    <Route
-      path="/app"
-      element={
-        <RequireAuth>
-          <AppLayout />
-        </RequireAuth>
-      }
-    >
-      <Route index element={<DefaultAppRoute />} />
+  <Suspense fallback={<RouteFallback />}>
+    <Routes>
+      <Route path="/phone-upload/product-image/:token" element={<PhoneProductImageUploadPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/verify" element={<AdminVerifyPage />} />
       <Route
-        path="dashboard"
+        path="/app"
         element={
-          <RequireRole permission={ROUTE_PERMISSIONS.dashboard}>
-            <DashboardPage />
-          </RequireRole>
+          <RequireAuth>
+            <AppLayout />
+          </RequireAuth>
         }
-      />
-      <Route
-        path="pos"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.pos}>
-            <PosPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="sales"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.sales}>
-            <SalesListPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="sales/:saleId"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.saleDetail}>
-            <SaleDetailPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="shifts"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.shifts}>
-            <ShiftsPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="shifts/:shiftId"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.shifts}>
-            <ShiftDetailPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="inventory"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.inventory}>
-            <InventoryPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="transfers"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.transfers}>
-            <TransfersPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="purchases"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.purchases}>
-            <PurchasesPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="approvals"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.approvals}>
-            <ApprovalsPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="reports"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.reports}>
-            <ShopReportsPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="reports/profit"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.reportsProfit}>
-            <ProfitReportsPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="catalog"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.catalog}>
-            <CatalogPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="barcode-labels"
-        element={
-          <RequireRole allowed={["ADMIN", "MANAGER"]} permission={ROUTE_PERMISSIONS.barcodeLabels}>
-            <BarcodeLabelsPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="suppliers"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.suppliers}>
-            <SuppliersPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="suppliers/:supplierId"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.supplierDetail}>
-            <SupplierDetailPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="admin/shops"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.adminShops}>
-            <ShopsAdminPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="admin/users"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.adminUsers}>
-            <UsersAdminPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="admin/products"
-        element={
-          <RequireRole allowed={["ADMIN", "MANAGER"]} permission={ROUTE_PERMISSIONS.adminProducts}>
-            <ProductsAdminPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="admin/products/new"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.adminProductCreate}>
-            <ProductFormPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="admin/products/:productId/edit"
-        element={
-          <RequireRole allowed={["ADMIN", "MANAGER"]} permission={ROUTE_PERMISSIONS.adminProductEdit}>
-            <ProductFormPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="admin/unit-types"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.adminUnitTypes}>
-            <UnitTypesAdminPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="admin/barcodes"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.adminBarcodes}>
-            <BarcodesAdminPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="admin/suppliers"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.adminSuppliers}>
-            <SuppliersPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="admin/pricing"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.adminPricing}>
-            <PricingPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="admin/reports"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.adminReports}>
-            <GlobalReportsPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="admin/audit"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.adminAudit}>
-            <AuditLogPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="admin/sync-conflicts"
-        element={
-          <RequireRole permission={ROUTE_PERMISSIONS.adminSyncConflicts}>
-            <SyncConflictsPage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="profile"
-        element={
-          <RequireRole allowed={["ADMIN"]} permission={ROUTE_PERMISSIONS.adminSecurity}>
-            <ProfilePage />
-          </RequireRole>
-        }
-      />
-      <Route
-        path="security"
-        element={
-          <RequireRole allowed={["ADMIN"]} permission={ROUTE_PERMISSIONS.adminSecurity}>
-            <SecurityPage />
-          </RequireRole>
-        }
-      />
-      {/* Old Settings hub removed; send any stale link to Profile. */}
-      <Route path="settings" element={<Navigate to="/app/profile" replace />} />
-      <Route path="*" element={<NotFoundPage />} />
-    </Route>
-    <Route path="*" element={<Navigate to="/app" replace />} />
-  </Routes>
+      >
+        <Route index element={<DefaultAppRoute />} />
+        <Route
+          path="dashboard"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.dashboard}>
+              <DashboardPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="pos"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.pos}>
+              <PosPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="sales"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.sales}>
+              <SalesListPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="sales/:saleId"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.saleDetail}>
+              <SaleDetailPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="shifts"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.shifts}>
+              <ShiftsPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="shifts/:shiftId"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.shifts}>
+              <ShiftDetailPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="inventory"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.inventory}>
+              <InventoryPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="transfers"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.transfers}>
+              <TransfersPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="purchases"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.purchases}>
+              <PurchasesPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="approvals"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.approvals}>
+              <ApprovalsPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="reports"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.reports}>
+              <ShopReportsPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="reports/profit"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.reportsProfit}>
+              <ProfitReportsPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="catalog"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.catalog}>
+              <CatalogPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="barcode-labels"
+          element={
+            <RequireRole allowed={["ADMIN", "MANAGER"]} permission={ROUTE_PERMISSIONS.barcodeLabels}>
+              <BarcodeLabelsPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="suppliers"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.suppliers}>
+              <SuppliersPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="suppliers/:supplierId"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.supplierDetail}>
+              <SupplierDetailPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/shops"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.adminShops}>
+              <ShopsAdminPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/users"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.adminUsers}>
+              <UsersAdminPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/products"
+          element={
+            <RequireRole allowed={["ADMIN", "MANAGER"]} permission={ROUTE_PERMISSIONS.adminProducts}>
+              <ProductsAdminPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/products/new"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.adminProductCreate}>
+              <ProductFormPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/products/:productId/edit"
+          element={
+            <RequireRole allowed={["ADMIN", "MANAGER"]} permission={ROUTE_PERMISSIONS.adminProductEdit}>
+              <ProductFormPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/unit-types"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.adminUnitTypes}>
+              <UnitTypesAdminPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/barcodes"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.adminBarcodes}>
+              <BarcodesAdminPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/suppliers"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.adminSuppliers}>
+              <SuppliersPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/pricing"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.adminPricing}>
+              <PricingPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/reports"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.adminReports}>
+              <GlobalReportsPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/audit"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.adminAudit}>
+              <AuditLogPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/sync-conflicts"
+          element={
+            <RequireRole permission={ROUTE_PERMISSIONS.adminSyncConflicts}>
+              <SyncConflictsPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="profile"
+          element={
+            <RequireRole allowed={["ADMIN"]} permission={ROUTE_PERMISSIONS.adminSecurity}>
+              <ProfilePage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="security"
+          element={
+            <RequireRole allowed={["ADMIN"]} permission={ROUTE_PERMISSIONS.adminSecurity}>
+              <SecurityPage />
+            </RequireRole>
+          }
+        />
+        {/* Old Settings hub removed; send any stale link to Profile. */}
+        <Route path="settings" element={<Navigate to="/app/profile" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/app" replace />} />
+    </Routes>
+  </Suspense>
 );

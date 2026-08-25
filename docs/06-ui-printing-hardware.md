@@ -269,12 +269,13 @@ What it adds over the browser version:
   Electron-specific.
 - **Auto-update** — the desktop app checks this repo's GitHub Releases on
   launch and periodically, downloading and prompting to install updates.
-  Release v1.0.9 keeps the single-instance lock and adds two Windows-specific
-  safeguards: the NSIS installer force-closes the exact product executable
-  regardless of its previous/custom install directory, and the requesting app
-  starts an independent cleanup helper before `quitAndInstall()`. The earlier
-  v1.0.7 in-process timer was confirmed insufficient. See document 10 for the
-  recovery path and remaining real-Windows verification item.
+  The Windows "cannot be closed" updater failure went through three
+  attempted fixes (v1.0.7, v1.0.9) that targeted the app-running
+  pre-check and were confirmed on real hardware to not fix it — the
+  actual cause was a separate, non-customizable file-copy retry loop
+  elsewhere in electron-builder's NSIS templates. v1.0.10 fixes that
+  directly. See document 10 for the full diagnosis, the recovery path,
+  and the remaining real-Windows verification item.
 
 Still not implemented: talking to OPOS/JavaPOS cash drawers or barcode
 scanners with native drivers (scanners still work today via HID keyboard
