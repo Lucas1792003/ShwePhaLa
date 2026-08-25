@@ -16,9 +16,10 @@ interface AdjustStockResult {
 
 // Shared by the online call and the offline path (which stores this exact
 // payload in the outbox to replay verbatim once back online).
-const buildAdjustStockArgs = ({
-  shopId, productId, type, qtyChange, reason, productUnitId, unitQty,
-}: AdjustStockInput) => ({
+const buildAdjustStockArgs = (
+  { shopId, productId, type, qtyChange, reason, productUnitId, unitQty }: AdjustStockInput,
+  createdAt: string,
+) => ({
   p_shop_id: shopId,
   p_product_id: productId,
   p_adjustment_type: type,
@@ -29,6 +30,8 @@ const buildAdjustStockArgs = ({
   p_reason: reason,
   p_product_unit_id: productUnitId ?? null,
   p_unit_qty: unitQty ?? null,
+  // Preserved through an offline queue-and-replay — see migration 045.
+  p_created_at: createdAt,
 });
 
 export const createInventorySlice: StateCreator<DataState, [], [], InventoryState> = (set, get) => {
@@ -37,7 +40,10 @@ export const createInventorySlice: StateCreator<DataState, [], [], InventoryStat
   // and the resulting stock level, then writes inventory, the movement and the
   // audit row in one transaction.
   const adjustStockOnline = async (input: AdjustStockInput): Promise<void> => {
-    const { data, error } = await supabase.rpc("adjust_stock", buildAdjustStockArgs(input));
+    const { data, error } = await supabase.rpc(
+      "adjust_stock",
+      buildAdjustStockArgs(input, new Date().toISOString()),
+    );
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Stock adjustment returned no data.");
 
@@ -103,7 +109,7 @@ export const createInventorySlice: StateCreator<DataState, [], [], InventoryStat
     await enqueueOutbox({
       kind: "rpc",
       name: "adjust_stock",
-      args: buildAdjustStockArgs(input),
+      args: buildAdjustStockArgs(input, now),
       shopId,
       provisional: [{ table: "movements", ids: [movement.id] }],
     });

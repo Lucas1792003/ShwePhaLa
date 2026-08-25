@@ -71,6 +71,7 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
         product_id: r.productId, received_qty: r.receivedQty ?? null,
         product_unit_id: r.productUnitId ?? null, received_unit_qty: r.receivedUnitQty ?? null,
       })),
+      p_created_at: new Date().toISOString(),
     });
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Receiving returned no data.");
@@ -185,6 +186,7 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
           product_id: r.productId, received_qty: r.receivedQty ?? null,
           product_unit_id: r.productUnitId ?? null, received_unit_qty: r.receivedUnitQty ?? null,
         })),
+        p_created_at: now,
       },
       shopId: po.shopId,
       provisional: [{ table: "movements", ids: movements.map((m) => m.id) }],
@@ -200,6 +202,7 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
       p_payment_method: input.paymentMethod,
       p_reference_no: input.referenceNo ?? null,
       p_notes: input.notes ?? null,
+      p_created_at: new Date().toISOString(),
     });
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Record supplier payment returned no data.");
@@ -257,7 +260,7 @@ export const createPurchaseSlice: StateCreator<DataState, [], [], PurchaseState>
       args: {
         p_purchase_order_id: input.purchaseOrderId, p_amount_mmk: input.amountMmk,
         p_payment_method: input.paymentMethod, p_reference_no: input.referenceNo ?? null,
-        p_notes: input.notes ?? null,
+        p_notes: input.notes ?? null, p_created_at: now,
       },
       shopId: po.shopId,
       provisional: [{ table: "supplierPayments", ids: [payment.id] }],

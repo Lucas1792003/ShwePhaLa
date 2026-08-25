@@ -47,7 +47,10 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
   // Dispatch: source releases the goods. Marks the transfer IN_TRANSIT with
   // no inventory change ("hold at source" — stock only moves on receipt).
   const dispatchTransferOnline = async (transferId: string): Promise<void> => {
-    const { data, error } = await supabase.rpc("dispatch_stock_transfer", { p_transfer_id: transferId });
+    const { data, error } = await supabase.rpc("dispatch_stock_transfer", {
+      p_transfer_id: transferId,
+      p_created_at: new Date().toISOString(),
+    });
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Dispatch transfer returned no data.");
     const result = data as ApproveTransferResult;
@@ -71,15 +74,16 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
       throw new Error(`Transfer cannot be dispatched from status ${transfer.status}.`);
     }
 
+    const now = new Date().toISOString();
     const updated: StockTransfer = {
       ...transfer, status: "IN_TRANSIT", dispatchedBy: actorId,
-      dispatchedAt: new Date().toISOString(), pendingSync: true,
+      dispatchedAt: now, pendingSync: true,
     };
     set((s) => ({ stockTransfers: s.stockTransfers.map((t) => (t.id === transferId ? updated : t)) }));
     void putLocalRows({ stockTransfers: [updated] });
 
     await enqueueOutbox({
-      kind: "rpc", name: "dispatch_stock_transfer", args: { p_transfer_id: transferId },
+      kind: "rpc", name: "dispatch_stock_transfer", args: { p_transfer_id: transferId, p_created_at: now },
       shopId: transfer.fromShopId,
     });
   };
@@ -92,6 +96,7 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
     const { data, error } = await supabase.rpc("receive_stock_transfer", {
       p_transfer_id: transferId,
       p_received_items: receivedItems ? receivedItems.map((r) => ({ product_id: r.productId, received_qty: r.receivedQty })) : null,
+      p_created_at: new Date().toISOString(),
     });
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Receive transfer returned no data.");
@@ -191,6 +196,7 @@ export const createTransferSlice: StateCreator<DataState, [], [], TransferState>
       args: {
         p_transfer_id: transferId,
         p_received_items: receivedItems ? receivedItems.map((r) => ({ product_id: r.productId, received_qty: r.receivedQty })) : null,
+        p_created_at: now,
       },
       shopId: transfer.toShopId,
       provisional: [{ table: "movements", ids: movements.map((m) => m.id) }],

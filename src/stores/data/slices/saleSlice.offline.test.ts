@@ -85,6 +85,21 @@ describe("createSale offline", () => {
     expect(queued[0].args).toMatchObject({ p_shop_id: "shop-1", p_shift_id: "shift-1" });
   });
 
+  // Migration 045: the queued RPC must carry the moment the sale actually
+  // happened, not whenever the outbox later replays it — otherwise a sale
+  // rung up at 3pm that doesn't sync until 9pm would record as a 9pm sale.
+  it("queues complete_sale with p_created_at matching the local provisional sale's own timestamp", async () => {
+    const { get } = makeStore();
+
+    const saleId = await get().createSale({ ...baseInput, cartItems: [cartItem()] });
+
+    const localCreatedAt = get().sales.find((s: { id: string }) => s.id === saleId)?.createdAt;
+    expect(typeof localCreatedAt).toBe("string");
+
+    const queued = await localDb.syncOutbox.toArray();
+    expect((queued[0].args as { p_created_at: string }).p_created_at).toBe(localCreatedAt);
+  });
+
   it("deducts cumulatively across two lines of the same product", async () => {
     const { get } = makeStore();
     await get().createSale({

@@ -23,6 +23,7 @@ export const createShiftSlice: StateCreator<DataState, [], [], ShiftState> = (se
     const { data, error } = await supabase.rpc("open_shift", {
       p_shop_id: shopId,
       p_opening_cash_mmk: openingCashMmk,
+      p_created_at: new Date().toISOString(),
     });
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Open shift returned no data.");
@@ -40,9 +41,10 @@ export const createShiftSlice: StateCreator<DataState, [], [], ShiftState> = (se
   // sale rung up against this provisional shift (see saleSlice.ts) carries a
   // `refs` entry so it waits for THIS entry's real shift id before sending.
   const startShiftOffline = async (shopId: string, cashierId: string, openingCashMmk: number): Promise<string> => {
+    const now = new Date().toISOString();
     const shift: Shift = {
       id: newId("shift"), shopId, cashierId,
-      startedAt: new Date().toISOString(), openingCashMmk, pendingSync: true,
+      startedAt: now, openingCashMmk, pendingSync: true,
     };
     set((state) => ({ shifts: [shift, ...state.shifts] }));
     void putLocalRows({ shifts: [shift] });
@@ -50,7 +52,7 @@ export const createShiftSlice: StateCreator<DataState, [], [], ShiftState> = (se
     await enqueueOutbox({
       kind: "rpc",
       name: "open_shift",
-      args: { p_shop_id: shopId, p_opening_cash_mmk: openingCashMmk },
+      args: { p_shop_id: shopId, p_opening_cash_mmk: openingCashMmk, p_created_at: now },
       shopId,
       provisional: [{ table: "shifts", ids: [shift.id] }],
     });
@@ -65,6 +67,7 @@ export const createShiftSlice: StateCreator<DataState, [], [], ShiftState> = (se
       p_shift_id: shiftId,
       p_closing_cash_mmk: closingCashMmk,
       p_variance_reason: varianceReason ?? null,
+      p_created_at: new Date().toISOString(),
     });
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Close shift returned no data.");
@@ -103,8 +106,9 @@ export const createShiftSlice: StateCreator<DataState, [], [], ShiftState> = (se
       throw new Error("Variance reason is required when closing cash does not match expected cash.");
     }
 
+    const now = new Date().toISOString();
     const closedShift: Shift = {
-      ...shift, endedAt: new Date().toISOString(), closingCashMmk,
+      ...shift, endedAt: now, closingCashMmk,
       expectedCashMmk, varianceMmk, varianceReason: varianceReason?.trim() || undefined,
       pendingSync: true,
     };
@@ -114,7 +118,10 @@ export const createShiftSlice: StateCreator<DataState, [], [], ShiftState> = (se
     await enqueueOutbox({
       kind: "rpc",
       name: "close_shift",
-      args: { p_shift_id: shiftId, p_closing_cash_mmk: closingCashMmk, p_variance_reason: varianceReason ?? null },
+      args: {
+        p_shift_id: shiftId, p_closing_cash_mmk: closingCashMmk,
+        p_variance_reason: varianceReason ?? null, p_created_at: now,
+      },
       shopId: shift.shopId,
       // If this shift was itself opened offline and hasn't synced yet, wait
       // for its real id before sending — see resolveArgs() in outbox.ts.

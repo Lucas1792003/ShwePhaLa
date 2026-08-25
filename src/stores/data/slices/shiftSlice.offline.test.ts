@@ -56,6 +56,20 @@ describe("startShift offline", () => {
     expect(queued[0].refs ?? []).toHaveLength(0);
   });
 
+  // Migration 045: a shift's start/end time must reflect when it actually
+  // happened, not when the outbox later replays it — otherwise hours-worked
+  // and sales-per-hour reporting drift once a device reconnects late.
+  it("queues open_shift with p_created_at matching the local shift's startedAt", async () => {
+    const { get } = makeStore();
+    const shiftId = await get().startShift({ shopId: "shop-1", cashierId: "user-1", openingCashMmk: 50000 });
+
+    const localStartedAt = get().shifts.find((s: { id: string }) => s.id === shiftId)?.startedAt;
+    expect(typeof localStartedAt).toBe("string");
+
+    const queued = await localDb.syncOutbox.toArray();
+    expect((queued[0].args as { p_created_at: string }).p_created_at).toBe(localStartedAt);
+  });
+
   it("returns the existing open shift instead of opening a duplicate", async () => {
     const { get } = makeStore({ shifts: [{ id: "shift-existing", cashierId: "user-1", shopId: "shop-1" }] });
     const shiftId = await get().startShift({ shopId: "shop-1", cashierId: "user-1", openingCashMmk: 50000 });

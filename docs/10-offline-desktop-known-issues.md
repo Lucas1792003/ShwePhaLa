@@ -148,6 +148,26 @@ already established:
 - [x] **`provisionalIdMap` is now pruned.** `recordIdMapping()` stamps a
       `createdAt`; `drainOutbox()` sweeps out anything older than 7 days
       (`PROVISIONAL_MAP_MAX_AGE_MS`) at the start of every drain pass.
+- [x] **Offline writes now preserve their real event time, not sync time.**
+      Every offline-eligible RPC (`complete_sale`, `adjust_stock`,
+      `receive_purchase_order`, `dispatch_stock_transfer`,
+      `receive_stock_transfer`, `open_shift`, `close_shift`,
+      `record_supplier_payment`, `create_refund_void_request`) used to
+      stamp its row with the server's `now()` — for a write queued in the
+      outbox, that's when it *syncs*, not when it actually happened. A
+      sale rung up offline at 3pm that didn't sync until 9pm showed up in
+      reports, receipt numbering, and shift reconciliation as a 9pm sale.
+      Migration `045` adds an optional `p_created_at` param to each RPC and
+      a shared `resolve_event_time()` helper that trusts it only within a
+      sane bound (5 min future / 48h past — otherwise falls back to real
+      `now()`, so a compromised client can't arbitrarily backdate
+      financial/inventory records). The client (each slice's
+      `build*Args()`/inline RPC-arg builder) now sends the same timestamp
+      used for the local/offline provisional record, for both the
+      immediate-online and queued-offline paths, so the two can never
+      drift apart. Tests: `saleSlice.offline.test.ts` and
+      `shiftSlice.offline.test.ts` each pin that the queued arg matches
+      the local record's own timestamp.
 - [ ] **Bundle size.** `npm run build` warns the main chunk is ~1.76 MB
       (~481 KB gzipped) — pre-existing, not caused by this work, but the
       new Dexie/outbox/delta-sync code adds to it. `vite.config.ts` has no

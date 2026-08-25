@@ -55,6 +55,7 @@ const mergeRefundRequest = (current: Refund[], request: Refund): Refund[] => {
 const buildCompleteSaleArgs = (
   { shopId, shiftId, cartItems, cartDiscountPct, paymentMethod, paidMmk }: CreateSaleInput,
   get: () => DataState,
+  createdAt: string,
 ) => {
   const items = cartItems.map((item) => {
     const baseQuantitySold = item.qty * item.unitBaseQuantity;
@@ -98,6 +99,10 @@ const buildCompleteSaleArgs = (
     p_paid_mmk: paidMmk,
     p_cart_discount_pct: cartDiscountPct,
     p_items: items,
+    // The moment this sale actually happened — preserved through an
+    // offline queue-and-replay so a sale rung up at 3pm that doesn't sync
+    // until 9pm still records/reports as a 3pm sale. See migration 045.
+    p_created_at: createdAt,
   };
 };
 
@@ -106,7 +111,10 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
   // permission, shop scope, the open shift, stock and overrides, then writes
   // the sale, items, inventory, movements and audit rows in one transaction.
   const createSaleOnline = async (input: CreateSaleInput): Promise<string> => {
-    const { data, error } = await supabase.rpc("complete_sale", buildCompleteSaleArgs(input, get));
+    const { data, error } = await supabase.rpc(
+      "complete_sale",
+      buildCompleteSaleArgs(input, get, new Date().toISOString()),
+    );
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Checkout returned no data.");
 
@@ -221,7 +229,7 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
     await enqueueOutbox({
       kind: "rpc",
       name: "complete_sale",
-      args: buildCompleteSaleArgs(input, get),
+      args: buildCompleteSaleArgs(input, get, now),
       shopId,
       refs: shiftIsProvisional ? [{ field: "p_shift_id", provisionalId: shiftId }] : undefined,
       provisional: [
@@ -240,6 +248,7 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
   ): Promise<void> => {
     const { data, error } = await supabase.rpc("create_refund_void_request", {
       p_sale_id: saleId, p_type: type, p_reason: reason, p_items: items,
+      p_created_at: new Date().toISOString(),
     });
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Request returned no data.");
@@ -265,9 +274,10 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
     const sale = get().sales.find((s) => s.id === saleId);
     if (!sale) throw new Error("Sale not found.");
 
+    const now = new Date().toISOString();
     const request: Refund = {
       id: newId("refund"), saleId, shopId: sale.shopId, type, reason,
-      createdBy: actorId, createdAt: new Date().toISOString(),
+      createdBy: actorId, createdAt: now,
       items, status: "REQUESTED", pendingSync: true,
     };
     set((state) => ({
@@ -279,7 +289,7 @@ export const createSaleSlice: StateCreator<DataState, [], [], SaleState> = (set,
     await enqueueOutbox({
       kind: "rpc",
       name: "create_refund_void_request",
-      args: { p_sale_id: saleId, p_type: type, p_reason: reason, p_items: items ?? null },
+      args: { p_sale_id: saleId, p_type: type, p_reason: reason, p_items: items ?? null, p_created_at: now },
       shopId: sale.shopId,
       refs: sale.pendingSync ? [{ field: "p_sale_id", provisionalId: saleId }] : undefined,
       provisional: [{ table: "refunds", ids: [request.id] }],
