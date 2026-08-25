@@ -10,15 +10,15 @@ export const LanguageSwitcher = ({ className }: LanguageSwitcherProps) => {
 
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+      <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
         <button
           type="button"
           onClick={() => setLanguage("en")}
           className={cn(
             "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
             language === "en"
-              ? "bg-white text-slate-900 shadow-sm"
-              : "text-slate-500 hover:text-slate-700"
+              ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100"
+              : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
           )}
         >
           EN
@@ -29,8 +29,8 @@ export const LanguageSwitcher = ({ className }: LanguageSwitcherProps) => {
           className={cn(
             "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
             language === "my"
-              ? "bg-white text-slate-900 shadow-sm"
-              : "text-slate-500 hover:text-slate-700"
+              ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100"
+              : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
           )}
         >
           မြန်မာ
@@ -38,15 +38,15 @@ export const LanguageSwitcher = ({ className }: LanguageSwitcherProps) => {
       </div>
 
       {language === "my" && (
-        <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+        <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
           <button
             type="button"
             onClick={() => setZawgyi(false)}
             className={cn(
               "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
               !isZawgyi
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
+                ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
             )}
           >
             Unicode
@@ -57,8 +57,8 @@ export const LanguageSwitcher = ({ className }: LanguageSwitcherProps) => {
             className={cn(
               "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
               isZawgyi
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
+                ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
             )}
           >
             Zawgyi

@@ -8,6 +8,7 @@ import type { Permission, Role } from "../../types";
 import { hasPermission, ROUTE_PERMISSIONS } from "../../lib/permissions";
 import { ShopSwitcher } from "./ShopSwitcher";
 import { LanguageSwitcher } from "../../components/layout/LanguageSwitcher";
+import { ThemeToggle } from "../../components/layout/ThemeToggle";
 import { DownloadAppModal } from "../../components/layout/DownloadAppModal";
 import { CheckForUpdatesButton } from "../../components/layout/CheckForUpdatesButton";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -212,34 +213,39 @@ export const Sidebar = () => {
       </div>
 
       <div className="sidebar-footer">
-        <LanguageSwitcher className="sidebar-language mb-3" />
+        <div className="sidebar-footer-top">
+          <LanguageSwitcher className="sidebar-language" />
+          <ThemeToggle />
+        </div>
         <div className="sidebar-user">
           <div className="user-name">{currentUser?.name ?? "User"}</div>
           <div className="user-role">{currentUser?.role ?? ""}</div>
         </div>
-        {!window.electronAPI && (
+        <div className="sidebar-footer-actions">
+          {!window.electronAPI && (
+            <button
+              type="button"
+              className="logout-btn"
+              onClick={() => setShowDownloadModal(true)}
+              title={effectiveCollapsed ? "Download desktop app" : undefined}
+              aria-label="Download desktop app"
+            >
+              <span className="material-symbols-rounded">download</span>
+              <span>Download App</span>
+            </button>
+          )}
+          <CheckForUpdatesButton />
           <button
             type="button"
             className="logout-btn"
-            onClick={() => setShowDownloadModal(true)}
-            title={effectiveCollapsed ? "Download desktop app" : undefined}
-            aria-label="Download desktop app"
+            onClick={handleLogout}
+            title={effectiveCollapsed ? t("common", "logout") : undefined}
+            aria-label={t("common", "logout")}
           >
-            <span className="material-symbols-rounded">download</span>
-            <span>Download App</span>
+            <span className="material-symbols-rounded">logout</span>
+            <span>{t("common", "logout")}</span>
           </button>
-        )}
-        <CheckForUpdatesButton />
-        <button
-          type="button"
-          className="logout-btn"
-          onClick={handleLogout}
-          title={effectiveCollapsed ? t("common", "logout") : undefined}
-          aria-label={t("common", "logout")}
-        >
-          <span className="material-symbols-rounded">logout</span>
-          <span>{t("common", "logout")}</span>
-        </button>
+        </div>
       </div>
       <DownloadAppModal open={showDownloadModal} onClose={() => setShowDownloadModal(false)} />
     </aside>

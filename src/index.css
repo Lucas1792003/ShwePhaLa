@@ -20,6 +20,30 @@
   --color-shadow: rgba(0, 0, 0, 0.05);
 }
 
+/* Dark theme — toggled via the "dark" class on <html> (see
+   stores/themeStore.ts). Every consumer of these tokens (the sidebar,
+   layout chrome) gets dark mode automatically; anywhere still styled with
+   raw Tailwind light-mode utility classes (bg-white, text-slate-900, etc.)
+   needs its own dark: variant added — that's a page-by-page pass, this
+   block only covers the shared design tokens. */
+:root.dark {
+  color-scheme: dark;
+  --primary-color: #10b981;
+  --secondary-color: #0b1120;
+  --text-color: #cbd5e1;
+  --background-color: #1e293b;
+  --border-color: #334155;
+  --color-text-primary: #f1f5f9;
+  --color-text-placeholder: #94a3b8;
+  --color-bg-primary: #0f172a;
+  --color-bg-secondary: #1e2340;
+  --color-bg-sidebar: #111827;
+  --color-border-hr: #334155;
+  --color-hover-primary: #10b981;
+  --color-hover-secondary: #14342a;
+  --color-shadow: rgba(0, 0, 0, 0.4);
+}
+
 body {
   font-family: "Poppins", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   color: var(--text-color);
@@ -106,6 +130,16 @@ body {
   object-fit: cover;
   display: block;
   transition: opacity 0.4s ease, width 0.3s ease, height 0.3s ease;
+}
+
+/* mix-blend-multiply (JSX: matting a white-background logo into a white
+   sidebar) darkens toward black against anything that isn't white — exactly
+   the bug forced-dark-mode browser extensions caused before we added the
+   color-scheme meta tag. Now that dark mode is a real, user-chosen theme
+   here (not just blocked), the same crushing would happen legitimately —
+   so disable the blend once the sidebar itself is dark. */
+:root.dark .header-logo.mix-blend-multiply {
+  mix-blend-mode: normal;
 }
 
 @media (min-width: 1280px) {
@@ -265,7 +299,31 @@ body {
   border-top: 1px solid var(--color-border-hr);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+}
+
+.sidebar-footer-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar-footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sidebar-footer-actions .logout-btn,
+.sidebar-footer-actions .update-checker {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-footer-actions .logout-btn span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-user {
@@ -295,7 +353,7 @@ body {
   padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid var(--border-color);
-  background: #ffffff;
+  background: var(--background-color);
   color: var(--primary-color);
   font-weight: 600;
   cursor: pointer;
@@ -394,6 +452,14 @@ body {
   height: 44px;
   padding: 0;
   border-radius: 12px;
+}
+
+.sidebar-collapsed .sidebar-footer-top {
+  justify-content: center;
+}
+
+.sidebar-collapsed .sidebar-footer-actions {
+  flex-direction: column;
 }
 
 .main {

@@ -6,6 +6,9 @@ import "./index.css";
 import "./print/receipt.css";
 import "./print/labels.css";
 import { useAuthStore } from "./stores/authStore";
+// Side-effecting import: applies the persisted/system theme to <html>
+// before React mounts — see stores/themeStore.ts.
+import "./stores/themeStore";
 
 // Restore Supabase session on app start
 useAuthStore.getState().restoreSession();
