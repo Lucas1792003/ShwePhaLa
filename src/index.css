@@ -21,11 +21,8 @@
 }
 
 /* Dark theme — toggled via the "dark" class on <html> (see
-   stores/themeStore.ts). Every consumer of these tokens (the sidebar,
-   layout chrome) gets dark mode automatically; anywhere still styled with
-   raw Tailwind light-mode utility classes (bg-white, text-slate-900, etc.)
-   needs its own dark: variant added — that's a page-by-page pass, this
-   block only covers the shared design tokens. */
+   stores/themeStore.ts). These tokens cover the layout chrome; the full-app
+   utility translation immediately below covers legacy feature screens. */
 :root.dark {
   color-scheme: dark;
   --primary-color: #10b981;
@@ -42,6 +39,165 @@
   --color-hover-primary: #10b981;
   --color-hover-secondary: #14342a;
   --color-shadow: rgba(0, 0, 0, 0.4);
+}
+
+/*
+ * Full-app dark palette
+ * ---------------------
+ * Most feature screens predate the theme switch and use Tailwind's literal
+ * white/slate utility classes.  Keeping the translation here gives every
+ * current screen (and shared primitive) the same neutral hierarchy without
+ * duplicating hundreds of dark: variants throughout page markup.  Attribute
+ * selectors intentionally match complete utility tokens only, so semantic
+ * colours and arbitrary values are left alone.
+ *
+ * Printed receipts and barcode labels must remain black on white. Their root
+ * elements are excluded below and the print stylesheet remains authoritative.
+ */
+:root.dark [class~="bg-white"]:not(.receipt):not(.barcode-label):not(img),
+:root.dark [class~="bg-white/95"]:not(.receipt):not(.barcode-label),
+:root.dark [class~="bg-white/70"]:not(.receipt):not(.barcode-label) {
+  background-color: #111827;
+}
+
+:root.dark [class~="bg-slate-50"],
+:root.dark [class~="bg-slate-50/80"],
+:root.dark [class~="bg-slate-50/70"],
+:root.dark [class~="bg-slate-50/60"],
+:root.dark [class~="bg-slate-50/50"],
+:root.dark [class~="bg-slate-50/40"],
+:root.dark [class~="bg-slate-50/30"] {
+  background-color: #172033;
+}
+
+:root.dark [class~="bg-slate-100"],
+:root.dark [class~="bg-slate-100/80"] {
+  background-color: #1e293b;
+}
+
+:root.dark [class~="bg-slate-200"] { background-color: #334155; }
+:root.dark [class~="bg-slate-300"] { background-color: #475569; }
+
+:root.dark [class~="text-slate-950"],
+:root.dark [class~="text-slate-900"] { color: #f8fafc; }
+:root.dark [class~="text-slate-800"] { color: #f1f5f9; }
+:root.dark [class~="text-slate-700"] { color: #e2e8f0; }
+:root.dark [class~="text-slate-600"] { color: #cbd5e1; }
+:root.dark [class~="text-slate-500"] { color: #94a3b8; }
+:root.dark [class~="text-slate-400"] { color: #94a3b8; }
+:root.dark [class~="text-slate-300"] { color: #64748b; }
+:root.dark [class~="text-slate-200"] { color: #475569; }
+
+:root.dark [class~="border-slate-50"],
+:root.dark [class~="border-slate-100"] { border-color: #273449; }
+:root.dark [class~="border-slate-200"],
+:root.dark [class~="border-slate-200/70"] { border-color: #334155; }
+:root.dark [class~="border-slate-300"],
+:root.dark [class~="border-slate-300/70"] { border-color: #475569; }
+:root.dark [class~="divide-slate-100"] > :not([hidden]) ~ :not([hidden]),
+:root.dark [class~="divide-slate-100/80"] > :not([hidden]) ~ :not([hidden]),
+:root.dark [class~="divide-slate-200"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #334155;
+}
+
+:root.dark [class~="hover:bg-slate-50"]:hover,
+:root.dark [class~="hover:bg-slate-50/50"]:hover,
+:root.dark [class~="hover:bg-slate-50/70"]:hover,
+:root.dark [class~="hover:bg-slate-100"]:hover { background-color: #263449; }
+:root.dark [class~="hover:bg-slate-200"]:hover { background-color: #3b4a60; }
+:root.dark [class~="hover:text-slate-900"]:hover,
+:root.dark [class~="hover:text-slate-800"]:hover,
+:root.dark [class~="hover:text-slate-700"]:hover { color: #f8fafc; }
+:root.dark [class~="hover:text-slate-600"]:hover { color: #e2e8f0; }
+:root.dark [class~="hover:border-slate-300"]:hover { border-color: #64748b; }
+
+/* Soft status surfaces retain meaning without flashing pale cards in a dark
+   interface. Solid action colours are intentionally unchanged. */
+:root.dark [class~="bg-emerald-50"],
+:root.dark [class~="bg-emerald-50/80"],
+:root.dark [class~="bg-emerald-50/70"],
+:root.dark [class~="bg-emerald-50/60"],
+:root.dark [class~="bg-emerald-50/40"],
+:root.dark [class~="bg-emerald-100"] { background-color: rgba(6, 78, 59, 0.42); }
+:root.dark [class~="text-emerald-800"],
+:root.dark [class~="text-emerald-700"],
+:root.dark [class~="text-emerald-600"] { color: #6ee7b7; }
+:root.dark [class~="border-emerald-100"],
+:root.dark [class~="border-emerald-200"] { border-color: rgba(52, 211, 153, 0.35); }
+
+:root.dark [class~="bg-rose-50"],
+:root.dark [class~="bg-rose-50/80"],
+:root.dark [class~="bg-rose-50/70"],
+:root.dark [class~="bg-rose-100"],
+:root.dark [class~="bg-red-50"],
+:root.dark [class~="bg-red-100"] { background-color: rgba(127, 29, 29, 0.38); }
+:root.dark [class~="text-rose-800"],
+:root.dark [class~="text-rose-700"],
+:root.dark [class~="text-rose-600"],
+:root.dark [class~="text-red-700"],
+:root.dark [class~="text-red-600"],
+:root.dark [class~="text-red-500"] { color: #fda4af; }
+:root.dark [class~="border-rose-200"],
+:root.dark [class~="border-rose-300"],
+:root.dark [class~="border-red-200"] { border-color: rgba(251, 113, 133, 0.38); }
+
+:root.dark [class~="bg-amber-50"],
+:root.dark [class~="bg-amber-50/80"],
+:root.dark [class~="bg-amber-50/70"],
+:root.dark [class~="bg-amber-100"],
+:root.dark [class~="bg-yellow-50"],
+:root.dark [class~="bg-yellow-100"] { background-color: rgba(120, 53, 15, 0.4); }
+:root.dark [class~="text-amber-800"],
+:root.dark [class~="text-amber-700"],
+:root.dark [class~="text-amber-600"],
+:root.dark [class~="text-yellow-800"],
+:root.dark [class~="text-yellow-700"] { color: #fcd34d; }
+:root.dark [class~="border-amber-200"],
+:root.dark [class~="border-yellow-200"] { border-color: rgba(251, 191, 36, 0.38); }
+
+:root.dark [class~="bg-blue-50"],
+:root.dark [class~="bg-blue-50/70"],
+:root.dark [class~="bg-blue-100"],
+:root.dark [class~="bg-indigo-100"],
+:root.dark [class~="bg-cyan-100"],
+:root.dark [class~="bg-teal-100"],
+:root.dark [class~="bg-purple-100"],
+:root.dark [class~="bg-orange-100"] { background-color: rgba(30, 58, 138, 0.34); }
+:root.dark [class~="text-blue-800"],
+:root.dark [class~="text-blue-700"],
+:root.dark [class~="text-blue-600"],
+:root.dark [class~="text-indigo-700"],
+:root.dark [class~="text-indigo-600"],
+:root.dark [class~="text-cyan-700"],
+:root.dark [class~="text-cyan-600"],
+:root.dark [class~="text-teal-700"],
+:root.dark [class~="text-teal-600"],
+:root.dark [class~="text-purple-700"],
+:root.dark [class~="text-purple-600"],
+:root.dark [class~="text-orange-700"],
+:root.dark [class~="text-orange-600"] { color: #93c5fd; }
+:root.dark [class~="border-blue-200"],
+:root.dark [class~="border-indigo-200"],
+:root.dark [class~="border-cyan-200"],
+:root.dark [class~="border-teal-200"],
+:root.dark [class~="border-purple-200"],
+:root.dark [class~="border-orange-200"] { border-color: rgba(96, 165, 250, 0.35); }
+
+:root.dark input::placeholder,
+:root.dark textarea::placeholder { color: #64748b; }
+:root.dark input:disabled,
+:root.dark select:disabled,
+:root.dark textarea:disabled { color: #64748b; }
+:root.dark .recharts-cartesian-grid line { stroke: #334155; }
+:root.dark .recharts-text { fill: #94a3b8; }
+
+/* Physical and on-screen print previews always show the real paper result. */
+:root.dark .receipt,
+:root.dark .barcode-label {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+  color-scheme: light;
 }
 
 body {
@@ -189,7 +345,7 @@ body {
   transform: translateY(-50%);
   border: 1px solid var(--border-color);
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--background-color);
   color: var(--color-text-placeholder);
   cursor: pointer;
   box-shadow: 0 2px 8px var(--color-shadow);

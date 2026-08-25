@@ -6,19 +6,19 @@ import { Modal } from "../ui/Modal";
 // see the `gh release edit <tag> --draft=false` step after publishing).
 // Bump the tag here whenever electron-builder --publish always ships a new
 // version (it derives the tag from package.json's "version").
-const RELEASE_TAG = "v1.0.5";
+const RELEASE_TAG = "v1.0.6";
 const RELEASE_BASE = `https://github.com/Lucas1792003/ShwePhaLa/releases/download/${RELEASE_TAG}`;
 // package.json's `build.mac/win.artifactName` pins these filenames
 // explicitly (no spaces in the base name), so they're identical every
 // release regardless of which path uploads them — still worth a quick
 // `gh release view v<version> --json assets --jq '.assets[].name'` sanity
 // check before updating this file if anything about the build config changes.
-// Intel Mac build (Shwe-Pha-La-POS-1.0.5.dmg) is still published in the
+// Intel Mac build (Shwe-Pha-La-POS-1.0.6.dmg) is still published in the
 // release for anyone who needs it directly, just not offered here — every
 // Mac sold since 2020 is Apple Silicon.
 const DOWNLOADS = {
-  macArm: `${RELEASE_BASE}/Shwe-Pha-La-POS-1.0.5-arm64.dmg`,
-  windows: `${RELEASE_BASE}/Shwe-Pha-La-POS-Setup-1.0.5.exe`,
+  macArm: `${RELEASE_BASE}/Shwe-Pha-La-POS-1.0.6-arm64.dmg`,
+  windows: `${RELEASE_BASE}/Shwe-Pha-La-POS-Setup-1.0.6.exe`,
 };
 
 const AppleIcon = () => (

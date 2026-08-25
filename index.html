@@ -3,10 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- The app has no dark theme — this stops Chrome's forced-dark-mode
-         and dark-mode extensions from auto-inverting the page (which mangles
-         the sidebar logo's mix-blend-multiply against the inverted background). -->
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Resolve the saved/system theme before CSS and React paint, avoiding a
+         light flash when the OS or saved preference is dark. Zustand stores
+         the preference inside this small JSON envelope. -->
+    <script>
+      (() => {
+        let preference = "system";
+        try {
+          const saved = JSON.parse(localStorage.getItem("pos-theme") || "null");
+          preference = saved?.state?.theme || "system";
+        } catch {
+          // A blocked/corrupt localStorage entry should fall back to the OS.
+        }
+        const dark =
+          preference === "dark" ||
+          (preference === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      })();
+    </script>
     <link rel="icon" type="image/png" href="/logo1.png" />
     <link rel="apple-touch-icon" href="/logo1.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
