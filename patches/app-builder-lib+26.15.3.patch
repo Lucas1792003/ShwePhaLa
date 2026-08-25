@@ -1,0 +1,98 @@
+diff --git a/node_modules/app-builder-lib/templates/nsis/include/installUtil.nsh b/node_modules/app-builder-lib/templates/nsis/include/installUtil.nsh
+index 4736774..1c22c84 100644
+--- a/node_modules/app-builder-lib/templates/nsis/include/installUtil.nsh
++++ b/node_modules/app-builder-lib/templates/nsis/include/installUtil.nsh
+@@ -209,37 +209,67 @@ Function uninstallOldVersion
+   StrCpy $uninstallerFileNameTemp "$PLUGINSDIR\old-uninstaller.exe"
+   !insertmacro copyFile "$uninstallerFileName" "$uninstallerFileNameTemp"
+ 
+-  # Retry counter
++  # PATCHED via patch-package — see docs/10-offline-desktop-known-issues.md
++  # ("Shwe Pha La POS" project). The stock ExecWait below blocks
++  # indefinitely if the OLD version's uninstaller hangs — confirmed
++  # independently of updating at all: manually uninstalling via Windows
++  # Settings on the affected machine also hangs and needs the uninstaller
++  # process force-killed by hand, a long-standing issue present since an
++  # early version. A silently-launched hung uninstaller would block this
++  # ExecWait forever, well before the retry-loop above even gets a
++  # meaningful chance to run (its own "5 retries" still means 5 attempts
++  # at a call that individually never returns).
++  #
++  # Fix: launch non-blocking (Exec) instead of ExecWait, poll with a
++  # bounded timeout instead of waiting forever, force-kill if it hasn't
++  # finished in time, then verify the outcome directly instead of trusting
++  # an exit code we no longer wait to receive — if the old install
++  # directory still has the app's files in it, finish the job ourselves
++  # (remove the program files, drop the stale registry key) the same way
++  # the confirmed-working manual recovery does. Never touches user data:
++  # $installationDir is the program-files directory only (e.g.
++  # %LOCALAPPDATA%\Programs\<app>), never the separate userData/AppData
++  # profile directory the app's real data lives in.
++  Exec '"$uninstallerFileNameTemp" /S /KEEP_APP_DATA $0 _?=$installationDir'
+   StrCpy $R5 0
+-
+-  UninstallLoop:
++  patchedUninstallWait:
+     IntOp $R5 $R5 + 1
+-
+-    ${if} $R5 > 5
+-      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(appCannotBeClosed)" /SD IDCANCEL IDRETRY OneMoreAttempt
+-      Return
++    nsExec::Exec `"$SYSDIR\cmd.exe" /C tasklist /FI "IMAGENAME eq old-uninstaller.exe" /FO CSV /NH | "$SYSDIR\findstr.exe" /B /I /C:"\"old-uninstaller.exe\""`
++    Pop $R6
++    ${if} $R6 == 0
++    ${andIf} $R5 < 20
++      Sleep 1000
++      Goto patchedUninstallWait
++    ${endIf}
++    ${if} $R6 == 0
++      # Still running after 20s — force it closed, same as the confirmed
++      # manual recovery steps.
++      nsExec::Exec `"$SYSDIR\taskkill.exe" /F /IM "old-uninstaller.exe"`
++      Pop $R6
++      Sleep 500
+     ${endIf}
+ 
+-  OneMoreAttempt:
+-    ExecWait '"$uninstallerFileNameTemp" /S /KEEP_APP_DATA $0 _?=$installationDir' $R0
+-    ifErrors TryInPlace CheckResult
+-
+-    TryInPlace:
+-      # the execution failed - might have been caused by some group policy restrictions
+-      # we try to execute the uninstaller in place
+-      ExecWait '"$uninstallerFileName" /S /KEEP_APP_DATA $0 _?=$installationDir' $R0
+-      ifErrors DoesNotExist
+-
+-    CheckResult:
+-      ${if} $R0 == 0
+-        Return
+-      ${endIf}
+-
+-    Sleep 1000
+-    Goto UninstallLoop
++  ${if} ${FileExists} "$installationDir\${APP_EXECUTABLE_FILENAME}"
++    RMDir /r "$installationDir"
++    # DeleteRegKey needs a literal root-key keyword, not a runtime string
++    # variable — $rootKey holds text like "SHELL_CONTEXT" at this point,
++    # which isn't a valid token for the instruction itself. Same
++    # if/elseif dispatch readReg above already uses for this exact reason.
++    ${if} "$rootKey" == "SHELL_CONTEXT"
++      DeleteRegKey SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}"
++      !ifdef UNINSTALL_REGISTRY_KEY_2
++        DeleteRegKey SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY_2}"
++      !endif
++    ${elseif} "$rootKey" == "HKEY_CURRENT_USER"
++      DeleteRegKey HKEY_CURRENT_USER "${UNINSTALL_REGISTRY_KEY}"
++      !ifdef UNINSTALL_REGISTRY_KEY_2
++        DeleteRegKey HKEY_CURRENT_USER "${UNINSTALL_REGISTRY_KEY_2}"
++      !endif
++    ${endIf}
++  ${endIf}
+ 
+-  DoesNotExist:
+-    SetErrors
++  ClearErrors
++  Return
+ FunctionEnd
+ 
+ !macro uninstallOldVersion ROOT_KEY

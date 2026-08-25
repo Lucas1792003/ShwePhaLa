@@ -161,25 +161,107 @@ completely invisible to us this whole time — not uncovered by choice,
 but literally running different, older compiled code than what we've
 been instrumenting.
 
-**Added (still diagnostic-only): `customUnInstallCheck` /
-`customUnInstallCheckCurrentUser`.** These hooks fire in the *new*
-installer right after the old-uninstall step returns, so — unlike
-everything above — closes the blind spot from *this* side. Unlike the
-purely-additive diagnostics so far, this one required replacing
-electron-builder's own `handleUninstallResult` logic entirely (that's
-how the hook works — once defined, it owns the whole result-check, no
-"run theirs then also run mine"), so the exact original checks
-(`IfErrors`, `$R0 != 0`, the `uninstallFailed` MessageBox,
-`SetErrorLevel 2` + `Quit`) were copied verbatim from
-`installUtil.nsh`'s `handleUninstallResult` Function, with `diagLog`
-calls added around them and named labels used instead of their
-relative `+3`-style jumps (a relative offset silently breaks if a line
-is ever added above it; a named label can't). Compile-verified clean on
-the first attempt via the same real `electron-builder --win --x64`
-cross-build. Once reproduced again, the log will say definitively
-whether the old-uninstall step succeeded (pointing squarely at
-extraction instead) or failed with a real exit code (pointing at the old
-uninstaller itself). **Not yet pushed/released as of this addition.**
+**Added `customUnInstallCheck` / `customUnInstallCheckCurrentUser`,** so
+the *new* installer's own result-check for the old-uninstall step
+closes the blind spot from that side (superseded by the actual fix
+below — see that section for what these hooks check now).
+
+### Root cause confirmed: the OLD version's uninstaller.exe genuinely hangs — a pre-existing bug, not a locking race
+
+Real-machine evidence, independent of updating at all: **manually
+uninstalling via Windows Settings/Control Panel also hangs**, and needs
+`taskkill /F` on `Uninstall Shwe Pha La POS.exe` itself (not the app) to
+clear. The user's actual currently-installed version turned out to be
+**v1.0.9** (not v1.0.10 as first assumed — confirmed via `winget list`
+and the `HKCU\...\Uninstall\<APP_GUID>` registry key), and **this exact
+problem — needing a manual force-uninstall via `taskkill` + `rmdir` +
+`reg delete` before a clean reinstall works — has reportedly existed
+since as early as v1.0.3 ("v3").** That reframes everything above: this
+was never a file-locking race introduced by an update-flow timing issue.
+It's a standalone, long-standing bug in the uninstaller.exe itself,
+present since early versions, that every prior fix attempt (v1.0.7
+through today's diagnostics) could never observe or fix — because
+`uninstallOldVersion` (part of the *new* installer, during an update)
+silently runs that same broken, already-compiled OLD binary via a
+blocking `ExecWait`. If it hangs, `ExecWait` blocks forever, which is
+consistent with every symptom seen: deterministic (fails every time,
+not intermittently), the pre-extraction probe always coming back clean
+(the hang happens before extraction is ever reached), and Cancel always
+leaving the old install fully intact (nothing is touched before the
+hang).
+
+**The user's own manual recovery recipe is the actual working fix**,
+just not yet automated:
+```cmd
+taskkill /F /IM "Shwe Pha La POS.exe" 2>nul
+taskkill /F /IM "Uninstall Shwe Pha La POS.exe" 2>nul
+rmdir /S /Q "C:\Users\<user>\AppData\Local\Programs\Shwe Pha La POS"
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\d9a317e0-412e-5235-b2e4-937944b9ae39" /f
+```
+
+### The fix (2026-08-25) — `patches/app-builder-lib+26.15.3.patch`
+
+`uninstallOldVersion` isn't a documented customization hook — there's no
+`!ifmacrodef` for it, unlike everything else this investigation has
+touched. Closing this properly requires patching electron-builder's own
+`installUtil.nsh` directly, via `patch-package` (new devDependency;
+`postinstall: patch-package` added to `package.json` so the patch
+reapplies automatically on every `npm install`, verified by deleting
+`node_modules/app-builder-lib` and reinstalling fresh).
+
+`uninstallOldVersion`'s blocking `ExecWait` is replaced with:
+1. **Launch non-blocking** (`Exec`, not `ExecWait`) instead of waiting
+   indefinitely.
+2. **Poll with a bounded timeout** (20s, 1s intervals, via the same
+   `tasklist`/`findstr` pattern `customCheckAppRunning` already uses) —
+   the process name is always `old-uninstaller.exe` regardless of
+   product, since `uninstallOldVersion` copies the old uninstaller there
+   before running it.
+3. **Force-kill if still running after the timeout** — `taskkill /F /IM
+   "old-uninstaller.exe"`, the same recovery step confirmed to work
+   manually.
+4. **Verify directly and self-heal, unconditionally** — rather than
+   trusting an exit code we no longer wait to receive: if the old
+   install directory still has the app's exe in it (whether the
+   uninstaller was killed, crashed, or simply never removed everything),
+   finish the job the same way the confirmed-working manual recovery
+   does — `RMDir /r` the program-files directory, `DeleteRegKey` the
+   stale uninstall entry (using the same `SHELL_CONTEXT`/
+   `HKEY_CURRENT_USER` literal-keyword dispatch `readReg` elsewhere in
+   the same file already uses, since NSIS's registry instructions need a
+   compile-time keyword, not a runtime string variable — confirmed by an
+   actual compile error, not assumed). **Never touches user data** — the
+   directory in question is the program-files install directory only
+   (`%LOCALAPPDATA%\Programs\<app>`), never the separate `userData`/
+   `AppData` profile directory the app's real data (sales, local DB
+   mirror, auth cache) lives in.
+
+This entirely removes the `appCannotBeClosed` retry-loop-with-MessageBox
+that used to live in this function — the old-uninstall step can no
+longer show that dialog at all; it silently self-heals instead.
+
+**`customUnInstallCheck`/`customUnInstallCheckCurrentUser` updated to
+match**: since the patched function always `ClearErrors` before
+returning and no longer produces a meaningful exit code (launched via
+`Exec`, not `ExecWait`), reading `$R0`/`IfErrors` after it would now
+just be reading stale, unrelated register values — so the hook was
+simplified to directly re-check whether the install directory is
+actually clean, using `$INSTDIR` (this run's own target directory, always
+valid) rather than `uninstallOldVersion`'s own `$installationDir` Var
+(referencing that from a separate `.nsh` file threw a genuine "unknown
+variable/constant" compile error — a real cross-file scope issue, not
+assumed — and isn't needed anyway since `diagLogHeader`'s registry
+cross-check already confirmed they're the same directory for this
+update).
+
+**Compile-verified via the same real `electron-builder --win --x64`
+cross-build** (native macOS `makensis`, no Wine) — this pass caught two
+more genuine bugs before they shipped: the `$installationDir` cross-file
+scope error above, and an invalid `DeleteRegKey $rootKey ...` call (a
+runtime string variable where NSIS requires a literal root-key keyword).
+Both fixed and reconfirmed clean on subsequent compiles. 652 automated
+tests unaffected (NSIS/`node_modules` patch only — no `src/` behavior
+touched). **Not yet pushed/released as of this addition.**
 
 ## ✅ Fixed — offline login (was: 🔴 critical bug)
 

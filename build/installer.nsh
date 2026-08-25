@@ -271,39 +271,39 @@
 # silently runs the OLD version's own already-compiled uninstaller.exe to
 # remove the previous install, then calls handleUninstallResult to check
 # whether that succeeded. That check is what customUnInstallCheck /
-# customUnInstallCheckCurrentUser below replace — so this tells us, for the
-# very first time, whether the "old uninstall" step or the "extraction" step
-# is the one actually failing, without needing to touch or rebuild the old
-# (undiagnosed) uninstaller.exe itself.
+# customUnInstallCheckCurrentUser below replace.
 #
-# Unlike everything above, this one is NOT purely additive: electron-builder
-# only calls a hook here AT ALL if we define one, and if we do, we own the
-# ENTIRE result-check — there's no "run theirs, then also run mine". So the
-# logic below is copied verbatim from handleUninstallResult's Function body
-# (installUtil.nsh) — same IfErrors check, same MessageBox/DetailPrint text,
-# same SetErrorLevel 2 + Quit on real failure — with diagLog calls added
-# around it and named labels used instead of their relative "+3"-style jumps
-# (safer to hand-maintain; a relative offset silently breaks if anyone ever
-# adds a line above it, a named label can't).
+# NOTE: as of the patches/app-builder-lib+*.patch fix (see
+# uninstallOldVersion in installUtil.nsh — bounded wait + self-heal
+# cleanup instead of ExecWait's indefinite block), uninstallOldVersion no
+# longer produces a meaningful exit code or error flag for us to read —
+# it launches non-blocking (Exec, not ExecWait) and always ClearErrors
+# before returning, since it self-heals instead of failing outward. So
+# this hook no longer replicates handleUninstallResult's original
+# IfErrors/$R0 logic (that would just be reading stale, unrelated
+# register values now) — it directly re-checks the one thing that
+# actually matters: is the old install directory actually clean
+# afterward.
+#
+# Uses $INSTDIR (this installer's own target directory), not
+# uninstallOldVersion's own $installationDir Var — that custom Var isn't
+# reliably visible from this file at compile time (confirmed: referencing
+# it here throws "unknown variable/constant", presumably a declaration-
+# order/scope issue across the two separately-included .nsh files) and
+# isn't needed anyway: diagLogHeader's registry cross-check already
+# confirmed $INSTDIR matches the old InstallLocation exactly for this
+# update, so they're the same directory here.
+#
+# Unlike the purely-additive diagnostics above, this one still isn't
+# purely additive: electron-builder only calls a hook here AT ALL if we
+# define one, and once defined we own the whole result-check — there's
+# no "run theirs, then also run mine".
 # ============================================================
 !macro diagHandleUninstallResult CONTEXT
-  !insertmacro diagLog "[diag] Old-version uninstall (${CONTEXT}) step reached. Raw ExecWait exit code in $$R0 = $R0"
-  IfErrors diagUninstallLaunchFailed_${CONTEXT} diagUninstallLaunchOk_${CONTEXT}
-
-  diagUninstallLaunchFailed_${CONTEXT}:
-    !insertmacro diagLog "[diag] Old-version uninstall (${CONTEXT}): the OLD uninstaller.exe could NOT be launched at all (IfErrors was set before/instead of a real exit code)."
-    DetailPrint `Uninstall was not successful. Not able to launch uninstaller!`
-    Return
-
-  diagUninstallLaunchOk_${CONTEXT}:
-  ${if} $R0 != 0
-    !insertmacro diagLog "[diag] Old-version uninstall (${CONTEXT}) FAILED -- non-zero exit code $R0 from the OLD uninstaller.exe."
-    MessageBox MB_OK|MB_ICONEXCLAMATION "$(uninstallFailed): $R0"
-    DetailPrint `Uninstall was not successful. Uninstaller error code: $R0.`
-    SetErrorLevel 2
-    Quit
+  ${if} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+    !insertmacro diagLog "[diag] Old-version uninstall (${CONTEXT}): UNEXPECTED — $INSTDIR\${APP_EXECUTABLE_FILENAME} still exists after the bounded-wait+self-heal cleanup ran. The patch's own RMDir /r must have failed; investigate $INSTDIR directly."
   ${else}
-    !insertmacro diagLog "[diag] Old-version uninstall (${CONTEXT}) succeeded (exit code 0). If the dialog still appears after this line, extraction is the confirmed failure point."
+    !insertmacro diagLog "[diag] Old-version uninstall (${CONTEXT}): old install directory is clean. Proceeding to extraction. If the dialog still appears after this line, extraction is the confirmed failure point."
   ${endIf}
 !macroend
 
