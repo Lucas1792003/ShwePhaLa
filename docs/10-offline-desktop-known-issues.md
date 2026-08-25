@@ -239,6 +239,21 @@ already established:
       dist/index.html` should show `./assets/...`, not `/assets/...`.
       Fixed in v1.0.3 (v1.0.2's release was left in place but is broken
       on both platforms — don't point anyone at it).
+- [x] **Fixed — Windows updater could leave NSIS waiting for the app to
+      close.** After choosing **Restart now**, the v1.0.6 updater could reach
+      the installer and then show "Shwe Pha La POS cannot be closed" because
+      Windows still saw an app process holding the installation directory.
+      There were two gaps: the desktop app did not hold Electron's
+      single-instance lock (so a second/background instance could survive the
+      requesting instance), and `quitAndInstall()` relied entirely on the
+      normal asynchronous `app.quit()` handoff. v1.0.7 calls
+      `app.requestSingleInstanceLock()` before ready, focuses the primary
+      window on a second launch, and adds a Windows-only 1.5-second hard-exit
+      fallback after the detached NSIS installer has been started. The normal
+      graceful quit still gets the first opportunity; the fallback only runs
+      if the Electron process is still alive. Recovery for an already-stuck
+      v1.0.6 installer: end every `Shwe Pha La POS.exe` in Task Manager, then
+      click **Retry** — do not uninstall or clear AppData.
 - [ ] **No cash-drawer support.** `electron/main.cjs` only wires silent
       receipt printing (`webContents.print()` to a system printer). Kicking
       a cash drawer needs either a drawer-kick ESC/POS command embedded in

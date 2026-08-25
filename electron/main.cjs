@@ -12,6 +12,22 @@ const isDev = !app.isPackaged;
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173";
 
 let mainWindow = null;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+// Multiple installed instances can keep app files open after the instance
+// that requested an update quits. NSIS then cannot replace those files and
+// shows "cannot be closed" forever. Keep exactly one desktop instance and
+// focus it when a second launch is attempted.
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -30,6 +46,9 @@ function createWindow() {
   });
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.once("closed", () => {
+    mainWindow = null;
+  });
 
   // Open target="_blank" links (none expected today, but the QR phone-upload
   // flow and any future external links should open in the OS browser, not a
@@ -54,21 +73,23 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(() => {
-  createWindow();
+if (hasSingleInstanceLock) {
+  app.whenReady().then(() => {
+    createWindow();
 
-  app.on("activate", () => {
-    // macOS: clicking the dock icon with no windows open should reopen one.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    app.on("activate", () => {
+      // macOS: clicking the dock icon with no windows open should reopen one.
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+
+    if (!isDev) {
+      // Give the window a moment to render before firing a network check.
+      setTimeout(() => checkForUpdates(), 5_000);
+      // Keep checking periodically for anyone who leaves the app open for days.
+      setInterval(() => checkForUpdates(), UPDATE_CHECK_INTERVAL_MS);
+    }
   });
-
-  if (!isDev) {
-    // Give the window a moment to render before firing a network check.
-    setTimeout(() => checkForUpdates(), 5_000);
-    // Keep checking periodically for anyone who leaves the app open for days.
-    setInterval(() => checkForUpdates(), UPDATE_CHECK_INTERVAL_MS);
-  }
-});
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -90,7 +111,9 @@ app.on("window-all-closed", () => {
 // possible SmartScreen prompt on the downloaded update itself.
 // ------------------------------------------------------------------
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const WINDOWS_UPDATE_EXIT_TIMEOUT_MS = 1_500;
 let updateCheckInFlight = false;
+let updateInstallStarted = false;
 
 function checkForUpdates() {
   if (updateCheckInFlight) return;
@@ -107,7 +130,30 @@ function checkForUpdates() {
 // checking/downloading/ready state without the user polling or restarting
 // the app to find out.
 function sendUpdateStatus(status) {
-  if (mainWindow) mainWindow.webContents.send("updates:status", status);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("updates:status", status);
+}
+
+function installDownloadedUpdate() {
+  if (updateInstallStarted) return false;
+  updateInstallStarted = true;
+  sendUpdateStatus({ state: "installing" });
+
+  // electron-updater launches the detached installer first, then calls
+  // app.quit(). On some Windows machines an Electron renderer/GPU process or
+  // another app instance can remain alive long enough for NSIS to give up.
+  // The single-instance lock prevents the latter; this bounded fallback makes
+  // sure the requesting process tree releases the installation directory.
+  autoUpdater.quitAndInstall(false, true);
+
+  if (process.platform === "win32") {
+    const hardExit = setTimeout(() => {
+      for (const window of BrowserWindow.getAllWindows()) window.destroy();
+      app.exit(0);
+    }, WINDOWS_UPDATE_EXIT_TIMEOUT_MS);
+    hardExit.unref();
+  }
+
+  return true;
 }
 
 autoUpdater.autoDownload = true;
@@ -139,7 +185,7 @@ autoUpdater.on("update-downloaded", (info) => {
       detail: "Restart now to install it, or it'll install automatically the next time you quit the app.",
     })
     .then((result) => {
-      if (result.response === 0) autoUpdater.quitAndInstall();
+      if (result.response === 0) installDownloadedUpdate();
     });
 });
 
@@ -154,8 +200,7 @@ ipcMain.handle("updates:check", () => {
 });
 
 ipcMain.handle("updates:install", () => {
-  autoUpdater.quitAndInstall();
-  return { ok: true };
+  return { ok: installDownloadedUpdate() };
 });
 
 ipcMain.handle("app:get-version", () => app.getVersion());
