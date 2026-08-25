@@ -163,10 +163,10 @@ silent thermal printing.
   · the date-filter button. (The old free-form date-range picker was removed —
   the month scope + calendar replace it.)
 - **Admin weekly-report countdown** (`WeeklyReportCountdown`) shows time to
-  next Monday 00:00, when the all-shops weekly CSV is meant to auto-email.
-  ⚠️ The backend job is **not built yet** — the countdown is currently
-  informational only (see *Weekly sales report* under
-  [Daily Sales Email Report](#daily-sales-email-report)).
+  next Monday 00:00 Myanmar Time, when the all-shops weekly CSV auto-emails
+  to every active admin. **Live** — a `pg_cron` job + `weekly-sales-report`
+  Edge Function actually sends it now (see *Weekly Sales Report* in
+  [07-setup-deployment.md](./07-setup-deployment.md#weekly-sales-report)).
 
 ## Shifts
 
@@ -808,7 +808,7 @@ visible until resolved.
 | Sales by Category | `calculateSalesByCategoryPercent`; `sum(sale_items.lineTotalMmk)` by `product.category`, then percent of category total | ADMIN all/selected shop; MANAGER assigned shop; line basis does not allocate cart-level discounts yet |
 | Top Selling Products | `calculateTopProducts`, ranked by line revenue, limit 5 | Cost/profit columns are not shown unless `report:shop_profit` |
 | Inventory Intelligence (Admin) | `useDashboardInsights` → stock health summary (healthy / low / out), fast / slow movers (last-7-day avg-daily-sales velocity), reorder suggestions (low + <=7d to stockout, OR out + had sales). Sales velocity window is fixed at 7 days regardless of the page range so "fast mover" stays comparable across range changes. Days-of-stock returns `null` for products with no recent sales (rendered as `n/a`, never a fake `999d`). Scope respects ADMIN All Shops vs selected shop via `metricShopId`. | Requires `report:shop_inventory`. Overlaps in spirit with the Action Queue counts (out / low) but kept because the card stands on its own and adds Fast/Slow Movers + Reorder Suggestions that aren't surfaced anywhere else. |
-| Low Stock / Inventory Alerts | `calculateLowStock` per `(shop_id, product_id)` | Requires `report:shop_inventory`; all-shops never sums quantities across shops. **Inventory-row dependency:** the *all-shops* path iterates existing `inventory` rows only, so a product with **no inventory row** for a shop is invisible to it — even though POS shows it "0 in stock" (POS defaults a missing row to 0). The *single-shop* path iterates products and treats a missing row as 0, so it flags every product. Net effect: a never-stocked product appears out of stock in POS and in the single-shop card, but not in the All-Shops card. Fix is to ensure every product has an inventory row per shop (see backfill in [`supabase/backfill_inventory_rows.sql`](../supabase/backfill_inventory_rows.sql) and the roadmap to-do to auto-create rows on product/shop creation). |
+| Low Stock / Inventory Alerts | `calculateLowStock` per `(shop_id, product_id)` | Requires `report:shop_inventory`; all-shops never sums quantities across shops. **Fixed** — the *all-shops* path iterates existing `inventory` rows only, so a product with no row for a shop used to be invisible to it even though POS showed it "0 in stock" (POS defaults a missing row to 0). Migration `046` now auto-creates a qty-0 row for every active product × active shop combo via triggers on `products`/`shops` (covers creation and reactivation of either, for every insert path), so this gap can no longer recur. Pre-existing gaps: run [`supabase/backfill_inventory_rows.sql`](../supabase/backfill_inventory_rows.sql) once if you haven't already. |
 | Pending Refund/Void Approvals | `refund_void_requests.status = REQUESTED` | Requires `approval:view` |
 | Pending PO Receipts | `purchase_orders.status = APPROVED` | Requires `purchase:view`; receiving action still requires `purchase:receive` elsewhere |
 | Pending Transfers | `stock_transfers.status = PENDING` where shop is source or destination | Requires `transfer:view` |
@@ -946,14 +946,20 @@ and emails them as attachments via Resend.
   reports that day. Same flow, only `reportDate` changes
   (`buildDailySalesReportsByShop({ reportDate })`).
 
-### Weekly sales report (planned — not built yet)
+### Weekly sales report — shipped
 
 The Sales page shows an admin countdown to next Monday for an **automatic
-weekly** all-shops CSV email. Decision: **email-only, no delete** — sales are
-kept (so the monthly view and the dashboard stay complete; the data is small,
-~8–15 MB/month). When built it'll be a Monday `pg_cron` job + Edge Function
-that emails the previous week's per-shop CSVs (same pattern as the audit-log
-rotation, minus the delete). Until then the countdown is cosmetic.
+weekly** all-shops CSV email — and it actually sends now. **Email-only, no
+delete** — sales are kept (so the monthly view and the dashboard stay
+complete; the data is small, ~8–15 MB/month). A `pg_cron` job fires Sunday
+17:30 UTC (== Monday 00:00 Myanmar Time) and calls the
+`weekly-sales-report` Edge Function, which emails the previous week's
+(Mon–Sun) per-shop CSVs to every active admin — same pattern as audit-log
+rotation, minus the delete. It recomputes the exact week boundary from a
+real Myanmar-time calendar Monday on every run, so a few minutes of cron
+scheduling jitter can't shift sales into the wrong week's report. Setup
+details in
+[07-setup-deployment.md](./07-setup-deployment.md#weekly-sales-report).
 
 ### What the email contains
 

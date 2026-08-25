@@ -321,6 +321,19 @@ These were the headline backend hardening milestones; details are in
       `042`); authenticator-app TOTP via Supabase native MFA.
 - [x] Business profile (brand name/logo/contacts) singleton (migration
       `043`).
+- [x] `updated_at` + triggers on the 6 tables offline delta-sync needed
+      (migration `044`).
+- [x] `resolve_event_time()` + `p_created_at` param on every
+      offline-eligible RPC, so a write queued offline keeps its real
+      timestamp instead of recording as whenever it happened to sync
+      (migration `045` — see
+      [10-offline-desktop-known-issues.md](./10-offline-desktop-known-issues.md)).
+- [x] Auto-create qty-0 inventory rows for every active product × active
+      shop, via triggers on `products`/`shops` (migration `046`).
+- [x] `guard_user_privilege_columns()` trigger blocks a non-admin from
+      changing `role`/`granted_permissions`/`revoked_permissions`/
+      `permissions` on any `users` row, closing a privilege-escalation
+      gap in `users_upd`/`users_ins` (migration `047`).
 
 ## Completed Frontend Hardening (for reference)
 

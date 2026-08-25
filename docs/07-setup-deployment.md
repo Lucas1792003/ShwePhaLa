@@ -227,6 +227,60 @@ deleted. Behaviour spec in
   retries next run (no data loss).
 - Only callers presenting the service-role key (the cron job) can invoke it.
 
+⚠️ **Gotcha hit in production once**: running `schedule_audit_rotation.sql`
+with the `<SERVICE_ROLE_KEY>`/`<PROJECT_REF>` placeholders never actually
+replaced meant `cron.job` showed the job as `active` — but every single
+5-minute run silently failed (`net.http_post` to a literal `<PROJECT_REF>`
+domain with an invalid `Authorization` header). "Scheduled and active" is
+not the same as "working" — after running the script, always check
+`SELECT command FROM cron.job WHERE jobname = 'rotate-audit-log';` for any
+leftover `<...>` placeholder text, and confirm at least one row in
+`cron.job_run_details` has `status = 'succeeded'` before considering setup
+done.
+
+## Weekly Sales Report
+
+Every Monday at 00:00 Asia/Yangon (Myanmar Time), emails one CSV per shop
+covering the week that just ended (Mon–Sun) to every active ADMIN —
+matching the countdown shown on the Sales page (`WeeklyReportCountdown`).
+Email-only: unlike audit-log rotation, nothing is ever deleted.
+
+### Setup
+
+1. **Deploy the function:**
+   ```bash
+   supabase functions deploy weekly-sales-report
+   ```
+   …or paste `supabase/functions/weekly-sales-report/index.ts` into **Edge
+   Functions → weekly-sales-report → Code editor** and Deploy.
+2. **Secrets** — reuses the same Resend config as the daily report and audit
+   rotation; nothing new to set if those are already configured.
+3. **Schedule the cron** — open `supabase/schedule_weekly_sales_report.sql`,
+   fill in `<SERVICE_ROLE_KEY>` (project URL is already filled in), and run
+   it in the SQL Editor. Fires `30 17 * * 0` (17:30 UTC every Sunday == 00:00
+   Monday Myanmar Time) — pg_cron runs on the Postgres server's UTC clock, so
+   this is the correct way to express a Myanmar-local weekly schedule, not a
+   typo.
+
+### Verify
+
+- `SELECT * FROM cron.job WHERE jobname = 'weekly-sales-report';` shows the
+  job, and confirm the `command` column has no leftover `<...>` placeholder
+  text (see the gotcha noted above — check this for **every** cron job you
+  set up this way, not just this one).
+- Manually invoke it once to confirm end-to-end before waiting for Sunday:
+  ```bash
+  curl -X POST 'https://<PROJECT_REF>.supabase.co/functions/v1/weekly-sales-report' \
+    -H "Authorization: Bearer <SERVICE_ROLE_KEY>" -H "Content-Type: application/json" -d '{}'
+  ```
+  Response includes `{ sent, recipients, weekStart, weekEnd, totalSaleCount, shops }`
+  on success. Admins should receive the email within ~30s.
+- After the first real Sunday-night run: **Edge Functions →
+  weekly-sales-report → Logs**, and `SELECT * FROM cron.job_run_details
+  WHERE jobid = (SELECT jobid FROM cron.job WHERE jobname =
+  'weekly-sales-report') ORDER BY start_time DESC LIMIT 5;` — confirm
+  `status = 'succeeded'`.
+
 ## Vercel Deployment
 
 The app is a static SPA. `vercel.json` rewrites all routes to
