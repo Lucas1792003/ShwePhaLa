@@ -43,6 +43,30 @@ Highlights:
   horizontal scroll at 1024×768. Expanded PO line-items table is the only
   place horizontal scroll may appear, and only at very narrow widths.
 
+## Theme
+
+The entire app supports **System / Light / Dark**. `src/stores/themeStore.ts`
+owns the persisted preference (`pos-theme`); new installs default to
+`system`, which resolves `prefers-color-scheme` and follows OS theme changes
+while the app is open. The sidebar control cycles System → Light → Dark.
+Existing explicit Light/Dark preferences from the older store format are
+preserved.
+
+`index.html` resolves the saved/system choice before CSS and React paint so a
+dark launch does not flash light first. Tailwind is configured with
+`darkMode: "class"`; `src/index.css` maps the legacy literal white/slate
+utilities used throughout feature pages onto one cool-slate dark hierarchy,
+with emerald as the primary accent. This covers POS, dashboards, tables,
+forms, modals, empty/error states, and Recharts labels/grids without changing
+their business behavior.
+
+Print accuracy is deliberately independent of the app theme:
+
+- `.receipt` and `.barcode-label` remain black-on-white in Dark mode.
+- QR/image paper surfaces remain white.
+- `color-scheme: light` is forced on printable roots.
+- The existing `@media print` receipt/label styles remain authoritative.
+
 ## Receipt Printing
 
 The app does **not** use a PDF generator. It uses the browser's native
@@ -245,6 +269,11 @@ What it adds over the browser version:
   Electron-specific.
 - **Auto-update** — the desktop app checks this repo's GitHub Releases on
   launch and periodically, downloading and prompting to install updates.
+  Release v1.0.7 enforces a single app instance and, on Windows, uses a
+  1.5-second hard-exit fallback after NSIS starts if graceful `app.quit()`
+  has not released the installation files. This protects updates *after*
+  v1.0.7 is installed; see document 10 for the one-time recovery path from a
+  stuck v1.0.6 installer and the remaining real-Windows verification item.
 
 Still not implemented: talking to OPOS/JavaPOS cash drawers or barcode
 scanners with native drivers (scanners still work today via HID keyboard

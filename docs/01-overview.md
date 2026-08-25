@@ -28,6 +28,7 @@ the Supabase Auth session.
 | Reports | Dashboard, shop sales, profit (ADMIN by default, date-range fetch that bypasses the 1000-row cache), captured COGS via per-line cost snapshot, inventory health, supplier debt. |
 | Auth / 2FA | Supabase password login + an admin second factor: authenticator-app (TOTP) code, or an emailed 6-digit code (10-min expiry). Managed on the Security page; gated re-verify to view it. |
 | Profile / Branding | Admin-editable business brand (name, logo, contacts) shown in the sidebar header and on receipts. |
+| UI / Theme | Full-app Light / Dark / System theme support. System is the default and follows live OS changes; the preference persists locally. Receipt, barcode-label, and QR paper surfaces stay black-on-white. |
 | Audit | Every operational write inserts an `audit_logs` row through an RPC; direct authenticated writes to `audit_logs` are blocked. |
 | i18n | Full English / Myanmar (Unicode + Zawgyi) across every page via `useTranslation`. |
 
@@ -47,6 +48,13 @@ the Supabase Auth session.
   and `complete_sale`.
 - ✅ Sidebar can be toggled between the full navigation and an icon-only rail;
   the collapsed state is persisted in localStorage.
+- ✅ Full-app Light / Dark / System themes across POS, dashboards, tables,
+  forms, and modals. System is the default; OS changes are followed live and
+  the theme is resolved before first paint to prevent a light flash.
+- ✅ Electron desktop release **v1.0.8** is public. It retains the v1.0.7
+  single-instance and bounded Windows shutdown safeguards, and fixes the
+  overlapping update/logout actions in the expanded sidebar. The updater
+  handoff from v1.0.7 still needs confirmation on real Windows hardware.
 - ✅ Central error utility (`src/lib/errors.ts`) maps Postgres / network /
   storage / domain errors to friendly user-facing strings; bootstrap has a
   retry surface; top-level `ErrorBoundary` is in place.
@@ -61,7 +69,7 @@ the Supabase Auth session.
   PO receive, transfer dispatch/receive, refund/void approval.
 - ⏳ Live RPC / RLS verification still required against the production project
   (checklist preserved in [`archive/29-live-supabase-rls-rpc-verification.md`](./archive/29-live-supabase-rls-rpc-verification.md)).
-- ⏳ Apply migrations through `043` and deploy the `admin-2fa` edge function on
+- ⏳ Apply migrations through `047` and deploy the `admin-2fa` edge function on
   the target project; enable TOTP MFA in Supabase Auth.
 
 ## High-Priority Next Steps
@@ -70,7 +78,7 @@ See [09-roadmap-todo.md](./09-roadmap-todo.md) for the full list. Current
 priorities:
 
 - Run the live Supabase RLS / RPC verification against the target project.
-- Apply migrations through `043`; deploy `admin-2fa`; enable TOTP MFA.
+- Apply migrations through `047`; deploy `admin-2fa`; enable TOTP MFA.
 - Move `src/data/seedSupabase.ts` out of browser source.
 - Add browser-level Playwright smoke tests (store + mocked-Supabase flow
   tests already cover checkout / receive / transfer / refund logic).

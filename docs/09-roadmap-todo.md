@@ -346,6 +346,20 @@ These were the headline backend hardening milestones; details are in
 
 ## Completed Frontend Hardening (for reference)
 
+- [x] **Full-app theme system.** System / Light / Dark covers POS,
+      dashboards, tables, forms, modals, semantic status surfaces, and chart
+      labels/grids. System is the persisted default and follows live OS
+      changes; `index.html` resolves it before first paint. Receipts, barcode
+      labels, and QR paper surfaces remain print-safe on white.
+- [x] **Windows updater shutdown hardening (v1.0.7).** Electron now holds a
+      single-instance lock, focuses the primary window on a second launch,
+      and uses a bounded Windows hard-exit fallback after starting NSIS so a
+      lingering app process cannot indefinitely block file replacement.
+      Real-hardware confirmation of the v1.0.7 → next-version handoff remains
+      in document 10's testing gaps.
+- [x] **Sidebar footer action layout (v1.0.8).** Update and logout controls now
+      use full-width stacked rows so labels and dynamic updater states cannot
+      overlap in the expanded desktop sidebar.
 - [x] Receipt + Sales drawer unified through `ReceiptDetail`.
 - [x] Shift summary parity (cashier card + manager modal) via
       `buildShiftBreakdown`.

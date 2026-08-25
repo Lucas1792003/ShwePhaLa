@@ -254,6 +254,13 @@ already established:
       if the Electron process is still alive. Recovery for an already-stuck
       v1.0.6 installer: end every `Shwe Pha La POS.exe` in Task Manager, then
       click **Retry** — do not uninstall or clear AppData.
+      **Important rollout detail:** the 1.0.6 → 1.0.7 handoff still executes
+      v1.0.6's old updater code, so that transition may need the recovery once.
+      The new protection is active only after v1.0.7 is installed.
+- [x] **Fixed — sidebar update and logout buttons overlapped.** In the expanded
+      270px desktop sidebar, both text-heavy actions were forced into equal
+      columns. v1.0.8 stacks them as full-width rows, which also keeps longer
+      updater labels such as download progress and restart prompts readable.
 - [ ] **No cash-drawer support.** `electron/main.cjs` only wires silent
       receipt printing (`webContents.print()` to a system printer). Kicking
       a cash drawer needs either a drawer-kick ESC/POS command embedded in
@@ -289,11 +296,12 @@ already established:
       `mac.target` now includes `zip` alongside `dmg` — electron-updater's
       Mac update mechanism needs the zip artifact even though the dmg is
       what a fresh install uses.
-      **Gotcha hit while shipping v1.0.1**: `--publish always` reported
-      success but the GitHub Release ended up with only 1 of ~12 expected
-      assets — an interrupted/incomplete automated upload, not a build
-      problem (every file existed correctly locally). Always verify after
-      publishing: `gh release view v<version> --json assets --jq
+      **Recurring publish gotcha (confirmed again for v1.0.6 and v1.0.7):**
+      `--publish always` can report success while the GitHub Release ends up
+      with only 1 of the 12 expected assets — an interrupted/incomplete
+      automated upload, not a build problem (every file existed correctly
+      locally). Always verify after publishing:
+      `gh release view v<version> --json assets --jq
       '.assets[] | "\(.name) \(.size)"'` and compare against the local
       `release/` folder; if assets are missing, finish the upload manually
       with `gh release upload v<version> <missing files> --clobber`.
@@ -304,6 +312,13 @@ already established:
 
 ## Testing gaps
 
+- **The v1.0.7 Windows updater shutdown fix is not yet confirmed on real
+  Windows hardware.** Packaging, updater metadata, the 12-asset public release,
+  Electron-relative asset paths, and main-process syntax were verified. The
+  decisive remaining test is the v1.0.7 → v1.0.8 update: confirm **Restart
+  now** closes every app process, NSIS completes with no manual Retry dialog,
+  and the updated app relaunches once. Testing the 1.0.6 → 1.0.7 transition
+  alone does not exercise the new shutdown code.
 - **No real Supabase project was ever exercised.** This repo has no
   `.env.local` configured, so nothing above has been clicked through in an
   actual browser or Electron window against live data — only via `npm run
