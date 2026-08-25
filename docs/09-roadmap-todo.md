@@ -20,23 +20,35 @@ Open work, grouped by area.
       MFA enforcement on sensitive RLS writes is ever needed, add an `aal`
       claim check (today the gate is UI-level; the Supabase session is still
       live for an unverified admin).
-- [ ] **Auto-create inventory rows.** A product only gets an
-      `inventory (shop_id, product_id, qty_base_units)` row the first time
-      it's stocked (purchase receive / adjust). Never-stocked products
-      therefore have no row, which makes them show "0 in stock" in POS but
-      stay invisible to the dashboard's all-shops Low Stock card (it scans
-      existing rows only — see `04-features-workflows.md`). Create a qty-0
-      row for every active product × active shop on **product creation** and
-      **shop creation** so POS and the dashboard always agree. One-off
-      backfill for existing data: [`supabase/backfill_inventory_rows.sql`](../supabase/backfill_inventory_rows.sql).
-- [ ] **Weekly sales report (auto-email).** The Sales page already shows an
-      admin countdown to next Monday (`WeeklyReportCountdown`). Build the
-      backend: a Monday `pg_cron` job + `weekly-sales-report` Edge Function
-      that emails the previous week's (Mon–Sun) per-shop CSVs to all active
-      admins via Resend — **email-only, no delete** (sales are kept so the
-      monthly Sales view + dashboard stay complete). Mirror the
-      `email-sales-report` / `rotate-audit-log` patterns. Until built, the
-      countdown is cosmetic.
+- [x] **Auto-create inventory rows.** Migration `046` adds `AFTER INSERT OR
+      UPDATE OF is_active` triggers on `products` and `shops` that
+      SECURITY DEFINER-insert a qty-0 `inventory` row (`ON CONFLICT DO
+      NOTHING`, so real stock is never touched) for every active
+      product × active shop combination — covers new-product creation,
+      new-shop creation, AND reactivation of either, uniformly for every
+      insert path (UI, CSV import, seed script) since it lives at the DB
+      level, not one call site. Verified live in a rolled-back transaction:
+      inserting a test shop created rows for all 540 existing active
+      products; inserting a test product created rows for every active
+      shop with no duplicate for the pair reachable via both triggers.
+      One-off backfill for pre-existing gaps:
+      [`supabase/backfill_inventory_rows.sql`](../supabase/backfill_inventory_rows.sql)
+      (run separately if not already done).
+- [x] **Weekly sales report (auto-email) — shipped.** New
+      `weekly-sales-report` Edge Function (mirrors `rotate-audit-log`'s
+      cron-auth pattern and `dailySalesReport.ts`'s CSV column shape) plus
+      a `pg_cron` job (`supabase/schedule_weekly_sales_report.sql`) firing
+      Sunday 17:30 UTC == Monday 00:00 Asia/Yangon, matching what
+      `WeeklyReportCountdown` already promised. Recomputes the exact MMT
+      week boundary from a real calendar Monday every run (not "7 days
+      before whenever cron happened to fire"), so a few minutes of cron
+      jitter can't shift sales into the wrong week. Email-only, no delete.
+      **Also found and fixed while wiring this up**: the *existing*
+      `rotate-audit-log` cron job had never actually worked —
+      `schedule_audit_rotation.sql` was run with its `<SERVICE_ROLE_KEY>`
+      and `<PROJECT_REF>` placeholders never filled in, so every 5-minute
+      run had been failing silently since it was first scheduled. Fixed
+      and confirmed succeeding on its next real run.
 - [ ] **Live Supabase RLS/RPC verification.** Run the full
       [`archive/29-live-supabase-rls-rpc-verification.md`](./archive/29-live-supabase-rls-rpc-verification.md)
       checklist against the production project. Required after every
@@ -69,6 +81,110 @@ Open work, grouped by area.
 - [ ] **Code splitting.** Production bundle is ~1.3 MB (gzip ~365 KB).
       Add Vite `manualChunks` or convert heavier routes (admin, reports)
       to `React.lazy` + dynamic imports.
+
+## Security (from 2026-08-24 full-codebase audit)
+
+Findings from a defensive security pass across the Supabase backend, client
+auth/session/offline layer, general app hygiene, and the Electron desktop
+app. Ordered by severity; each was independently verified with a concrete
+exploit/failure path, not speculative. See the audit conversation for full
+per-area detail if more context is needed before fixing.
+
+- [ ] **Deactivated/revoked staff can keep completing real offline sales for
+      up to 24h.** `authStore.ts`'s offline session-trust window (built for
+      the offline-login fix) isn't just a stale-read risk — `saleSlice.ts`'s
+      `createSaleOffline()` runs full checkout (stock validation, totals,
+      receipt print) locally with no live permission check; only the
+      eventual outbox sync re-validates server-side. A cashier deactivated
+      mid-shift on an offline till can keep ringing up sales and taking cash
+      for up to 24h before the sync finally rejects — by which point goods/
+      cash are already gone. Consider shortening the trust window for
+      write-eligible offline sessions specifically, or requiring a
+      reconnect-and-revalidate before allowing further offline checkouts
+      past some threshold.
+- [x] **Fixed — `users_upd`/`users_ins` privilege-escalation gap.**
+      Migration `047` adds a `BEFORE INSERT OR UPDATE ON users` trigger
+      (`guard_user_privilege_columns()`) that rejects any change to
+      `role`, `granted_permissions`, `revoked_permissions`, or the
+      deprecated legacy `permissions` column unless the caller is
+      genuinely ADMIN (`app_role()`) — covers both the originally-flagged
+      UPDATE path (a delegated `user:update` holder self-escalating) and a
+      second vector found while fixing it: `users_ins`'s `WITH CHECK` has
+      the same shape, so a delegated `user:create` holder (a much more
+      plausible grant — "let this manager onboard staff") could otherwise
+      INSERT a brand new row with `role='ADMIN'` outright. `is_active` is
+      deliberately NOT guarded — deactivating/reactivating doesn't grant
+      capability, and a deactivated caller's own permission checks already
+      fail immediately (see the migration's own comment for the full
+      reasoning). The first-ever user (bootstrap) is exempted, mirroring
+      `users_ins`'s existing escape hatch. A genuine ADMIN is unaffected
+      either way. Verified live in a rolled-back transaction: an UPDATE
+      attempting `role='ADMIN'` from a non-admin context raised "Only an
+      ADMIN can change role or permission overrides." exactly as designed.
+- [ ] **Offline outbox can misattribute actions on a shared till.** Queued
+      offline writes (stock adjustments, transfer dispatch/receive,
+      supplier payments) resolve the acting user at *sync* time via
+      `current_app_user()`, not at queue time. If Cashier A queues an
+      action offline and logs out before reconnecting, Cashier B logging in
+      next can trigger the replay under B's identity/audit trail.
+      (`complete_sale` is already safe — it independently checks shift
+      ownership.) Consider stamping the queued actor id at enqueue time and
+      having the RPCs verify it matches, or blocking outbox drain across a
+      user switch until the previous user's queue is empty.
+- [ ] **`log_audit_event` RPC lets any authenticated user forge audit
+      entries for any shop** (`supabase/migrations/012_operational_status_rpcs.sql:586-611`).
+      No permission check, no verification that `p_shop_id` matches the
+      caller's shop. Gate on a real permission and cross-check the shop, or
+      restrict to a fixed allow-list of legitimate action types.
+- [ ] **`logout()` doesn't clear the shared Zustand/Dexie data mirror.** On
+      a shared till, a user logging in right after another logs out (no
+      connectivity gap in between) can briefly render the previous user's
+      cached cross-shop data until the next background refresh. Force a
+      `loadData({force:true})` (or at least a store reset) on every login,
+      not just on offline→online transitions.
+- [ ] **Raw Postgres/Supabase error text shown to cashier-level users** at
+      checkout (`PosPage.tsx:490-493`) and similarly on Inventory,
+      Transfers, Pricing, and the QR phone-upload page — leaks internal
+      schema/constraint details. Route through a friendly-error mapper
+      before display (the pattern already exists in `src/lib/errors.ts`,
+      just isn't applied consistently everywhere).
+- [ ] **Electron's `shell.openExternal` has no URL-scheme allowlist**
+      (`electron/main.cjs:37`). Any `window.open` target is handed straight
+      to the OS opener. Restrict to `https:` before calling
+      `shell.openExternal`.
+- [ ] **CSV export formula injection** (`src/lib/csv.ts:9`'s `toCsv()`). A
+      product name starting with `=`/`+`/`-`/`@` could execute as a formula
+      if a manager opens an exported report in Excel. Prefix such cells
+      with a `'` (or wrap in `="..."`) before writing.
+- [ ] **No max-length on product name/SKU** (`ProductFormPage.tsx:173`) —
+      low severity, but unbounded storage/CSV export. Add a reasonable
+      client + DB constraint.
+- [ ] **`printers:print-receipt`'s `deviceName` isn't validated against the
+      real printer list** before being passed to `webContents.print()`
+      (`electron/main.cjs:179`) — low risk (print() doesn't touch the
+      filesystem), but should check against `getPrintersAsync()` output
+      first.
+- [ ] **No Content-Security-Policy for the Electron-loaded content.**
+      Defense-in-depth gap only (contextIsolation + narrow preload bridge
+      already limit the blast radius), but worth adding a meta-tag CSP.
+- [ ] **Legacy `complete_stock_transfer` RPC still executable**, bypassing
+      the newer two-step `dispatch_stock_transfer` →
+      `receive_stock_transfer` maker-checker flow it was meant to replace
+      (migration `038`). `REVOKE EXECUTE ... FROM authenticated` on the old
+      function.
+- [ ] **A manager can approve their own refund/void request** — no
+      independent second-approver check in `approve_refund_request` /
+      `approve_void_request` (`supabase/migrations/005_refund_void_rpc.sql`).
+      Within their existing authority either way, but undermines the
+      maker-checker UI framing; consider requiring a different approver id
+      than the requester for MANAGER-level approvals.
+- [ ] **Confirm intentional: full `users` table (roles, shop, active flag,
+      permission overrides) is readable by any authenticated user**, not
+      just via the admin-gated UI — `users_sel USING (true)` per
+      migrations `010`/`015`, deliberately kept as "global reference data."
+      A CASHIER/BUYER with devtools can call `supabase.from('users').select('*')`
+      directly. Low severity (read-only), but confirm this is the intended
+      tradeoff before treating it as settled.
 
 ## Medium Priority
 
