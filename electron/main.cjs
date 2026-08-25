@@ -2,8 +2,8 @@
 // package is "type": "module" for the Vite/React app, but Electron's main
 // process is simplest as a small, unbundled .cjs entry point; no build step
 // needed for it.
-const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
-const { spawn } = require("node:child_process");
+const { app, BrowserWindow, ipcMain, shell, dialog, autoUpdater: nativeAutoUpdater } = require("electron");
+const fs = require("node:fs");
 const path = require("node:path");
 const { autoUpdater } = require("electron-updater");
 
@@ -14,6 +14,48 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173
 
 let mainWindow = null;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+// Keep updater diagnostics on disk because a packaged Windows app normally
+// has no visible console, and the process is intentionally gone by the time
+// NSIS is doing its work. Paths are redacted before writing so logs are safe
+// to share when an update needs support.
+const UPDATE_LOG_MAX_BYTES = 1024 * 1024;
+
+function updaterLogPath() {
+  return path.join(app.getPath("userData"), "logs", "updater.log");
+}
+
+function sanitizeUpdateLog(value) {
+  const text = value instanceof Error ? (value.stack || value.message) : String(value);
+  const replacements = [
+    [app.getPath("home"), "<home>"],
+    [app.getPath("userData"), "<userData>"],
+    [app.getPath("temp"), "<temp>"],
+  ];
+  return replacements.reduce(
+    (safe, [privatePath, label]) => privatePath ? safe.split(privatePath).join(label) : safe,
+    text,
+  );
+}
+
+function logUpdate(level, message, ...details) {
+  const suffix = details.length > 0 ? ` ${details.map(sanitizeUpdateLog).join(" ")}` : "";
+  const line = `${new Date().toISOString()} [${level}] ${message}${suffix}`;
+
+  const consoleMethod = level === "error" ? "error" : level === "warn" ? "warn" : "log";
+  console[consoleMethod](`[update] ${message}`, ...details);
+
+  try {
+    const logPath = updaterLogPath();
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    if (fs.existsSync(logPath) && fs.statSync(logPath).size > UPDATE_LOG_MAX_BYTES) {
+      fs.renameSync(logPath, `${logPath}.previous`);
+    }
+    fs.appendFileSync(logPath, `${line}\n`, "utf8");
+  } catch (err) {
+    console.error("[update] could not write updater log:", err);
+  }
+}
 
 // Multiple installed instances can keep app files open after the instance
 // that requested an update quits. NSIS then cannot replace those files and
@@ -96,6 +138,16 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
+nativeAutoUpdater.on("before-quit-for-update", () => {
+  logUpdate("info", "before-quit-for-update");
+});
+app.on("before-quit", () => {
+  logUpdate("info", "before-quit", `installRequested=${updateInstallStarted}`);
+});
+app.on("will-quit", () => {
+  logUpdate("info", "will-quit", `windows=${BrowserWindow.getAllWindows().length}`);
+});
+
 // ------------------------------------------------------------------
 // Auto-update via electron-updater, checking GitHub Releases directly
 // (see package.json's "build.publish") — no separate update server needed.
@@ -114,12 +166,18 @@ app.on("window-all-closed", () => {
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 let updateCheckInFlight = false;
 let updateInstallStarted = false;
+// Set once a downloaded update's version is known (update-available /
+// update-downloaded), purely so the restart/quitAndInstall log lines below
+// can record which version is about to be installed, not just that a
+// restart happened.
+let pendingUpdateVersion = null;
 
 function checkForUpdates() {
   if (updateCheckInFlight) return;
   updateCheckInFlight = true;
+  logUpdate("info", "update check requested", `currentVersion=${app.getVersion()}`);
   autoUpdater.checkForUpdates().catch((err) => {
-    console.error("[update] check failed:", err);
+    logUpdate("error", "update check failed", err);
   }).finally(() => {
     updateCheckInFlight = false;
   });
@@ -133,68 +191,65 @@ function sendUpdateStatus(status) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("updates:status", status);
 }
 
-// Run independently of Electron so it survives the normal app.quit() started
-// by electron-updater. The new NSIS installer also closes the app by exact
-// executable name, but this watchdog ensures renderer/GPU processes from the
-// requesting version cannot outlive its browser process long enough to keep
-// the installation directory locked.
-function scheduleWindowsUpdateCleanup() {
-  const executableName = path.basename(app.getPath("exe"));
-  if (!/^[a-z0-9 ._()-]+\.exe$/i.test(executableName)) {
-    console.error(`[update] refusing unsafe executable name: ${executableName}`);
-    return;
-  }
-
-  const systemRoot = process.env.SystemRoot || "C:\\Windows";
-  const commandInterpreter = process.env.ComSpec || path.join(systemRoot, "System32", "cmd.exe");
-  const ping = path.join(systemRoot, "System32", "ping.exe");
-  const taskkill = path.join(systemRoot, "System32", "taskkill.exe");
-  const command = `"${ping}" 127.0.0.1 -n 3 >NUL & "${taskkill}" /F /T /IM "${executableName}" >NUL 2>&1`;
-
-  try {
-    const cleanup = spawn(commandInterpreter, ["/d", "/s", "/c", command], {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    cleanup.on("error", (err) => console.error("[update] cleanup helper failed:", err));
-    cleanup.unref();
-  } catch (err) {
-    console.error("[update] could not start cleanup helper:", err);
-  }
-}
-
 function installDownloadedUpdate() {
   if (updateInstallStarted) return false;
   updateInstallStarted = true;
   sendUpdateStatus({ state: "installing" });
+  logUpdate(
+    "info", "restart requested",
+    `currentVersion=${app.getVersion()}`, `updateVersion=${pendingUpdateVersion ?? "unknown"}`,
+    `platform=${process.platform}`,
+  );
+  logUpdate("info", "quitAndInstall called", "isSilent=false", "forceRunAfter=true");
 
-  // Start the independent cleanup before electron-updater launches its
-  // detached installer and calls app.quit(). It waits roughly two seconds, so
-  // graceful shutdown remains the normal path and force-close is only a
-  // fallback for an Electron process that survives it.
-  if (process.platform === "win32") scheduleWindowsUpdateCleanup();
+  // electron-updater owns the downloaded installer path, launch arguments,
+  // elevation fallback, and duplicate-install guard. Do not start the NSIS
+  // executable manually here. The installer-side lock probe in
+  // build/installer.nsh waits for actual write access after this graceful quit.
   autoUpdater.quitAndInstall(false, true);
 
   return true;
 }
 
 autoUpdater.autoDownload = true;
-autoUpdater.logger = console;
+autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.autoRunAppAfterInstall = true;
+autoUpdater.disableWebInstaller = true;
+autoUpdater.logger = {
+  info: (...args) => logUpdate("info", "electron-updater", ...args),
+  warn: (...args) => logUpdate("warn", "electron-updater", ...args),
+  error: (...args) => logUpdate("error", "electron-updater", ...args),
+  debug: (...args) => logUpdate("debug", "electron-updater", ...args),
+};
 
-autoUpdater.on("checking-for-update", () => sendUpdateStatus({ state: "checking" }));
-autoUpdater.on("update-available", (info) => sendUpdateStatus({ state: "available", version: info.version }));
-autoUpdater.on("update-not-available", (info) => sendUpdateStatus({ state: "not-available", version: info.version }));
+autoUpdater.on("checking-for-update", () => {
+  logUpdate("info", "checking for update");
+  sendUpdateStatus({ state: "checking" });
+});
+autoUpdater.on("update-available", (info) => {
+  pendingUpdateVersion = info.version;
+  logUpdate(
+    "info", "update available; download started",
+    `currentVersion=${app.getVersion()}`, `updateVersion=${info.version}`,
+  );
+  sendUpdateStatus({ state: "available", version: info.version });
+});
+autoUpdater.on("update-not-available", (info) => {
+  logUpdate("info", "update not available", `version=${info.version}`);
+  sendUpdateStatus({ state: "not-available", version: info.version });
+});
 autoUpdater.on("download-progress", (progress) =>
   sendUpdateStatus({ state: "downloading", percent: Math.round(progress.percent) }),
 );
 
 autoUpdater.on("error", (err) => {
-  console.error("[update] error:", err);
+  logUpdate("error", "updater error", err);
   sendUpdateStatus({ state: "error", message: err instanceof Error ? err.message : String(err) });
 });
 
 autoUpdater.on("update-downloaded", (info) => {
+  pendingUpdateVersion = info.version;
+  logUpdate("info", "download complete", `currentVersion=${app.getVersion()}`, `updateVersion=${info.version}`);
   sendUpdateStatus({ state: "downloaded", version: info.version });
   if (!mainWindow) return;
   dialog
@@ -251,7 +306,17 @@ ipcMain.handle("printers:list", async () => {
 
 ipcMain.handle("printers:print-receipt", async (_event, options) => {
   if (!mainWindow) return { ok: false, error: "No window" };
-  const deviceName = options && typeof options.deviceName === "string" ? options.deviceName : undefined;
+  const requestedDeviceName =
+    options && typeof options.deviceName === "string" ? options.deviceName : undefined;
+  let deviceName;
+  if (requestedDeviceName) {
+    const printers = await mainWindow.webContents.getPrintersAsync();
+    const match = printers.find((p) => p.name === requestedDeviceName);
+    if (!match) {
+      return { ok: false, error: `Printer "${requestedDeviceName}" is not connected` };
+    }
+    deviceName = match.name;
+  }
   try {
     await mainWindow.webContents.print({
       silent: true,

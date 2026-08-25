@@ -62,6 +62,79 @@ present with matching local/remote sizes, `latest.yml` points to the
 v1.0.10 Windows installer, 652 automated tests passed, and the Electron
 production build passed.
 
+### Still reproducing after v1.0.10 — a real remaining gap found, diagnostics added (2026-08-25)
+
+The user hit "cannot be closed" again on a build that already includes
+v1.0.10's fix, with the same Task Manager evidence as before (`tasklist |
+findstr /I "Shwe"` shows only the Setup process; `findstr /I "electron"`
+shows nothing). Re-read `extractAppPackage.nsh`'s `extractUsing7za` in
+full this time, not just its retry-count/timing:
+
+- `CopyFiles /SILENT "$PLUGINSDIR\7z-out\*" $OUTDIR` copies the **entire
+  unpacked app in one batch** — the exe, every Chromium runtime DLL
+  (`ffmpeg.dll`, `libEGL.dll`, `libGLESv2.dll`, `vk_swiftshader.dll`,
+  `vulkan-1.dll`, `d3dcompiler_47.dll`), every `.pak`/`.dat`/`.bin`
+  resource, and the `locales\` folder — not just the exe.
+- v1.0.10's `waitForWritableFile` probe (`build/installer.nsh`) only
+  checks **two** of those files: the exe and `resources\app.asar`. If any
+  *other* file in that batch is still transiently locked (most plausible:
+  Windows hasn't finished releasing a memory-mapped DLL, or AV is
+  scanning it, right after the old process exited), the pre-check reports
+  clear, extraction starts, `CopyFiles` fails on the untested file, burns
+  through its fixed 5×1s retry, and shows the dialog — matching the exact
+  repro (no process, dialog still fires) precisely, because the lock was
+  never process-held to begin with by the time the check ran.
+
+This is a genuine coverage gap in the v1.0.10 fix, not a new theory —
+same root site, just an incomplete fix the first time.
+
+**Not fixed yet.** Per explicit instruction, this round is
+**diagnostics-only** — the locking/wait strategy is intentionally
+unchanged so the next repro tells us exactly which file/step fails before
+committing to a fix:
+
+- `build/installer.nsh` gained: a header log (`PRODUCT_NAME`,
+  `APP_EXECUTABLE_FILENAME`, `$INSTDIR`, and the previously-registered
+  `InstallLocation` from the registry, flagged if they mismatch), a
+  one-shot (non-blocking) writability probe of the exe/app.asar/every
+  named Chromium runtime file/`locales\en-US.pak`, a generic sweep of
+  every other top-level file in `$INSTDIR`, and a `customInstall` hook
+  that confirms extraction actually completed. Each failed probe decodes
+  the real Win32 error via `GetLastError()` (32=sharing violation/real
+  lock, 5=access denied/permissions, 2/3=not found/path mismatch,
+  19=write-protected) instead of guessing "locked" vs. "permission
+  denied" apart.
+- **Important correction to the v1.0.10 write-up above and to earlier
+  advice in this investigation:** electron-builder's `common.nsh` sets
+  `ShowInstDetails nevershow` unconditionally — the installer's
+  details/log pane is **never** shown through the UI, in one-click or
+  assisted mode. A bare `DetailPrint` (all v1.0.10's diagnostics used) is
+  therefore invisible to the user; it was never actually retrievable
+  through the installer window. Every new diagnostic line now also writes
+  to `%APPDATA%\retails-shop\logs\installer-diagnostics.log` (note:
+  `retails-shop`, from package.json's `name` field — not "Shwe Pha La
+  POS" — verified against `app.getPath("userData")`'s actual resolution,
+  not assumed). That log file, alongside the pre-existing
+  `%APPDATA%\retails-shop\logs\updater.log`, is now the only reliable way
+  to see this output.
+- `electron/main.cjs`'s existing update-lifecycle logging (added
+  alongside v1.0.11) now also includes the current app version and the
+  update's target version on the `update available`, `download complete`,
+  `restart requested`, and `quitAndInstall called` lines, not just that
+  those events happened.
+- Verified via the same real local Windows cross-build
+  (`electron-builder --win --x64`, native macOS `makensis`, no Wine) —
+  this pass caught a genuine NSIS bracket-nesting bug (`Cannot use Else
+  without a preceding If`) on the first compile attempt, fixed, and
+  reconfirmed clean on the second. 652 automated tests and lint
+  unaffected (only `build/installer.nsh` and logging lines in
+  `electron/main.cjs` changed; no `src/` behavior touched).
+- **Not yet pushed/released.** Waiting on a real reproduction with the
+  two log files (`installer-diagnostics.log` + `updater.log`) copied in
+  full before deciding the actual fix (most likely: extend
+  `waitForWritableFile`'s coverage from 2 files to the full set, once the
+  exact failing file is confirmed rather than assumed).
+
 ## ✅ Fixed — offline login (was: 🔴 critical bug)
 
 **`src/stores/authStore.ts`'s `restoreSession()`** used to always require the
