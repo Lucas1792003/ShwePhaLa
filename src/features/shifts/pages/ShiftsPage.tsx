@@ -509,7 +509,7 @@ export const ShiftsPage = () => {
                 </Select>
               </div>
             )}
-            <div className="ml-auto text-right text-xs text-slate-500">
+            <div className="ml-auto rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-right text-xs text-slate-500">
               <div>
                 {filteredSales.length} sale{filteredSales.length === 1 ? "" : "s"}
               </div>
@@ -648,7 +648,7 @@ export const ShiftsPage = () => {
                 </Select>
               </div>
             )}
-            <div className="ml-auto text-xs text-slate-500">
+            <div className="ml-auto flex items-center self-stretch rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
               {filteredRecords.length} shift{filteredRecords.length === 1 ? "" : "s"}
             </div>
           </div>
