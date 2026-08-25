@@ -13,6 +13,7 @@ import { ProductPicker } from "../components/products/ProductPicker";
 import { getPriceTierProductError } from "../features/pricing/priceTierForm";
 import { formatMmk, getEffectiveShopId } from "../lib/utils";
 import { newId } from "../lib/id";
+import { reportError } from "../lib/errors";
 import type { PriceTier } from "../types";
 
 export const PricingPage = () => {
@@ -136,7 +137,7 @@ export const PricingPage = () => {
       setFormError(null);
       setShowModal(false);
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Failed to save price tier");
+      setFormError(reportError("PricingPage.save", error, "Failed to save price tier"));
     }
   };
 
@@ -168,7 +169,7 @@ export const PricingPage = () => {
     try {
       await deletePriceTier(tierId);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to delete price tier");
+      alert(reportError("PricingPage.delete", error, "Failed to delete price tier"));
     }
   };
 
@@ -176,7 +177,7 @@ export const PricingPage = () => {
     try {
       await updatePriceTier({ ...tier, isActive: !tier.isActive });
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to update price tier");
+      alert(reportError("PricingPage.toggleActive", error, "Failed to update price tier"));
     }
   };
 

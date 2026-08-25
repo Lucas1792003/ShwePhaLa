@@ -9,6 +9,7 @@ import {
   type ProductImageUploadSessionStatusResult,
 } from "../lib/productImagePhoneUpload";
 import { supabase } from "../lib/supabase";
+import { reportError } from "../lib/errors";
 
 type UploadPhase = "loading" | "ready" | "compressing" | "uploading" | "complete" | "expired" | "error";
 
@@ -47,7 +48,7 @@ export const PhoneProductImageUploadPage = () => {
       .catch((e) => {
         if (!active) return;
         setPhase("error");
-        setError(e instanceof Error ? e.message : "Invalid or expired upload link.");
+        setError(reportError("PhoneProductImageUploadPage.loadSession", e, "Invalid or expired upload link."));
       });
 
     return () => {
@@ -107,7 +108,7 @@ export const PhoneProductImageUploadPage = () => {
       setPhase("complete");
     } catch (e) {
       setPhase("error");
-      setError(e instanceof Error ? e.message : "The photo could not be uploaded.");
+      setError(reportError("PhoneProductImageUploadPage.upload", e, "The photo could not be uploaded."));
     }
   };
 

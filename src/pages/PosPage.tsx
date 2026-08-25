@@ -30,6 +30,7 @@ import {
   validatePosCart,
 } from "../features/pos/cartStock";
 import { hasShopPermission } from "../lib/permissions";
+import { reportError } from "../lib/errors";
 import { printReceipt as triggerPrint } from "../lib/print";
 import { getEffectiveShopId } from "../lib/utils";
 import { useTranslation } from "../hooks/useTranslation";
@@ -490,7 +491,7 @@ export const PosPage = () => {
     } catch (error) {
       toast({
         title: t("pos", "checkoutFailed"),
-        description: error instanceof Error ? error.message : t("pos", "couldNotComplete"),
+        description: reportError("PosPage.checkout", error, t("pos", "couldNotComplete")),
         variant: "error",
       });
     } finally {

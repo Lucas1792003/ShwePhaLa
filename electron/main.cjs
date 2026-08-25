@@ -33,9 +33,16 @@ function createWindow() {
 
   // Open target="_blank" links (none expected today, but the QR phone-upload
   // flow and any future external links should open in the OS browser, not a
-  // second app window).
+  // second app window). Restricted to https: — shell.openExternal hands the
+  // URL straight to the OS opener, so an unrestricted file:/custom-protocol
+  // URL (e.g. smuggled through a product name or QR payload) could trigger
+  // something other than a normal web page.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    try {
+      if (new URL(url).protocol === "https:") void shell.openExternal(url);
+    } catch {
+      // Malformed URL — ignore rather than pass it to the OS opener.
+    }
     return { action: "deny" };
   });
 

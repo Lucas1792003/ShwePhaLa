@@ -13,6 +13,7 @@ import { SearchInput } from "../components/forms/SearchInput";
 import { TransferReceiveModal } from "../components/transfers/TransferReceiveModal";
 import { useTranslation } from "../hooks/useTranslation";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
+import { reportError } from "../lib/errors";
 import { getActiveProductUnits, getDefaultProductUnit } from "../features/catalog/productUnits";
 import { convertToBaseQuantity, formatStockQuantity } from "../features/inventory/stockDisplay";
 import {
@@ -180,7 +181,7 @@ export const TransfersPage = () => {
       setShowCreateModal(false);
       setNewTransfer({ toShopId: "", items: [], notes: "" });
     } catch (error) {
-      alert(error instanceof Error ? error.message : t("transfers", "failCreate"));
+      alert(reportError("TransfersPage.create", error, t("transfers", "failCreate")));
     }
   };
 
@@ -189,7 +190,7 @@ export const TransfersPage = () => {
     try {
       await approveTransfer({ transferId, approverId: currentUserId });
     } catch (error) {
-      alert(error instanceof Error ? error.message : t("transfers", "failApprove"));
+      alert(reportError("TransfersPage.approve", error, t("transfers", "failApprove")));
     }
   };
 
@@ -200,7 +201,7 @@ export const TransfersPage = () => {
     try {
       await rejectTransfer({ transferId, actorId: currentUserId, reason });
     } catch (error) {
-      alert(error instanceof Error ? error.message : t("transfers", "failReject"));
+      alert(reportError("TransfersPage.reject", error, t("transfers", "failReject")));
     }
   };
 
@@ -209,7 +210,7 @@ export const TransfersPage = () => {
     try {
       await dispatchTransfer({ transferId, actorId: currentUserId });
     } catch (error) {
-      alert(error instanceof Error ? error.message : t("transfers", "failDispatch"));
+      alert(reportError("TransfersPage.dispatch", error, t("transfers", "failDispatch")));
     }
   };
 
@@ -220,7 +221,7 @@ export const TransfersPage = () => {
     try {
       await cancelTransfer({ transferId, actorId: currentUserId, reason });
     } catch (error) {
-      alert(error instanceof Error ? error.message : t("transfers", "failCancel"));
+      alert(reportError("TransfersPage.cancel", error, t("transfers", "failCancel")));
     }
   };
 

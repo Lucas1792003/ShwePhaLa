@@ -8,8 +8,16 @@ export const toCsv = (
   if (resolvedHeaders.length === 0) return "";
   const escapeValue = (value: unknown) => {
     const stringValue = String(value ?? "");
-    if (/[",\n]/.test(stringValue)) return `"${stringValue.replace(/"/g, '""')}"`;
-    return stringValue;
+    // Formula-injection guard: a string cell (numbers/booleans never hit
+    // this branch — they're never typeof "string") starting with one of
+    // these is interpreted as a formula by Excel/Sheets when the CSV is
+    // opened, which can execute arbitrary commands. A leading single
+    // quote forces text interpretation; Excel hides it in the displayed
+    // cell, so this is invisible for ordinary text.
+    const guarded =
+      typeof value === "string" && /^[=+\-@\t\r]/.test(stringValue) ? `'${stringValue}` : stringValue;
+    if (/[",\n]/.test(guarded)) return `"${guarded.replace(/"/g, '""')}"`;
+    return guarded;
   };
   const lines = [resolvedHeaders.join(",")];
   rows.forEach((row) => {

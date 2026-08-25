@@ -14,6 +14,7 @@ import { AdjustStockModal } from "../components/inventory/AdjustStockModal";
 import { Button } from "../components/ui/Button";
 import { downloadCsv } from "../lib/csv";
 import { hasPermission } from "../lib/permissions";
+import { reportError } from "../lib/errors";
 import { CategoryFilter } from "../features/categories/CategoryFilter";
 import { formatDateTime, getEffectiveShopId } from "../lib/utils";
 import { useTranslation } from "../hooks/useTranslation";
@@ -231,7 +232,7 @@ export const InventoryPage = () => {
             });
             setAdjustProductId(null);
           } catch (error) {
-            alert(error instanceof Error ? error.message : t("inventory", "adjustFailed"));
+            alert(reportError("InventoryPage.adjustStock", error, t("inventory", "adjustFailed")));
           }
         }}
       />

@@ -36,7 +36,12 @@ const toBase64 = (value: string) => {
 
 const csvCell = (value: unknown) => {
   const s = value === null || value === undefined ? "" : String(value);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  // Formula-injection guard: a string field (product/shop/cashier name,
+  // etc.) starting with one of these is interpreted as a formula by
+  // Excel/Sheets when the CSV is opened. A leading single quote forces
+  // text interpretation; Excel hides it in the displayed cell.
+  const guarded = typeof value === "string" && /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  return /[",\n\r]/.test(guarded) ? `"${guarded.replace(/"/g, '""')}"` : guarded;
 };
 
 const escapeHtml = (value: string) =>

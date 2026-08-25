@@ -142,20 +142,29 @@ per-area detail if more context is needed before fixing.
       cached cross-shop data until the next background refresh. Force a
       `loadData({force:true})` (or at least a store reset) on every login,
       not just on offline→online transitions.
-- [ ] **Raw Postgres/Supabase error text shown to cashier-level users** at
-      checkout (`PosPage.tsx:490-493`) and similarly on Inventory,
-      Transfers, Pricing, and the QR phone-upload page — leaks internal
-      schema/constraint details. Route through a friendly-error mapper
-      before display (the pattern already exists in `src/lib/errors.ts`,
-      just isn't applied consistently everywhere).
-- [ ] **Electron's `shell.openExternal` has no URL-scheme allowlist**
-      (`electron/main.cjs:37`). Any `window.open` target is handed straight
-      to the OS opener. Restrict to `https:` before calling
-      `shell.openExternal`.
-- [ ] **CSV export formula injection** (`src/lib/csv.ts:9`'s `toCsv()`). A
-      product name starting with `=`/`+`/`-`/`@` could execute as a formula
-      if a manager opens an exported report in Excel. Prefix such cells
-      with a `'` (or wrap in `="..."`) before writing.
+- [x] **Fixed — raw Postgres/Supabase error text shown to cashier-level
+      users.** `PosPage.tsx` checkout, `InventoryPage.tsx` stock
+      adjustment, `TransfersPage.tsx` (create/approve/reject/dispatch/
+      cancel), `PricingPage.tsx` (save/delete/toggle), and
+      `PhoneProductImageUploadPage.tsx` (session load + upload) all now
+      route through `reportError()`/`getErrorMessage()` from
+      `src/lib/errors.ts` instead of dumping `error.message` straight
+      into an alert/toast — schema/constraint details stay in the
+      console; the user sees a friendly mapped message, or the original
+      text only when it already reads like a clean business-rule message
+      (e.g. an RPC's own "Open a shift before checkout.").
+- [x] **Fixed — Electron's `shell.openExternal` now scheme-restricted to
+      `https:`** (`electron/main.cjs`'s `setWindowOpenHandler`). A
+      malformed URL is caught and simply not opened rather than passed to
+      the OS opener.
+- [x] **Fixed — CSV export formula injection.** `src/lib/csv.ts`'s
+      `toCsv()` (and the equivalent `csvCell()` helpers duplicated in the
+      `rotate-audit-log` and `weekly-sales-report` Edge Functions — Deno
+      functions can't import from `src/`) now prefix a **string** cell
+      starting with `=`/`+`/`-`/`@`/tab/CR with a `'`, forcing Excel/Sheets
+      to treat it as text instead of a formula. Scoped to `typeof value
+      === "string"` specifically so real negative numbers (prices,
+      quantity deltas) are never touched. Tests: `src/lib/csv.test.ts`.
 - [ ] **No max-length on product name/SKU** (`ProductFormPage.tsx:173`) —
       low severity, but unbounded storage/CSV export. Add a reasonable
       client + DB constraint.
