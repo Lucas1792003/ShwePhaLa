@@ -171,12 +171,12 @@ exploit/failure path, not speculative. See the audit conversation for full
 per-area detail if more context is needed before fixing.
 
 **2026-08-25 status:** every item below except the last (the `users` table
-read-scoping question, which needs a product decision, not a fix) is now
-implemented and locally verified — but not yet live. Code changes are
-uncommitted; five new migrations (`051`–`055`) are written and dry-run
-verified against production in a rolled-back transaction, but not yet
-applied. Pending: `git push`, then `supabase db push` (or equivalent) for
-migrations 051–055.
+read-scoping question, which needs a product decision, not a fix) is
+implemented, locally verified, committed, and pushed to `main`. Five new
+migrations (`051`–`055`) are dry-run verified against production in a
+rolled-back transaction but confirmed **not yet applied** to production
+(`supabase migration list` shows `051`–`055` with no `remote` timestamp).
+Pending: `supabase db push` (or equivalent) for migrations 051–055.
 
 - [x] **Fixed — read-scoping silently defeated on 20 tables via a
       leftover permissive RLS policy.** Found during the 2026-08-25 live
@@ -225,7 +225,8 @@ migrations 051–055.
       `receivePurchaseOrderOffline`, `recordSupplierPaymentOffline`).
       Read-only cached-data browsing is unaffected — only new writes are
       gated. Purely client-side, no migration. Full test suite (652)
-      updated and passing. **Not yet pushed/released.**
+      updated and passing. **Committed and pushed (commit `49f238e`);
+      shipped in the Electron v1.0.14 release.**
 - [x] **Implemented (2026-08-25) — offline outbox could misattribute
       actions on a shared till.** `stores/data/outbox.ts`'s
       `enqueueOutbox()` now automatically stamps the queuing user's app id
@@ -260,16 +261,6 @@ migrations 051–055.
       either way. Verified live in a rolled-back transaction: an UPDATE
       attempting `role='ADMIN'` from a non-admin context raised "Only an
       ADMIN can change role or permission overrides." exactly as designed.
-- [ ] **Offline outbox can misattribute actions on a shared till.** Queued
-      offline writes (stock adjustments, transfer dispatch/receive,
-      supplier payments) resolve the acting user at *sync* time via
-      `current_app_user()`, not at queue time. If Cashier A queues an
-      action offline and logs out before reconnecting, Cashier B logging in
-      next can trigger the replay under B's identity/audit trail.
-      (`complete_sale` is already safe — it independently checks shift
-      ownership.) Consider stamping the queued actor id at enqueue time and
-      having the RPCs verify it matches, or blocking outbox drain across a
-      user switch until the previous user's queue is empty.
 - [x] **Implemented (2026-08-25) — `log_audit_event` RPC let any
       authenticated user forge audit entries for any shop**
       (`supabase/migrations/012_operational_status_rpcs.sql:586-611`).
@@ -289,7 +280,8 @@ migrations 051–055.
       re-fires automatically on the next render since it depends on
       `isLoaded`, so a different user logging in right after gets a fresh
       fetch instead of a stale render. Purely client-side, no migration.
-      **Not yet pushed/released.**
+      **Committed and pushed (commit `49f238e`); shipped in the Electron
+      v1.0.14 release.**
 - [x] **Fixed — raw Postgres/Supabase error text shown to cashier-level
       users.** `PosPage.tsx` checkout, `InventoryPage.tsx` stock
       adjustment, `TransfersPage.tsx` (create/approve/reject/dispatch/
@@ -327,7 +319,8 @@ migrations 051–055.
       to `webContents.print()` (`electron/main.cjs`). Now cross-checked
       against `getPrintersAsync()` output first; an unknown/disconnected
       printer name returns a clean error instead of being passed through.
-      **Not yet pushed/released.**
+      **Committed and pushed (commit `49f238e`); shipped in the Electron
+      v1.0.14 release.**
 - [x] **Implemented (2026-08-25) — no Content-Security-Policy for the
       Electron-loaded content.** Added a meta-tag CSP to `index.html`
       (`script-src 'self'` — no `unsafe-inline`; `style-src` keeps
@@ -340,8 +333,10 @@ migrations 051–055.
       light and dark `prefers-color-scheme`) against a production build —
       zero console errors, zero CSP violations, fonts/JS/dark-mode all
       render correctly. Same `index.html` serves both the web build and
-      the Electron-loaded content, so one change covers both. **Not yet
-      pushed/released.**
+      the Electron-loaded content, so one change covers both.
+      **Committed and pushed (commit `49f238e`); shipped in the Electron
+      v1.0.14 release. Live on the web build once Vercel deploys from
+      `main` — not independently verified from this session.**
 - [x] **Implemented (2026-08-25) — legacy `complete_stock_transfer` RPC
       was still executable**, bypassing the newer two-step
       `dispatch_stock_transfer` → `receive_stock_transfer` maker-checker
