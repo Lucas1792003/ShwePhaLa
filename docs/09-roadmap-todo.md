@@ -524,18 +524,25 @@ These were the headline backend hardening milestones; details are in
       changes; `index.html` resolves it before first paint. Receipts, barcode
       labels, and QR paper surfaces remain print-safe on white.
 - [x] **Windows updater "cannot be closed" — real root cause found and
-      fixed (v1.0.10).** v1.0.7 and v1.0.9 both hardened the app-running
-      pre-check (single-instance lock, hard-exit timer, external
-      `taskkill` watchdog) and a real v1.0.7 → v1.0.9 test still
-      reproduced the exact same dialog — both were fixing the wrong NSIS
-      code path. The actual failure is a separate, non-customizable
-      5-second file-copy retry loop in electron-builder's own
-      `extractAppPackage.nsh`. v1.0.10's `build/installer.nsh` now
-      loop-verifies the old process is gone (via `tasklist`) instead of a
-      flat sleep, giving that retry window far more real margin. See
-      document 10 for the full diagnosis. Real-hardware confirmation of
-      an older-version → v1.0.10 update remains in document 10's testing
-      gaps.
+      fixed (v1.0.14).** Longer story than originally scoped, kept
+      fully in document 10, not duplicated here since it kept changing as
+      real-hardware evidence came in: v1.0.7/v1.0.9's app-running
+      pre-check hardening fixed the wrong code path; v1.0.10's file-
+      writability probe closed one real gap but only covered 2 of the
+      many files a real update touches; the actual root cause, confirmed
+      on real hardware in v1.0.12–v1.0.13's diagnostic passes, turned out
+      to be that the OLD version's own uninstaller.exe genuinely hangs —
+      reproducible independently of updating at all, and reportedly
+      present since v1.0.3. v1.0.14 fixes this for real via a
+      `patch-package` patch to electron-builder's own
+      `uninstallOldVersion`: bounded non-blocking wait instead of an
+      indefinite blocking one, force-kill + automatic self-heal cleanup
+      if it hangs — automating the manual `taskkill`+`rmdir`+`reg delete`
+      recovery already confirmed to work by hand. See document 10's
+      "Current Windows release and recovery" section for full detail.
+      Real-hardware confirmation of an actual v1.0.9 → v1.0.14 update
+      (the exact scenario that was failing) remains in document 10's
+      testing gaps.
 - [x] **Sidebar footer action layout (v1.0.8).** Update and logout controls now
       use full-width stacked rows so labels and dynamic updater states cannot
       overlap in the expanded desktop sidebar.

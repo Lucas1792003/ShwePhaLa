@@ -7,16 +7,30 @@ desktop wrapper. Read this before touching any of `stores/data/outbox.ts`,
 
 ## Current Windows release and recovery
 
-- **Current public desktop release:** `v1.0.10`
+- **Current public desktop release:** `v1.0.14`
 - **Windows installer:**
-  [Shwe-Pha-La-POS-Setup-1.0.10.exe](https://github.com/Lucas1792003/ShwePhaLa/releases/download/v1.0.10/Shwe-Pha-La-POS-Setup-1.0.10.exe)
+  [Shwe-Pha-La-POS-Setup-1.0.14.exe](https://github.com/Lucas1792003/ShwePhaLa/releases/download/v1.0.14/Shwe-Pha-La-POS-Setup-1.0.14.exe)
 - **Full release:**
-  [Shwe Pha La POS v1.0.10](https://github.com/Lucas1792003/ShwePhaLa/releases/tag/v1.0.10)
+  [Shwe Pha La POS v1.0.14](https://github.com/Lucas1792003/ShwePhaLa/releases/tag/v1.0.14)
+
+v1.0.14 contains the actual fix for the update/uninstall hang (see "The
+fix" subsection below) — not just diagnostics. **Awaiting real-hardware
+confirmation** that updating from v1.0.9 now completes cleanly; until
+that's confirmed, the manual recovery below is still the fallback if
+"Shwe Pha La POS cannot be closed" appears.
 
 If an older installer is showing **"Shwe Pha La POS cannot be closed"**,
 cancel it. Do not uninstall the existing app and do not clear AppData. Run
-the v1.0.10 installer normally. If recovery is still needed, end every
-`Shwe Pha La POS.exe` entry in Task Manager and retry.
+the v1.0.14 installer normally. If recovery is still needed:
+```cmd
+taskkill /F /IM "Shwe Pha La POS.exe" 2>nul
+taskkill /F /IM "Uninstall Shwe Pha La POS.exe" 2>nul
+rmdir /S /Q "%LOCALAPPDATA%\Programs\Shwe Pha La POS"
+```
+then run the v1.0.14 installer fresh (its own registry entry gets
+recreated automatically — no manual `reg delete` needed for a fresh
+install, only for the old uninstall-in-place recovery described further
+below).
 
 ### v1.0.7–v1.0.9's actual root cause, found and fixed in v1.0.10
 
@@ -261,7 +275,10 @@ scope error above, and an invalid `DeleteRegKey $rootKey ...` call (a
 runtime string variable where NSIS requires a literal root-key keyword).
 Both fixed and reconfirmed clean on subsequent compiles. 652 automated
 tests unaffected (NSIS/`node_modules` patch only — no `src/` behavior
-touched). **Not yet pushed/released as of this addition.**
+touched). **Pushed and released as `v1.0.14`** (12/12 assets, sha512
+hash-verified against what's actually hosted before publishing — see
+"Current Windows release and recovery" at the top of this doc). Real-
+hardware confirmation of a v1.0.9 → v1.0.14 update still pending.
 
 ## ✅ Fixed — offline login (was: 🔴 critical bug)
 
@@ -578,19 +595,23 @@ already established:
 
 ## Testing gaps
 
-- **The v1.0.10 Windows updater fix needs real-hardware confirmation.**
-  v1.0.7 and v1.0.9 both reproduced the exact same "cannot be closed"
-  dialog on real hardware despite targeting the app-running pre-check —
-  the actual failing check turned out to be a separate, non-customizable
-  5-second file-copy retry loop in electron-builder's own
-  `extractAppPackage.nsh` (see "v1.0.7–v1.0.9's actual root cause" above).
-  v1.0.10 gives that retry window much more real time margin by
-  loop-verifying the old process is gone instead of trusting a fixed
-  sleep. Confirmed compiling correctly via a real local Windows
-  cross-build; **not yet confirmed on real Windows hardware** — the
-  decisive test is any older version → v1.0.10: confirm the installer
-  closes every app process, completes with no manual Retry dialog, and
-  relaunches the updated app once.
+- **The v1.0.14 Windows updater fix needs real-hardware confirmation.**
+  v1.0.7, v1.0.9, and v1.0.10 were all real-hardware-tested and found
+  insufficient (v1.0.10's file-copy-retry-window fix was real but only
+  covered 2 of the many files a real update touches — see "Still
+  reproducing after v1.0.10" above). The actual root cause, confirmed via
+  v1.0.12–v1.0.13's diagnostic passes on real hardware, was the OLD
+  version's uninstaller.exe genuinely hanging — present since v1.0.3.
+  v1.0.14 patches `uninstallOldVersion` itself (via `patch-package`) to
+  bound that wait and self-heal instead of blocking indefinitely — see
+  "The fix" above for full detail. Confirmed compiling correctly via a
+  real local Windows cross-build; **not yet confirmed on real Windows
+  hardware.** The decisive test is the exact scenario that was failing:
+  v1.0.9 → v1.0.14 — confirm the installer completes with no manual
+  Retry dialog and relaunches the updated app once, and separately that
+  the standalone bug (`Uninstall Shwe Pha La POS.exe` hanging when
+  uninstalled normally via Windows Settings) is also gone on a fresh
+  v1.0.14 install.
 - **No real Supabase project was ever exercised.** This repo has no
   `.env.local` configured, so nothing above has been clicked through in an
   actual browser or Electron window against live data — only via `npm run
