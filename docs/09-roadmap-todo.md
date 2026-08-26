@@ -172,11 +172,16 @@ per-area detail if more context is needed before fixing.
 
 **2026-08-25 status:** every item below except the last (the `users` table
 read-scoping question, which needs a product decision, not a fix) is
-implemented, locally verified, committed, and pushed to `main`. Five new
-migrations (`051`–`055`) are dry-run verified against production in a
-rolled-back transaction but confirmed **not yet applied** to production
-(`supabase migration list` shows `051`–`055` with no `remote` timestamp).
-Pending: `supabase db push` (or equivalent) for migrations 051–055.
+implemented, committed, pushed to `main`, and now **live in production**.
+Migrations `051`–`055` were applied via `supabase db push` and confirmed
+applied (`supabase migration list` shows all five with a matching `remote`
+timestamp), then spot-checked live: `authenticated` can no longer execute
+the legacy `complete_stock_transfer`; `products_name_max_length`/
+`products_sku_max_length` CHECK constraints exist; `approve_refund_request`/
+`approve_void_request` both carry the self-approval guard; `log_audit_event`
+hard-codes `shop_id = NULL` regardless of caller input and enforces the
+action-type allow-list; all 8 affected offline-write RPCs accept
+`p_expected_actor_id`.
 
 - [x] **Fixed — read-scoping silently defeated on 20 tables via a
       leftover permissive RLS policy.** Found during the 2026-08-25 live
@@ -240,8 +245,11 @@ Pending: `supabase db push` (or equivalent) for migrations 051–055.
       lands on the existing Sync Conflicts page instead of silently
       executing under whoever is now logged in. Dry-run verified against
       a rolled-back production transaction (all 5 new migrations applied
-      cleanly together). **Migration written, not yet applied to
-      production.**
+      cleanly together). **Applied to production and confirmed live**:
+      `adjust_stock`, `open_shift`, `dispatch_stock_transfer`,
+      `record_supplier_payment`, `receive_purchase_order`, `close_shift`,
+      `create_refund_void_request`, and `receive_stock_transfer` all
+      accept `p_expected_actor_id`.
 - [x] **Fixed — `users_upd`/`users_ins` privilege-escalation gap.**
       Migration `047` adds a `BEFORE INSERT OR UPDATE ON users` trigger
       (`guard_user_privilege_columns()`) that rejects any change to
@@ -269,8 +277,10 @@ Pending: `supabase db push` (or equivalent) for migrations 051–055.
       callers, in `auditSlice.ts`), maps each to the same permission that
       already gates the corresponding UI action, and ignores any
       caller-supplied `p_shop_id` (forces `NULL`, since every legitimate
-      use is global/unscoped anyway). Dry-run verified against production.
-      **Migration written, not yet applied to production.**
+      use is global/unscoped anyway). **Applied to production and
+      confirmed live**: the deployed function body no longer even
+      references the caller-supplied `p_shop_id` — it hard-codes `NULL`
+      in the `INSERT` unconditionally.
 - [x] **Implemented (2026-08-25) — `logout()` didn't clear the shared
       Zustand/Dexie data mirror.** `authStore.ts`'s `logout()` now resets
       the data store (`isLoaded: false, isLoading: false, loadError:
@@ -312,8 +322,9 @@ Pending: `supabase db push` (or equivalent) for migrations 051–055.
       `054` adds matching DB `CHECK` constraints (`products_name_max_length`,
       `products_sku_max_length`) — confirmed no existing row would violate
       them (`max(length(name))=21`, `max(length(sku))=7` in production
-      today) before writing the migration. **Migration written, not yet
-      applied to production.**
+      today) before writing the migration. **Applied to production and
+      confirmed live**: both `products_name_max_length` and
+      `products_sku_max_length` CHECK constraints exist on `products`.
 - [x] **Implemented (2026-08-25) — `printers:print-receipt`'s `deviceName`
       wasn't validated against the real printer list** before being passed
       to `webContents.print()` (`electron/main.cjs`). Now cross-checked
@@ -341,8 +352,9 @@ Pending: `supabase db push` (or equivalent) for migrations 051–055.
       was still executable**, bypassing the newer two-step
       `dispatch_stock_transfer` → `receive_stock_transfer` maker-checker
       flow it was meant to replace (migration `038`). Migration `052`
-      revokes `EXECUTE` from `authenticated`. **Migration written, not yet
-      applied to production.**
+      revokes `EXECUTE` from `authenticated`. **Applied to production and
+      confirmed live**: `has_function_privilege('authenticated', ...,
+      'EXECUTE')` returns `false` for `complete_stock_transfer`.
 - [x] **Implemented (2026-08-25) — a manager could approve their own
       refund/void request** — no independent second-approver check in
       `approve_refund_request` / `approve_void_request`
@@ -352,8 +364,9 @@ Pending: `supabase db push` (or equivalent) for migrations 051–055.
       Full function bodies re-created byte-for-byte from migration 005
       with just the one guard added, following the same
       DROP-then-CREATE-OR-REPLACE pattern established migrations already
-      use for signature-compatible redefinitions. **Migration written, not
-      yet applied to production.**
+      use for signature-compatible redefinitions. **Applied to production
+      and confirmed live**: both deployed functions' source contains the
+      `created_by = v_user.id` self-approval check.
 - [ ] **Confirm intentional: full `users` table (roles, shop, active flag,
       permission overrides) is readable by any authenticated user**, not
       just via the admin-gated UI — `users_sel USING (true)` per
@@ -445,6 +458,87 @@ Pending: `supabase db push` (or equivalent) for migrations 051–055.
 - [ ] **Public API** for third-party integrations.
 - [ ] **Mobile app** (read-only catalog + receipts initially).
 - [ ] **Audit row prune / archive** for very long-lived deployments.
+
+## Future Vision — Multi-Tenant SaaS (2026-08-25, not scheduled)
+
+Long-term direction, not a scoped project — captured here so the
+architectural implications are on record before any part of it gets
+built. Today the product is single-tenant: one business, with `shops`
+as the only scoping boundary (`shop_id` on operational tables, RLS
+scoped per shop, one global ADMIN). The vision is to support **many
+independent organizations** on one deployment, each with its own
+shops/users/data, plus a platform-level team that can monitor all of
+them — while an organization's own ADMIN (the business owner) must
+never be able to see another organization, or the platform-monitoring
+view itself.
+
+- [ ] **Sign-in/auth needs real redesign, not just a schema add.**
+      Confirmed by reading `authStore.ts`: today's login is a single
+      flat `supabase.auth.signInWithPassword({ email, password })`
+      against one global Supabase Auth pool for the whole project —
+      no organization concept anywhere in that path. Decided: **one
+      org per account** (not one login shared across multiple
+      organizations) — so sign-in stays close to today's shape, the
+      app just looks up the authenticated user's single `org_id`
+      alongside their existing `shop_id`/role (no org-picker/switcher
+      UI needed; the org is a fact about the account, not a choice
+      made at login). Someone who genuinely needs access to two
+      organizations would use two separate accounts/emails. Two
+      pieces of net-new work this still requires that aren't schema
+      changes: (1) a real **organization signup/onboarding flow** —
+      today's only "create the first user" path is a literal
+      bootstrap-the-whole-project ADMIN case, which doesn't generalize
+      to "create the Nth organization"; (2) the **platform-admin login
+      needs a deliberately harder boundary** than "just another role"
+      sharing the same login surface as every org's ADMIN — a bug in
+      one role-check should not be a cross-tenant breach of everything
+      at once. Admin 2FA (`admin-2fa` edge function,
+      `admin_login_codes`) also needs an org dimension added.
+- [ ] **Add an `organizations` table above `shops`.** Every
+      shop-scoped table today would gain an `org_id` (directly, or
+      derived via `shops.org_id`) — the same shape as the existing
+      shop-scoping, just one level up. Direction chosen: a single
+      shared Supabase project/database with `org_id` row-scoping
+      (not a separate database per organization) — cheapest to run
+      and consistent with how shop isolation already works via RLS,
+      at the cost of every RLS policy and RPC needing an org check
+      added alongside its existing shop check. Migration path from
+      the current single-tenant data (one implicit organization) needs
+      its own plan when this is picked up.
+- [ ] **RBAC rules stay the same shape, just re-scoped by org.**
+      Confirmed direction: no new rules, no per-org customization —
+      every organization plays by the same constraints. The existing
+      uniqueness rules from migration `020` ("RBAC user-assignment
+      constraints — one admin globally, one active manager per shop,
+      cashier-needs-manager, manager-deactivation safety") carry
+      forward as-is, except **"one ADMIN globally" becomes "one ADMIN
+      per organization"** — that constraint's boundary was the whole
+      project because there was only one org; it needs to move to
+      `org_id`. "One active manager per shop" and
+      "cashier-needs-manager" don't change at all, since a shop
+      already belongs to exactly one org once `shops.org_id` exists —
+      they're already correctly scoped by construction.
+- [ ] **Platform-level monitoring/admin access.** Some role above
+      today's per-organization `ADMIN` needs to see across all
+      organizations (health, usage, support). Shape undecided —
+      options are (a) a new role (e.g. `PLATFORM_ADMIN`) gated to a
+      new section of this same app, reusing existing auth/RBAC, or
+      (b) a fully separate internal app/site with its own auth that
+      queries across organizations. Whichever shape, the hard
+      requirement is the same: an organization's own `ADMIN` must have
+      **no path** to platform-level data or the monitoring surface —
+      today's `users_sel USING (true)` global-read pattern (see the
+      Security section's last open item) is exactly the kind of thing
+      that would need to become org-scoped rather than global once
+      this exists.
+- [ ] **Everything currently assuming single-tenant needs an audit
+      once this is scheduled** — every RLS policy, every RPC that
+      trusts `shop_id` alone, `current_app_user()`/`app_role()` helpers,
+      the offline sync/outbox layer (delta sync, actor stamping), CSV
+      import/export, and reporting/dashboards would all need an
+      `org_id` dimension added, not just `shop_id`. Not detailed here
+      since this is pre-scoping; revisit this list item-by-item when
+      the project actually starts.
 
 ## Completed Backend Hardening (for reference)
 
