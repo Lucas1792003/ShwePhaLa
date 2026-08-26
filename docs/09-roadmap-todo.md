@@ -170,9 +170,9 @@ app. Ordered by severity; each was independently verified with a concrete
 exploit/failure path, not speculative. See the audit conversation for full
 per-area detail if more context is needed before fixing.
 
-**2026-08-25 status:** every item below except the last (the `users` table
-read-scoping question, which needs a product decision, not a fix) is
-implemented, committed, pushed to `main`, and now **live in production**.
+**2026-08-25 status:** every item below, including the `users` table
+read-scoping question, is now implemented, committed, pushed to `main`,
+and **live in production**.
 Migrations `051`–`055` were applied via `supabase db push` and confirmed
 applied (`supabase migration list` shows all five with a matching `remote`
 timestamp), then spot-checked live: `authenticated` can no longer execute
@@ -367,13 +367,24 @@ action-type allow-list; all 8 affected offline-write RPCs accept
       use for signature-compatible redefinitions. **Applied to production
       and confirmed live**: both deployed functions' source contains the
       `created_by = v_user.id` self-approval check.
-- [ ] **Confirm intentional: full `users` table (roles, shop, active flag,
-      permission overrides) is readable by any authenticated user**, not
-      just via the admin-gated UI — `users_sel USING (true)` per
-      migrations `010`/`015`, deliberately kept as "global reference data."
-      A CASHIER/BUYER with devtools can call `supabase.from('users').select('*')`
-      directly. Low severity (read-only), but confirm this is the intended
-      tradeoff before treating it as settled.
+- [x] **Decided and fixed (2026-08-25) — `users` table reads scoped to
+      same-shop + self.** Was `users_sel USING (true)` (migrations
+      `010`/`015`) — any authenticated CASHIER/BUYER with devtools could
+      read every other shop's staff roles, active flags, and permission
+      overrides. Product decision: restrict rather than keep global.
+      Migration `056` replaces the policy: a user can read their own row,
+      any row in their own shop, any ADMIN row (there's normally exactly
+      one, per migration `020`'s `users_only_one_admin` constraint), or
+      everything if they're ADMIN themselves. The "always see ADMIN rows"
+      clause was added beyond the original ask to avoid a real regression:
+      ADMIN acts across every shop, so without it any UI resolving an
+      actor id to a display name (audit log, "approved by") would show a
+      blank name whenever the actor was the ADMIN and the viewer was a
+      non-admin in a different shop. Verified no leftover permissive
+      policy existed on `users` before applying (the same class of bug
+      migration `050` fixed elsewhere), dry-run verified in a rolled-back
+      production transaction, applied, and confirmed live via
+      `pg_policies`. Full test suite (652) still passing.
 
 ## Medium Priority
 

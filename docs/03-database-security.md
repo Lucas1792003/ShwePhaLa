@@ -71,6 +71,13 @@ Apply in numeric order. The current ordered list:
 | `043_business_profile.sql` | `business_profile` singleton (business_name, logo_url, address, phone, email, tagline) for the app-wide brand. Read = any authenticated; UPDATE = ADMIN only; INSERT/DELETE revoked (seeded single row). |
 | `048_supplier_rpcs.sql` | `create_supplier`/`update_supplier`: permission check + write + a `SUPPLIER_CREATED`/`SUPPLIER_UPDATED` audit row (with a per-field change list) in one transaction. Global entity, `audit_logs.shop_id` is `NULL`. Replaces the previous direct `suppliers` table writes from `purchaseSlice.ts` (the `suppliers_ins`/`suppliers_upd` RLS policies from migration `010` are unchanged — kept as a fallback, not revoked). |
 | `049_user_management_rpcs.sql` | `create_app_user`/`update_app_user`/`deactivate_app_user`: same shape as `048`, wrapping the `users` writes `UsersPage.tsx` did directly. Also `replace_manager(shop_id, new_manager_id)` — atomic manager swap; converts `users_one_active_manager_per_shop` from a plain (partial, non-deferrable) unique index into a `DEFERRABLE INITIALLY DEFERRED` `EXCLUDE` constraint so the swap can happen without a moment of either zero or two active managers tripping migration `020`'s protections. See `09-roadmap-todo.md` for the full verification notes. |
+| `050_drop_stale_authenticated_all_policies.sql` | Drops a leftover `authenticated_all FOR ALL TO authenticated USING (true)` policy on 20 tables that was silently defeating the real permission/shop-scoped SELECT policy on each (PostgreSQL ORs permissive policies together). Confirmed live exploit before fixing; re-confirmed closed after. |
+| `051_harden_log_audit_event.sql` | `log_audit_event` allow-lists the 7 legitimate global catalog action types, requires the matching UI-gating permission, and hard-codes `shop_id = NULL` regardless of caller input (was forgeable for any shop by any authenticated user). |
+| `052_revoke_legacy_complete_stock_transfer.sql` | Revokes `EXECUTE` on the legacy `complete_stock_transfer` RPC from `authenticated` — it bypassed the newer dispatch/receive maker-checker flow (migration `038`). |
+| `053_refund_void_no_self_approval.sql` | Adds a `created_by = v_user.id` guard to `approve_refund_request`/`approve_void_request` — previously a manager could approve their own refund/void request, including as ADMIN. |
+| `054_product_name_sku_max_length.sql` | `products_name_max_length` (200 chars) and `products_sku_max_length` (64 chars) `CHECK` constraints, matching the client-side zod caps. |
+| `055_outbox_actor_stamping.sql` | Adds `p_expected_actor_id text DEFAULT NULL` to the 8 offline-write RPCs (`adjust_stock`, `open_shift`, `close_shift`, `create_refund_void_request`, `dispatch_stock_transfer`, `receive_stock_transfer`, `receive_purchase_order`, `record_supplier_payment`); a mismatch at replay time raises instead of silently executing under whoever is logged in when a queued offline write syncs — fixes a shared-till misattribution gap. |
+| `056_users_read_scoping.sql` | Replaces `users_sel USING (true)` — previously any authenticated user could read every other shop's staff roles/permissions. New rule: own row, same-shop rows, any ADMIN row, or everything if ADMIN. |
 
 > **Migration order warning.** Some later migrations depend on identity
 > helpers from `003` and the audit-write lockdown from `013`. Always apply
@@ -199,9 +206,11 @@ tablename = '<table>'`) — a correct new policy sitting next to a stale
 `USING (true)` one from an earlier lockdown pass is exactly this bug
 again, and it fails silently (no error, just an unintended wide-open read).
 
-Reference / catalog tables (`shops`, `users`, `categories`, `products`,
+Reference / catalog tables (`shops`, `categories`, `products`,
 `product_barcodes`, `price_tiers`, `suppliers`) stay globally readable —
-the POS and shared UI need them.
+the POS and shared UI need them. `users` is the one exception: since
+migration `056` it's scoped to own row + same shop + any ADMIN row
+(everything if the caller is ADMIN) — see the migration table above.
 
 ## Audit Model
 
