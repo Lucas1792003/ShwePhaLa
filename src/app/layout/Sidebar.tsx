@@ -237,9 +237,9 @@ export const Sidebar = () => {
           <CheckForUpdatesButton />
           <button
             type="button"
-            className="logout-btn"
+            className="logout-btn footer-logout-icon"
             onClick={handleLogout}
-            title={effectiveCollapsed ? t("common", "logout") : undefined}
+            title={t("common", "logout")}
             aria-label={t("common", "logout")}
           >
             <span className="material-symbols-rounded">logout</span>

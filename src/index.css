@@ -469,17 +469,13 @@ body {
   display: grid;
   /* Always exactly two actions in practice — Logout plus either Download
      App (web) or CheckForUpdatesButton (Electron; Download App hides
-     itself there). minmax(0, 1fr) on BOTH columns — not 1fr alone — is
-     what actually lets a column shrink below its content's natural width;
-     without the 0 floor, a long dynamic label (e.g. "Downloading 100%")
-     pushed its column wider than its share and overlapped the sibling
-     button instead of truncating (the real bug behind the v1.0.7 "Check
-     for Upd[ate]"/Logout overlap — reverted to a stacked layout in v1.0.8
-     rather than fixed at the time). Deliberately not
-     repeat(auto-fit, minmax(0, 1fr)): auto-fit's column count is
-     undefined/unreliable once the minimum is 0, since track count is
-     normally derived from container-width ÷ minimum. */
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+     itself there). Logout is icon-only here (see .footer-logout-icon), so
+     it only needs a fixed 44px column; the other action gets the rest of
+     the row via minmax(0, 1fr) — the 0 floor is what lets it shrink below
+     its content's natural width instead of overflowing (the real bug
+     behind the v1.0.7 "Check for Upd[ate]"/Logout overlap). */
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
   gap: 8px;
   width: 100%;
 }
@@ -488,6 +484,17 @@ body {
 .sidebar-footer-actions .update-checker {
   min-width: 0;
   width: 100%;
+}
+
+.sidebar-footer-actions .footer-logout-icon {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.sidebar-footer-actions .footer-logout-icon span:last-child {
+  display: none;
 }
 
 /* .update-checker's own default (align-items: center) lets its inner
