@@ -63,9 +63,36 @@ Open work, grouped by area.
       defeating it for reads — confirmed live, a plain CASHIER test
       account could read the entire `supplier_payments` table.** Fixed by
       migration `050` (applied to production, re-confirmed closed
-      live). Also found (not a bug, flagged to confirm intent): MANAGER
-      lacks `purchase:approve`/`transfer:cancel` by default, only ADMIN
-      has them, making the single ADMIN account a bottleneck for both.
+      live). Also found and since fixed (see below): MANAGER lacked
+      `purchase:approve`/`transfer:cancel` by default, making the single
+      ADMIN account a bottleneck for both.
+- [x] **Fixed (2026-08-27) — ADMIN bottleneck on PO approval / transfer
+      cancellation.** Confirmed with a concrete example first: a PO's
+      goods can physically arrive, but nothing could log them as received
+      stock until the PO moved `DRAFT`→`APPROVED`, which only the ADMIN
+      login could do — a real "business stalls until ADMIN is reachable"
+      gap, not just a permissions nitpick. Migration `057` grants MANAGER
+      both permissions, but not identically: `purchase:approve` ships
+      with a self-approval guard (`IF v_po.created_by = v_user.id THEN
+      RAISE EXCEPTION` — same pattern as migration `053`'s refund/void
+      fix, full function body copied from migration `012` with just that
+      one guard added) since approving a purchase is a real financial
+      commitment worth a second person's eyes; `transfer:cancel` ships
+      with **no** guard, since canceling is an undo on an internal stock
+      movement the manager already fully owns, not an external
+      commitment — requiring a second person to undo your own mistake is
+      pure friction there. `src/types/domain.ts`'s
+      `DEFAULT_ROLE_PERMISSIONS` mirror updated to match. No frontend
+      code changes needed beyond that: `PurchasesPage.tsx`'s Approve
+      button already gates on `canApprovePurchaseOrder()` (a real
+      permission check, not a hardcoded role check) and
+      `TransfersPage.tsx`'s Cancel button was already shown
+      unconditionally, relying on the RPC to gate it — both automatically
+      picked up the new grant with zero UI edits. Verified against a
+      rolled-back production transaction first (a MANAGER approving a
+      *different* creator's PO succeeds; approving their *own* PO is
+      correctly rejected; canceling their own transfer succeeds), applied
+      to production, confirmed live.
 - [x] **Permission-gated SELECT verification — done 2026-08-25, same
       pass as above.** Ran
       [`archive/30-rls-permission-gating-checklist.md`](./archive/30-rls-permission-gating-checklist.md)

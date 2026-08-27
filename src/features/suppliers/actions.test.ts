@@ -33,12 +33,19 @@ describe("getPurchaseOrderActionState", () => {
     expect(state.isTerminal).toBe(false);
   });
 
-  it("DRAFT: MANAGER cannot approve by default — sees hint", () => {
+  it("DRAFT: MANAGER can approve (migration 057) — no hint", () => {
+    // getPurchaseOrderActionState has no createdBy awareness (it only
+    // calls canApprovePurchaseOrder, a pure permission+shop check) — the
+    // self-approval guard migration 057 added lives only in the
+    // approve_purchase_order RPC itself. So this stays true regardless of
+    // whether `po()`'s default createdBy ("user-1") happens to match this
+    // manager's id ("user-manager") — it doesn't here, but the frontend
+    // can't tell the difference either way; a real self-approval attempt
+    // still gets rejected server-side, surfaced as a toast, not a hint.
     const state = getPurchaseOrderActionState(po(), user("MANAGER"));
     expect(state.nextAction).toBe("approve");
-    expect(state.canActor).toBe(false);
-    expect(state.hint).toBe("Needs approval");
-    // Manager who created/can create POs can still cancel a draft.
+    expect(state.canActor).toBe(true);
+    expect(state.hint).toBeUndefined();
     expect(state.canCancel).toBe(true);
   });
 

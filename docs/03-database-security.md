@@ -78,6 +78,7 @@ Apply in numeric order. The current ordered list:
 | `054_product_name_sku_max_length.sql` | `products_name_max_length` (200 chars) and `products_sku_max_length` (64 chars) `CHECK` constraints, matching the client-side zod caps. |
 | `055_outbox_actor_stamping.sql` | Adds `p_expected_actor_id text DEFAULT NULL` to the 8 offline-write RPCs (`adjust_stock`, `open_shift`, `close_shift`, `create_refund_void_request`, `dispatch_stock_transfer`, `receive_stock_transfer`, `receive_purchase_order`, `record_supplier_payment`); a mismatch at replay time raises instead of silently executing under whoever is logged in when a queued offline write syncs — fixes a shared-till misattribution gap. |
 | `056_users_read_scoping.sql` | Replaces `users_sel USING (true)` — previously any authenticated user could read every other shop's staff roles/permissions. New rule: own row, same-shop rows, any ADMIN row, or everything if ADMIN. |
+| `057_manager_approve_po_cancel_transfer.sql` | Grants MANAGER `purchase:approve` (with a `created_by = v_user.id` self-approval guard, same pattern as `053`) and `transfer:cancel` (no guard — canceling is an undo on an internal movement, not an external commitment) — closes the ADMIN-single-point-of-failure gap for both. |
 
 > **Migration order warning.** Some later migrations depend on identity
 > helpers from `003` and the audit-write lockdown from `013`. Always apply

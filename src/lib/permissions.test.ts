@@ -68,7 +68,12 @@ describe("role default permissions", () => {
     expect(hasPermission(manager, "shop:create")).toBe(false);
     expect(hasPermission(manager, "report:global")).toBe(false);
     expect(hasPermission(manager, "pricing:manage")).toBe(false);
-    expect(hasPermission(manager, "purchase:approve")).toBe(false);
+    // Migration 057: MANAGER gained purchase:approve/transfer:cancel to
+    // close the ADMIN-single-point-of-failure gap on PO approval and
+    // transfer cancellation — approve_purchase_order got a self-approval
+    // guard in the same migration (see actions.test.ts).
+    expect(hasPermission(manager, "purchase:approve")).toBe(true);
+    expect(hasPermission(manager, "transfer:cancel")).toBe(true);
     expect(hasPermission(manager, "supplier:debt_view")).toBe(true);
     expect(hasPermission(manager, "supplier:payment_create")).toBe(true);
   });
@@ -254,10 +259,15 @@ describe("workflow helpers", () => {
     expect(canReceivePurchaseOrder(manager, makePO("shop-b"))).toBe(false);
   });
 
-  it("canApprovePurchaseOrder: manager cannot, admin can", () => {
+  it("canApprovePurchaseOrder: manager (own shop) and admin both can, wrong shop cannot", () => {
+    // Migration 057 granted MANAGER purchase:approve. This is a pure
+    // permission+shop check — it has no createdBy, so it can't express
+    // the self-approval guard the RPC itself enforces server-side (see
+    // suppliers/actions.test.ts's DRAFT self-approval-hint test).
     const manager = makeUser({ role: "MANAGER", shopId: "shop-a" });
     const admin = makeUser({ role: "ADMIN" });
-    expect(canApprovePurchaseOrder(manager, makePO("shop-a"))).toBe(false);
+    expect(canApprovePurchaseOrder(manager, makePO("shop-a"))).toBe(true);
+    expect(canApprovePurchaseOrder(manager, makePO("shop-b"))).toBe(false);
     expect(canApprovePurchaseOrder(admin, makePO("shop-a"))).toBe(true);
   });
 
@@ -380,7 +390,6 @@ describe("RBAC role tuning", () => {
     const m = manager();
     expect(hasPermission(m, "report:global")).toBe(false);
     expect(hasPermission(m, "report:shop_profit")).toBe(false);
-    expect(hasPermission(m, "purchase:approve")).toBe(false);
     expect(hasPermission(m, "shop:create")).toBe(false);
     expect(hasPermission(m, "user:create")).toBe(false);
     expect(hasPermission(m, "pricing:manage")).toBe(false);
@@ -452,7 +461,8 @@ describe("SQL / TypeScript role-default sync", () => {
   it("each role has the documented number of default permissions", () => {
     expect(getRolePermissions("ADMIN")).toHaveLength(ALL_PERMISSIONS.length);
     expect(getRolePermissions("ADMIN").length).toBe(56);
-    expect(getRolePermissions("MANAGER")).toHaveLength(38);
+    // 38 + purchase:approve + transfer:cancel (migration 057).
+    expect(getRolePermissions("MANAGER")).toHaveLength(40);
     expect(getRolePermissions("CASHIER")).toHaveLength(10);
     expect(getRolePermissions("BUYER")).toHaveLength(5);
   });
