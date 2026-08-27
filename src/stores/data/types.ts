@@ -224,6 +224,9 @@ export interface InventoryState {
    *  server-side, to replace the provisional local movement with the
    *  authoritative one. Not for direct UI use. */
   reconcileAdjustStock: (data: unknown, provisional: ProvisionalRef) => void;
+  /** Internal — called by AppLayout's Realtime subscription when another
+   *  device changes a stock level. Not for direct UI use. */
+  applyInventoryRealtimeUpdate: (row: Inventory) => void;
 }
 
 export interface ShiftState {

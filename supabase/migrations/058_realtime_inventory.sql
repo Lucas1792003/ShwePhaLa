@@ -1,0 +1,31 @@
+-- ============================================================
+-- Migration 058: Live inventory updates via Supabase Realtime
+--
+-- Closes the stock-staleness gap discussed in 09-roadmap-todo.md: `inventory`
+-- has no `updated_at` column (it was deliberately left out of migration
+-- 044's delta-sync set — see deltaSync.ts's own header comment), so the
+-- existing 30s/2min background refresh in AppLayout.tsx (pullDeltas())
+-- never actually touches stock levels. Today, inventory only refreshes on
+-- a full loadData() — cold boot or reconnect-after-offline. Two registers
+-- in the same shop could show stale stock for an unbounded window, not
+-- just "up to 2 minutes" as first assumed.
+--
+-- This adds `inventory` to the supabase_realtime publication so the
+-- client can subscribe to row-level push updates instead of waiting on
+-- any polling interval. No RLS changes needed: Supabase Realtime's
+-- postgres_changes already evaluates each change against the subscribing
+-- user's own RLS context, so a CASHIER only ever receives updates for
+-- rows `inventory_sel` (migration 015) already lets them SELECT — same
+-- shop, same `inventory:view_stock` requirement, nothing new exposed.
+--
+-- Scoped to `inventory` only — the concrete problem discussed was stock
+-- levels specifically, not sales history (which isn't time-sensitive in
+-- the same way: a sale someone else rang up isn't wrong to show a few
+-- seconds late, unlike stock that's actually already been sold).
+--
+-- Run AFTER 001-057. Idempotent — ADD TABLE would only error if already a
+-- member, and pg_publication_tables was confirmed empty for this pubname
+-- before writing this file, so it isn't currently a member on this project.
+-- ============================================================
+
+ALTER PUBLICATION supabase_realtime ADD TABLE inventory;

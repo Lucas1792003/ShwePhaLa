@@ -472,8 +472,30 @@ action-type allow-list; all 8 affected offline-write RPCs accept
       and `product-images/temp/*` from expired/canceled QR sessions.
 - [ ] **Customer management module** + loyalty/points.
 - [ ] **Credit sales tracking** (customer-side payable).
-- [ ] **Real-time stock + sales updates** via Supabase Realtime
-      subscriptions (currently the app loads on bootstrap).
+- [x] **Live stock updates via Supabase Realtime — done 2026-08-27.**
+      Scoped to `inventory` specifically, not sales — the concrete problem
+      was two registers in the same shop showing different stock, which
+      turned out to be worse than first assumed: `inventory` has no
+      `updated_at` column, so it's entirely outside the existing 30-120s
+      delta-sync refresh in `AppLayout.tsx` (`deltaSync.ts` excludes it by
+      design — see that file's header comment). Staleness was unbounded
+      between full reloads, not capped at ~2 minutes. Migration `058` adds
+      `inventory` to the `supabase_realtime` publication; no RLS changes
+      needed since Realtime's `postgres_changes` already evaluates each
+      change against the subscribing user's own RLS context (a CASHIER
+      still only ever receives rows `inventory_sel` already lets them
+      SELECT). `AppLayout.tsx` subscribes while online+loaded and merges
+      each change into the store via a new
+      `applyInventoryRealtimeUpdate` action (`inventorySlice.ts`), same
+      shop+product merge shape already used by `reconcileAdjustStock`.
+      Verified with a real end-to-end test (a Node script subscribing via
+      `@supabase/supabase-js` against production, then a real committed
+      `UPDATE` to a throwaway QA row) — confirmed the exact new
+      `qty_base_units` value arrives over the wire, not just that the
+      migration applied. Cost: negligible at this business's actual scale
+      (1 shop, a handful of staff) — Realtime connection/message volume
+      here is a tiny fraction of what's included free on any Supabase
+      plan tier.
 
 ## Low Priority
 

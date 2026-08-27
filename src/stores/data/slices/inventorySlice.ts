@@ -156,6 +156,24 @@ export const createInventorySlice: StateCreator<DataState, [], [], InventoryStat
       void putLocalRows({ inventory: [result.inventory], movements: [result.movement], auditLogs: [result.auditLog] });
     },
 
+    // Called by AppLayout's Realtime subscription (migration 058) when
+    // another device changes a stock level — `inventory` has no
+    // `updated_at`, so it's excluded from delta-sync's polling entirely
+    // (see deltaSync.ts); this is the only thing that keeps stock fresh
+    // between full reloads short of a manual refresh.
+    applyInventoryRealtimeUpdate: (row: Inventory) => {
+      set((s) => {
+        const idx = s.inventory.findIndex(
+          (i) => i.shopId === row.shopId && i.productId === row.productId
+        );
+        const inventory = idx >= 0
+          ? s.inventory.map((i, n) => (n === idx ? row : i))
+          : [...s.inventory, row];
+        return { inventory };
+      });
+      void putLocalRows({ inventory: [row] });
+    },
+
     recordDamage: async ({ shopId, productId, qty, reason, actorId }) => {
       // Damage write-off is a negative adjustment of type DAMAGE.
       await get().adjustStock({

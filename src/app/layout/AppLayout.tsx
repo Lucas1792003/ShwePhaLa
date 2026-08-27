@@ -6,6 +6,8 @@ import { Button } from "../../components/ui/Button";
 import { useDataStore } from "../../stores/dataStore";
 import { useConnectivityStore } from "../../stores/connectivityStore";
 import { useViewportWidth } from "../../hooks/useViewportWidth";
+import { supabase } from "../../lib/supabase";
+import { mapInventory } from "../../stores/data/mappers";
 
 const MIN_SUPPORTED_WIDTH = 768;
 
@@ -16,6 +18,7 @@ export const AppLayout = () => {
   const loadData = useDataStore((state) => state.loadData);
   const retryLoadData = useDataStore((state) => state.retryLoadData);
   const pullDeltas = useDataStore((state) => state.pullDeltas);
+  const applyInventoryRealtimeUpdate = useDataStore((state) => state.applyInventoryRealtimeUpdate);
   const isOnline = useConnectivityStore((state) => state.isOnline);
   const viewportWidth = useViewportWidth();
 
@@ -38,14 +41,17 @@ export const AppLayout = () => {
 
   // Keep the cached data fresh: re-sync when the tab regains focus/visibility
   // and on a slow interval while open. The client store is loaded once, so
-  // without this a returning user would see stale stock/debt/transfers that
+  // without this a returning user would see stale debt/transfers/etc. that
   // another device changed. Throttled so rapid focus changes don't hammer the
   // backend. Uses pullDeltas() (cursor-based, only tables that support it —
   // see stores/data/deltaSync.ts) rather than a full loadData({force:true}):
   // this fires often (every 30-120s), so keeping it cheap matters. It does
   // NOT catch a hard-deleted product (delta pull can't see a row that no
   // longer exists) — that's still caught by the full reload on reconnect
-  // (below) or the next cold boot.
+  // (below) or the next cold boot. It also does NOT cover stock levels —
+  // `inventory` has no `updated_at` so it's outside delta-sync entirely —
+  // see the Realtime subscription effect right below for how that's kept
+  // fresh instead.
   const lastRefreshRef = useRef(0);
   useEffect(() => {
     const THROTTLE_MS = 30_000;
@@ -72,6 +78,32 @@ export const AppLayout = () => {
       window.clearInterval(interval);
     };
   }, [pullDeltas]);
+
+  // Live stock updates (migration 058 adds `inventory` to the Realtime
+  // publication). `inventory` has no `updated_at`, so it's the one thing
+  // pullDeltas() above can never catch — without this, two registers in
+  // the same shop could show different stock for an unbounded window
+  // (until the next full reload), not just the 30-120s the comment above
+  // covers for everything else. RLS still applies: a subscriber only ever
+  // receives rows `inventory_sel` (migration 015) already lets them SELECT.
+  useEffect(() => {
+    if (!isLoaded || !isOnline) return;
+    const channel = supabase
+      .channel("inventory-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "inventory" },
+        (payload) => {
+          const row = (payload.new ?? payload.old) as Record<string, unknown> | undefined;
+          if (!row || typeof row.shop_id !== "string" || typeof row.product_id !== "string") return;
+          applyInventoryRealtimeUpdate(mapInventory(row));
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [isLoaded, isOnline, applyInventoryRealtimeUpdate]);
 
   if (viewportWidth < MIN_SUPPORTED_WIDTH) {
     return <SmallScreenGuard />;
